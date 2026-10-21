@@ -1,0 +1,85 @@
+"""Loopback HTTPS fixture, never a real model or a production transport override."""
+import json
+from pathlib import Path
+import ssl
+import subprocess
+import threading
+import time
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest.mock import patch
+
+
+class LocalModelFixture:
+    def __init__(self, directory):
+        self.root = Path(directory)
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.control = self.root/'response.json'
+        if not self.control.exists():
+            self.control.write_text(json.dumps({'mode': 'valid', 'text': '合成协议响应：计划下周五回顾，尚未完成。'}))
+        self.requests = []
+        self.lock = threading.Lock()
+        config = self.root/'certificate.cnf'
+        config.write_text('[req]\ndistinguished_name=dn\nx509_extensions=ext\nprompt=no\n'
+                          '[dn]\nCN=localhost\n[ext]\nsubjectAltName=DNS:localhost,IP:127.0.0.1\n'
+                          'basicConstraints=critical,CA:TRUE\n')
+        self.certificate, self.key = self.root/'certificate.pem', self.root/'fixture-private-key.pem'
+        subprocess.run(['/usr/bin/openssl', 'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
+                        '-days', '2', '-config', str(config), '-keyout', str(self.key),
+                        '-out', str(self.certificate)], check=True, stdout=subprocess.DEVNULL,
+                       stderr=subprocess.DEVNULL)
+        self.key.chmod(0o600)
+        fixture = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def log_message(self, *_):
+                pass
+
+            def do_POST(self):
+                body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                with fixture.lock:
+                    fixture.requests.append({'path': self.path, 'body': body,
+                                             'hasAuthorization': self.headers.get('Authorization') == 'Bearer synthetic-model-key'})
+                control = json.loads(fixture.control.read_text())
+                time.sleep(min(3, max(0, control.get('delay', 0))))
+                mode = control.get('mode')
+                code = {'unauthorized': 401, 'rate_limit': 429, 'unavailable': 503,
+                        'redirect': 307}.get(mode, 200)
+                sources = json.loads(body['messages'][1]['content'])['sources']
+                source = next((s for s in sources if s['id'].startswith('note/')), sources[0])
+                result = {key: [] for key in ['overview', 'decisions', 'todos', 'questions', 'memoryCandidates']}
+                result['overview'] = [{'text': control.get('text', '合成协议响应。'),
+                                       'sources': [source['id'] if mode != 'bad_citation' else 'note/not-supplied']}]
+                result['memoryCandidates'] = [{'text': '合成待核对建议，不是已确认事实。', 'sources': [source['id']]}]
+                payload = {'choices': [{'finish_reason': 'length' if mode == 'incomplete' else 'stop',
+                                        'message': {'content': json.dumps(result, ensure_ascii=False)}}]}
+                raw = b'not-json' if mode == 'malformed' else json.dumps(payload, ensure_ascii=False).encode()
+                self.send_response(code)
+                if mode == 'redirect':
+                    self.send_header('Location', fixture.endpoint+'/must-not-follow')
+                self.send_header('Content-Length', str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+        self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+        context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        context.load_cert_chain(self.certificate, self.key)
+        self.server.socket = context.wrap_socket(self.server.socket, server_side=True)
+        self.endpoint = 'https://localhost:'+str(self.server.server_address[1])+'/v1'
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        # Only this test process trusts its temporary local certificate. Production stays unchanged.
+        client_context = ssl.create_default_context(cafile=str(self.certificate))
+        original = urllib.request.build_opener
+        self.transport = patch('analysis.urllib.request.build_opener',
+                               side_effect=lambda *handlers: original(*handlers, urllib.request.HTTPSHandler(context=client_context)))
+        self.transport.start()
+
+    def set_response(self, mode='valid', text='合成协议响应：计划下周五回顾，尚未完成。', delay=0):
+        self.control.write_text(json.dumps({'mode': mode, 'text': text, 'delay': delay}, ensure_ascii=False))
+
+    def close(self):
+        self.transport.stop()
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join()

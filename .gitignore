@@ -1,0 +1,34 @@
+.build/
+.build-*/
+.swiftpm/
+DerivedData/
+artifacts/*
+!artifacts/.gitkeep
+*.xcuserstate
+xcuserdata/
+.DS_Store
+__pycache__/
+*.pyc
+Config/Local.xcconfig
+*.mobileprovision
+.env*
+!.env.example
+.venv/
+*.sqlite
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.db
+*.p12
+*.p8
+*.key
+connection-token
+
+# Maintainer-only instructions, device acceptance and personal-source audits.
+# Keep these locally; the public documentation is explicitly listed below.
+/AGENTS.md
+/design-qa.md
+/docs/*
+!/docs/architecture.md
+!/docs/development.md
+!/docs/open-source-research.md

@@ -1,0 +1,64 @@
+name: Source checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    name: Node / Python ${{ matrix.python }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.9', '3.12']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Check public files and links
+        run: python scripts/check-public-tree.py
+      - name: Install decoder
+        run: python -m pip install -r node/requirements.txt
+      - name: Test node with synthetic data
+        run: python -m unittest discover -s node/tests -v
+
+  apple:
+    name: Apple builds
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Inspect toolchain
+        run: xcodebuild -version
+      - name: Prepare bundled decoder and project
+        run: |
+          python3 scripts/prepare-node-runtime.py
+          python3 scripts/generate-project.py
+          git diff --exit-code -- VoiceMemory.xcodeproj
+      - name: Test core
+        run: swift test
+      - name: Build Mac without personal signing
+        run: >-
+          xcodebuild -project VoiceMemory.xcodeproj -scheme VoiceMemoryMac
+          -destination 'platform=macOS' -derivedDataPath DerivedData/Mac
+          CODE_SIGNING_ALLOWED=NO build
+      - name: Build phone and watch simulators
+        run: >-
+          xcodebuild -project VoiceMemory.xcodeproj -scheme VoiceMemory
+          -sdk iphonesimulator -destination 'generic/platform=iOS Simulator'
+          -derivedDataPath DerivedData/Phone CODE_SIGNING_ALLOWED=NO build

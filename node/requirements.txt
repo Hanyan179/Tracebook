@@ -1,0 +1,3 @@
+# Decoder only; the node otherwise uses Python's standard library.
+# 0.18 is the last pyzstd release supporting the system macOS Python 3.9.
+pyzstd==0.18.0

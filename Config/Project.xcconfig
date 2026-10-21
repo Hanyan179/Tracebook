@@ -1,0 +1,9 @@
+// Change these locally before signing for physical devices.
+VOICE_MEMORY_BUNDLE_PREFIX = org.voicememory.prototype
+SWIFT_VERSION = 6.0
+IPHONEOS_DEPLOYMENT_TARGET = 18.0
+WATCHOS_DEPLOYMENT_TARGET = 11.0
+MARKETING_VERSION = 0.1.0
+CURRENT_PROJECT_VERSION = 1
+CODE_SIGN_STYLE = Automatic
+#include? "Local.xcconfig"

@@ -1,0 +1,25 @@
+name: 问题反馈
+description: 报告可复现的问题，请使用合成资料。
+body:
+  - type: markdown
+    attributes:
+      value: 请勿上传真实录音、聊天历史、密钥、连接口令、数据库或完整配置。安全问题请使用仓库的私密漏洞报告。
+  - type: textarea
+    id: environment
+    attributes:
+      label: 版本与环境
+      description: 填写提交版本、系统、来源格式与使用入口，不填写设备唯一编号。
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 使用最小合成样例，说明预期与实际结果。
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 脱敏证据
+      description: 可附经过检查的错误信息或截图；明确是否能重复发生。

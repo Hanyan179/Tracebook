@@ -1,0 +1,4 @@
+// Copy to Local.xcconfig; this file is ignored by Git.
+// Use your own team and a unique reverse-domain identifier.
+DEVELOPMENT_TEAM = YOUR_TEAM_ID
+VOICE_MEMORY_BUNDLE_PREFIX = com.yourname.voicememory

@@ -1,0 +1,523 @@
+"""Local, file-first storage. Python 3.9+, no model or cloud dependency."""
+from __future__ import annotations
+import datetime as dt
+import hashlib
+import json
+import math
+import os
+from pathlib import Path
+import re
+import secrets
+import shutil
+import sqlite3
+import threading
+import uuid
+from zoneinfo import ZoneInfo
+from catalog import Catalog
+from knowledge import Knowledge
+from exchange import DataExchange
+from analysis import DailyAnalysis, DEFAULT_RULES
+from local_sources import LocalSources
+from documents import DocumentImports
+
+MAX_AUDIO = 2 * 1024 * 1024 * 1024
+PROMPTS = {
+    'daily-summary': DEFAULT_RULES,
+    'memory-extraction': '# 记忆提取规则\n\n仅提出有来源的长期事实建议。区分本人和他人的表述，不把会议发言自动作为用户事实。写入前由用户确认。\n',
+}
+
+def stamp():
+    return dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds')
+
+def digest(data):
+    return hashlib.sha256(data).hexdigest()
+
+def file_hash(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for block in iter(lambda: f.read(1024 * 1024), b''):
+            h.update(block)
+    return h.hexdigest()
+
+def canonical_id(value):
+    try:
+        return str(uuid.UUID(str(value))).upper()
+    except (ValueError, TypeError, AttributeError):
+        raise StoreError(400, '记录编号不正确。')
+
+class StoreError(Exception):
+    def __init__(self, status, message):
+        super().__init__(message)
+        self.status = status
+
+def validate_manifest(manifest, expected_id=None):
+    if not isinstance(manifest, dict) or manifest.get('schemaVersion') != 1:
+        raise StoreError(400, '不支持这个录音格式版本。')
+    r = manifest.get('recording', {})
+    if not isinstance(r, dict):
+        raise StoreError(400, '录音信息不完整。')
+    rid = canonical_id(r.get('id'))
+    if expected_id and rid != canonical_id(expected_id):
+        raise StoreError(400, '记录编号与请求不一致。')
+    if manifest.get('audioFilename') != rid + '.caf':
+        raise StoreError(400, '音频文件名不正确。')
+    checksum = manifest.get('audioSHA256', '')
+    if not isinstance(checksum, str) or not re.fullmatch(r'[0-9a-f]{64}', checksum):
+        raise StoreError(400, '缺少有效的音频校验值。')
+    duration, size = r.get('duration'), r.get('byteCount')
+    if (not isinstance(duration, (int, float)) or isinstance(duration, bool)
+        or not math.isfinite(duration) or duration <= 0
+        or not isinstance(size, int) or isinstance(size, bool) or size <= 0 or size > MAX_AUDIO):
+        raise StoreError(400, '音频时长或大小不正确。')
+    if r.get('status') not in ('saved', 'interrupted', 'recovered') or r.get('trashedAt') is not None:
+        raise StoreError(400, '这条录音尚未完成保存。')
+    try:
+        parsed = dt.datetime.fromisoformat(r['startedAt'].replace('Z', '+00:00'))
+        if parsed.tzinfo is None:
+            raise ValueError()
+        ZoneInfo(r.get('timeZone', 'UTC'))
+    except (ValueError, KeyError, TypeError, AttributeError):
+        raise StoreError(400, '录音时间或时区不正确。')
+    if r.get('sourceDevice') not in (None, 'phone', 'watch'):
+        raise StoreError(400, '录音来源不正确。')
+    for key, limit in [('title', 512), ('note', 8192), ('trigger', 64)]:
+        value = r.get(key)
+        if value is not None and (not isinstance(value, str) or len(value) > limit):
+            raise StoreError(400, '录音文字信息过长。')
+    r['id'] = rid
+    return rid
+
+class Store:
+    def __init__(self, data_dir, output_dir=None):
+        self.data = Path(data_dir).expanduser().resolve()
+        self.data.mkdir(parents=True, exist_ok=True, mode=0o700)
+        self.recordings = self.data / 'recordings'
+        self.recordings.mkdir(exist_ok=True)
+        self.staging = self.data / 'staging'
+        self.staging.mkdir(exist_ok=True)
+        self.lock = threading.RLock()
+        self.db = sqlite3.connect(str(self.data / 'node.sqlite3'), check_same_thread=False)
+        self.db.row_factory = sqlite3.Row
+        self.db.execute('PRAGMA journal_mode=WAL')
+        self.db.execute('PRAGMA synchronous=FULL')
+        self.db.executescript('''
+        CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS recordings (id TEXT PRIMARY KEY, checksum TEXT NOT NULL, manifest TEXT NOT NULL, received_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS candidates (id TEXT PRIMARY KEY, text TEXT NOT NULL, sources TEXT NOT NULL, state TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS exports (root TEXT NOT NULL, path TEXT NOT NULL, last_hash TEXT, semantic_hash TEXT, state TEXT NOT NULL, generated_path TEXT, updated_at TEXT NOT NULL, PRIMARY KEY(root,path));
+        CREATE TABLE IF NOT EXISTS notes (id TEXT PRIMARY KEY,title TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+        ''')
+        with self.db:
+            for key, value in [('nodeID', str(uuid.uuid4())), ('timeZone', 'Asia/Shanghai'), ('outputDirectory', str(self.data / 'Library')),
+                               ('dailyEnabled', 'true'), ('dailyTime', '00:15'), ('dailyLastRun', '')]:
+                self.db.execute('INSERT OR IGNORE INTO settings VALUES (?,?)', (key, value))
+            if output_dir:
+                self.db.execute('UPDATE settings SET value=? WHERE key=?', (str(Path(output_dir).expanduser().resolve()), 'outputDirectory'))
+        self.output = Path(self.setting('outputDirectory'))
+        self.output.mkdir(parents=True, exist_ok=True)
+        self._initialize_files()
+        self._recover_received()
+        for row in self.db.execute('SELECT id FROM recordings'):
+            self._ensure_transcript(row['id'])
+        self.local_sources = LocalSources(self)
+        self.documents = DocumentImports(self)
+        self.catalog = Catalog(self)
+        self.knowledge = Knowledge(self)
+        self.exchange = DataExchange(self)
+        self.analysis = DailyAnalysis(self)
+
+    def _ensure_transcript(self, rid):
+        try:
+            path = self._path('transcripts/' + rid + '.md')
+            if not path.exists():
+                self._atomic(path, b'')
+        except (OSError, StoreError):
+            # The receive receipt covers durable audio, independently of the output folder.
+            # Reading or editing this document will report the folder error to the client.
+            pass
+
+    def close(self):
+        if self.local_sources.close():
+            self.db.close()
+
+    def setting(self, key):
+        return self.db.execute('SELECT value FROM settings WHERE key=?', (key,)).fetchone()[0]
+
+    def _path(self, relative):
+        root = self.output.resolve()
+        path = (root / relative).resolve()
+        if root not in path.parents:
+            raise StoreError(400, '文件位置不在归档目录中。')
+        return path
+
+    def _initialize_files(self):
+        for name, text in PROMPTS.items():
+            p = self._path('prompts/' + name + '.md')
+            p.parent.mkdir(parents=True, exist_ok=True)
+            if not p.exists():
+                self._atomic(p, text.encode())
+            elif name=='daily-summary' and p.read_text()=='# 每日摘要规则\n\n围绕提供的记录整理事实、待办和想法，标注来源。没有依据的内容不补充。\n\n当前未启用文字模型，系统只生成按来源组织的草稿。\n':
+                self._history('prompts/'+name+'.md',p.read_bytes())
+                self._atomic(p,text.encode())
+        for name in ['memory.md', 'memory-inbox.md']:
+            if not self._path(name).exists():
+                self.export(name, '# 长期记忆\n' if name == 'memory.md' else '# 待确认记忆\n', 'empty')
+
+    @staticmethod
+    def _atomic(path, data):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        temp = path.with_name('.' + path.name + '.' + secrets.token_hex(6) + '.tmp')
+        try:
+            with open(temp, 'xb') as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp, path)
+            # Persist the directory entry before issuing a receive acknowledgement.
+            fd = os.open(str(path.parent), os.O_RDONLY)
+            try:
+                os.fsync(fd)
+            finally:
+                os.close(fd)
+        finally:
+            if temp.exists():
+                temp.unlink()
+
+    def _recover_received(self):
+        for folder in self.recordings.iterdir():
+            if not folder.is_dir() or self.db.execute('SELECT 1 FROM recordings WHERE id=?', (folder.name,)).fetchone():
+                continue
+            try:
+                m = json.loads((folder / 'manifest.json').read_text())
+                rid = validate_manifest(m, folder.name)
+                audio = folder / (rid + '.caf')
+                if audio.stat().st_size != m['recording']['byteCount'] or file_hash(audio) != m['audioSHA256']:
+                    continue
+                with self.db:
+                    self.db.execute('INSERT INTO recordings VALUES (?,?,?,?)', (rid, m['audioSHA256'], json.dumps(m), stamp()))
+            except (OSError, ValueError, StoreError):
+                # Keep unreadable packages for repair; never erase their audio.
+                continue
+
+    def accept(self, manifest, audio_path):
+        rid = validate_manifest(manifest)
+        path = Path(audio_path)
+        if path.stat().st_size != manifest['recording']['byteCount'] or file_hash(path) != manifest['audioSHA256']:
+            raise StoreError(422, '音频校验失败，请重新传输。')
+        with self.lock:
+            existing = self.db.execute('SELECT checksum FROM recordings WHERE id=?', (rid,)).fetchone()
+            if existing:
+                if existing['checksum'] != manifest['audioSHA256']:
+                    raise StoreError(409, '相同编号对应不同音频，原有录音未被覆盖。')
+                return self.receipt(rid)
+            folder = self.recordings / rid
+            if folder.exists():
+                cached = folder / (rid + '.caf')
+                if not cached.exists() or file_hash(cached) != manifest['audioSHA256']:
+                    raise StoreError(409, '存在需要恢复的同名录音。')
+            else:
+                prepared = self.staging / str(uuid.uuid4())
+                prepared.mkdir()
+                try:
+                    target = prepared / (rid + '.caf')
+                    shutil.copyfile(path, target)
+                    with open(target, 'rb') as f:
+                        os.fsync(f.fileno())
+                    self._atomic(prepared / 'manifest.json', json.dumps(manifest, ensure_ascii=False).encode())
+                    os.rename(prepared, folder)
+                    fd = os.open(str(self.recordings), os.O_RDONLY)
+                    try:
+                        os.fsync(fd)
+                    finally:
+                        os.close(fd)
+                finally:
+                    if prepared.exists():
+                        shutil.rmtree(prepared)
+            with self.db:
+                self.db.execute('INSERT INTO recordings VALUES (?,?,?,?)', (rid, manifest['audioSHA256'], json.dumps(manifest), stamp()))
+            self._ensure_transcript(rid)
+            self.catalog.index_recording(rid)
+            self.catalog.index_daily(self.day_for(manifest['recording']))
+            return self.receipt(rid)
+
+    def receipt(self, rid):
+        with self.lock:
+            row = self.db.execute('SELECT checksum FROM recordings WHERE id=?', (canonical_id(rid),)).fetchone()
+            if not row:
+                raise StoreError(404, '找不到这条录音。')
+            return {'recordingID': canonical_id(rid), 'audioSHA256': row['checksum'], 'nodeID': self.setting('nodeID'), 'durable': True}
+
+    def manifest(self, rid):
+        row = self.db.execute('SELECT manifest FROM recordings WHERE id=?', (canonical_id(rid),)).fetchone()
+        if not row:
+            raise StoreError(404, '找不到这条录音。')
+        return json.loads(row['manifest'])
+
+    def audio_path(self, rid):
+        rid = canonical_id(rid)
+        self.receipt(rid)
+        return self.recordings / rid / (rid + '.caf')
+
+    def list_recordings(self):
+        if hasattr(self, 'catalog'):
+            return self.catalog.all_records()
+        with self.lock:
+            result = []
+            for row in self.db.execute('SELECT * FROM recordings ORDER BY received_at DESC'):
+                m = json.loads(row['manifest']);r = m['recording'];rid = r['id']
+                text = self.read_document('transcripts/' + rid + '.md')
+                result.append({'id': rid, 'title': r.get('title') or '语音记录', 'startedAt': r['startedAt'],
+                               'duration': r['duration'], 'byteCount': r['byteCount'], 'sourceDevice': r.get('sourceDevice'),
+                               'audioSHA256': m['audioSHA256'], 'textState': 'ready' if text['text'].strip() else 'awaitingText'})
+            return sorted(result, key=lambda r: dt.datetime.fromisoformat(r['startedAt'].replace('Z', '+00:00')), reverse=True)
+
+    def read_document(self, relative):
+        path = self._path(relative)
+        raw = path.read_bytes() if path.exists() else b''
+        return {'text': raw.decode('utf-8'), 'etag': digest(raw) if path.exists() else '', 'path': relative}
+
+    def edit_document(self, relative, text, expected):
+        if not isinstance(text, str) or len(text.encode()) > 1024 * 1024:
+            raise StoreError(400, '文字过长。')
+        with self.lock:
+            current = self.read_document(relative)
+            if expected != current['etag']:
+                raise StoreError(409, '文件已被其他地方修改，请重新读取后再保存。')
+            path = self._path(relative)
+            if path.exists() and current['text'] != text:
+                self._history(relative, path.read_bytes())
+            self._atomic(path, text.encode())
+            with self.db:
+                self.db.execute('INSERT OR REPLACE INTO exports VALUES (?,?,?,?,?,?,?)',
+                    (str(self.output), relative, digest(text.encode()), None, 'manual', None, stamp()))
+            if hasattr(self, 'catalog') and relative.startswith('daily/'):
+                self.catalog.index_daily(Path(relative).stem)
+            return self.read_document(relative)
+
+    def _history(self, relative, raw):
+        name = dt.datetime.now(dt.timezone.utc).strftime('%Y%m%dT%H%M%S%f') + '-' + digest(raw)[:10] + '.md'
+        self._atomic(self._path('.history/' + relative + '/' + name), raw)
+
+    def export(self, relative, text, semantic):
+        with self.lock:
+            path = self._path(relative);raw = text.encode();sha = digest(raw)
+            row = self.db.execute('SELECT * FROM exports WHERE root=? AND path=?', (str(self.output), relative)).fetchone()
+            current = path.read_bytes() if path.exists() else None
+            if (row and row['state'] == 'conflict' and row['semantic_hash'] == semantic
+                and row['generated_path'] and self._path(row['generated_path']).exists()
+                and current is not None and digest(current) != row['last_hash']):
+                return dict(row)
+            if current == raw:
+                state, generated = 'current', None
+            elif current is not None and (not row or row['state'] == 'manual' or digest(current) != row['last_hash']):
+                generated = '.generated/' + relative + '/' + sha[:16] + '.md'
+                self._atomic(self._path(generated), raw)
+                state = 'conflict'
+            elif row and row['semantic_hash'] == semantic and current is not None:
+                return dict(row)
+            else:
+                if current is not None:
+                    self._history(relative, current)
+                self._atomic(path, raw)
+                state, generated = 'current', None
+            with self.db:
+                self.db.execute('INSERT OR REPLACE INTO exports VALUES (?,?,?,?,?,?,?)',
+                    (str(self.output), relative, sha if state == 'current' else (row['last_hash'] if row else None), semantic, state, generated, stamp()))
+            return {'state': state, 'path': relative, 'generated_path': generated}
+
+    def day_for(self, record):
+        return dt.datetime.fromisoformat(record['startedAt'].replace('Z', '+00:00')).astimezone(ZoneInfo(self.setting('timeZone'))).date().isoformat()
+
+    def build_daily(self, day):
+        try:
+            if dt.date.fromisoformat(day).isoformat() != day:
+                raise ValueError()
+        except ValueError:
+            raise StoreError(400, '日期不正确。')
+        with self.lock:
+            records = self.catalog.all_records(day)
+            sections = [];signature = []
+            for r in reversed(records):
+                document = self.read_document('transcripts/' + r['id'] + '.md')
+                signature.append((r['id'], document['etag']))
+                title = r['title'].replace('\n', ' ')
+                sections.append('## ' + title + '\n\n来源：[' + r['id'] + '](../transcripts/' + r['id'] + '.md) · ' + r['startedAt'] + '\n\n' + (document['text'].strip() or '_原音已接收，等待添加文字。_'))
+            notes = self.db.execute("SELECT id,title FROM library_items WHERE kind='note' AND day=? ORDER BY sort_date,id", (day,)).fetchall()
+            for note in notes:
+                document = self.read_document('notes/' + note['id'] + '.md')
+                signature.append(('note', note['id'], note['title'], document['etag']))
+                sections.append('## ' + note['title'].replace('\n', ' ') + '\n\n来源：[' + note['id'] + '](../notes/' + note['id'] + '.md)\n\n' + document['text'].strip())
+            semantic = digest(json.dumps([day, self.setting('timeZone'), signature], ensure_ascii=False).encode())
+            ready = sum(bool(self.read_document('transcripts/' + r['id'] + '.md')['text'].strip()) for r in records)
+            text = '# ' + day + ' · 每日草稿\n\n覆盖 ' + str(len(records)) + ' 条录音，其中 ' + str(ready) + ' 条已有文字；另含 ' + str(len(notes)) + ' 篇笔记。时区：' + self.setting('timeZone') + '。\n\n更新时间：' + stamp() + '。\n\n按来源整理的原文，不代表模型分析。\n\n' + '\n\n'.join(sections) + '\n'
+            result = self.export('daily/' + day + '.md', text, semantic)
+            self.catalog.index_daily(day)
+            return result
+
+    def daily_list(self):
+        with self.lock:
+            days = {r[0] for r in self.db.execute("SELECT DISTINCT day FROM library_items WHERE kind IN ('recording','note')")}
+            days.update(p.stem for p in self._path('daily/index').parent.glob('????-??-??.md'))
+            result = []
+            for day in sorted(days, reverse=True):
+                relative = 'daily/' + day + '.md'
+                row = self.db.execute('SELECT state,generated_path FROM exports WHERE root=? AND path=?', (str(self.output), relative)).fetchone()
+                result.append({'id': day, 'state': row['state'] if row else 'pending', 'generatedPath': row['generated_path'] if row else None})
+            return result
+
+    def daily_settings(self, now=None):
+        with self.lock:
+            zone=ZoneInfo(self.setting('timeZone'))
+            local=(now or dt.datetime.now(dt.timezone.utc)).astimezone(zone)
+            hour,minute=map(int,self.setting('dailyTime').split(':'))
+            next_run=local.replace(hour=hour,minute=minute,second=0,microsecond=0)
+            if next_run<=local:next_run+=dt.timedelta(days=1)
+            enabled=self.setting('dailyEnabled')=='true'
+            return {'enabled':enabled,'time':self.setting('dailyTime'),'timeZone':self.setting('timeZone'),
+                    'nextRun':next_run.isoformat() if enabled else None,'lastRun':self.setting('dailyLastRun') or None}
+
+    def configure_daily(self, values):
+        if not isinstance(values.get('enabled'),bool) or not isinstance(values.get('time'),str) or not re.fullmatch(r'(?:[01]\d|2[0-3]):[0-5]\d',values['time']):
+            raise StoreError(400,'请填写有效的整理时间，格式为 HH:mm。')
+        timezone=values.get('timeZone')
+        try:ZoneInfo(timezone)
+        except (KeyError,ValueError,TypeError):raise StoreError(400,'时区名称不正确。')
+        with self.lock:
+            with self.db:
+                for key,value in [('dailyEnabled','true' if values['enabled'] else 'false'),('dailyTime',values['time']),('timeZone',timezone)]:
+                    self.db.execute('UPDATE settings SET value=? WHERE key=?',(value,key))
+            self.catalog.reconcile()
+            return self.daily_settings()
+
+    def catch_up(self, now=None):
+        with self.lock:
+            self.catalog.reconcile()
+            if self.setting('dailyEnabled')!='true':return
+            local=(now or dt.datetime.now(dt.timezone.utc)).astimezone(ZoneInfo(self.setting('timeZone')))
+            today=local.date().isoformat()
+            hour,minute=map(int,self.setting('dailyTime').split(':'))
+            cutoff=local.replace(hour=hour,minute=minute,second=0,microsecond=0)
+            last_day=(local.date()-dt.timedelta(days=1 if local>=cutoff else 2)).isoformat()
+            for day in {r[0] for r in self.db.execute("SELECT DISTINCT day FROM library_items WHERE kind IN ('recording','note')")}:
+                if day <= last_day or self._path('daily/' + day + '.md').exists():
+                    self.build_daily(day)
+            with self.db:
+                self.db.execute('UPDATE settings SET value=? WHERE key=?',(local.isoformat(timespec='seconds'),'dailyLastRun'))
+
+    def save_transcript(self, rid, text, expected):
+        with self.lock:
+            m = self.manifest(rid)
+            result = self.edit_document('transcripts/' + canonical_id(rid) + '.md', text, expected)
+            self.catalog.index_recording(canonical_id(rid), force=True)
+            self.build_daily(self.day_for(m['recording']))
+            return result
+
+    def candidates(self):
+        with self.lock:
+            return [{**dict(r), 'sources': json.loads(r['sources'])} for r in self.db.execute('SELECT * FROM candidates ORDER BY created_at DESC')]
+
+    def add_candidate(self, text, sources):
+        if not isinstance(text, str) or not text.strip() or len(text) > 10000 or not isinstance(sources, list) or not sources:
+            raise StoreError(400, '请填写记忆建议并选择来源。')
+        with self.lock:
+            ids = sorted({canonical_id(i) for i in sources})
+            for rid in ids:
+                self.manifest(rid)
+            cid = str(uuid.uuid4()).upper();now = stamp()
+            with self.db:
+                self.db.execute('INSERT INTO candidates VALUES (?,?,?,?,?,?)', (cid, text.strip(), json.dumps(ids), 'pending', now, now))
+            self.catalog.index_memory(cid)
+            self.export_memory()
+            return {'id': cid}
+
+    def decide_candidate(self, cid, decision):
+        if decision not in ('confirmed', 'rejected'):
+            raise StoreError(400, '无效的记忆操作。')
+        with self.lock:
+            row = self.db.execute('SELECT state FROM candidates WHERE id=?', (canonical_id(cid),)).fetchone()
+            if not row:
+                raise StoreError(404, '找不到这条建议。')
+            if row['state'] not in ('pending', decision):
+                raise StoreError(409, '这条建议已处理，请重新读取。')
+            with self.db:
+                self.db.execute('UPDATE candidates SET state=?,updated_at=? WHERE id=?', (decision, stamp(), canonical_id(cid)))
+            self.catalog.index_memory(canonical_id(cid))
+            return self.export_memory()
+
+    def export_memory(self):
+        results = []
+        names = {r['id']:r['name'] for r in self.catalog.categories('memory')} if hasattr(self, 'catalog') else {}
+        for state, relative, title in [('confirmed', 'memory.md', '长期记忆'), ('pending', 'memory-inbox.md', '待确认记忆'), ('archived', 'memory-archive.md', '已归档记忆')]:
+            rows = [r for r in self.candidates() if r['state'] == state]
+            if hasattr(self, 'catalog'):
+                rows = []
+                for candidate in self.candidates():
+                    value = self.catalog.detail('memory', candidate['id'])
+                    if (state == 'archived' and value['organization']['archived']) or (state == value['state'] and not value['organization']['archived']):
+                        rows.append(value)
+            text = '# ' + title + '\n\n'
+            groups = {}
+            for r in rows:
+                groups.setdefault(r.get('organization', {}).get('categoryID', ''), []).append(r)
+            for category, entries in groups.items():
+                text += '## ' + names.get(category, '未分类') + '\n\n'
+                for r in entries:
+                    text += '### ' + r['id'] + '\n\n' + r['text'] + '\n\n'
+                    if state == 'archived':
+                        text += '确认状态：' + {'confirmed': '已确认', 'pending': '待确认', 'rejected': '已忽略'}[r['state']] + '\n\n'
+                    tags = r.get('organization', {}).get('tags', [])
+                    if tags: text += '标签：' + '、'.join(tags) + '\n\n'
+                    text += '来源：' + '、'.join('[' + i + '](transcripts/' + i + '.md)' for i in r['sources']) + '\n\n'
+            results.append(self.export(relative, text, digest(json.dumps(rows, sort_keys=True).encode())))
+        return {'exports': results}
+
+    def status(self):
+        with self.lock:
+            conflicts = [dict(r) for r in self.db.execute("SELECT path,state,generated_path AS generatedPath FROM exports WHERE root=? AND state='conflict'", (str(self.output),))]
+            return {'nodeID': self.setting('nodeID'), 'timeZone': self.setting('timeZone'), 'outputDirectory': str(self.output),
+                    'recognitionEnabled': False, 'summaryMode': 'sourceDraft', 'conflicts': conflicts,
+                    'analysisConfigured':hasattr(self,'analysis') and self.analysis.configuration is not None}
+
+    def configure(self, values):
+        with self.lock:
+            timezone = values.get('timeZone', self.setting('timeZone'))
+            try:
+                ZoneInfo(timezone)
+            except (KeyError, ValueError, TypeError):
+                raise StoreError(400, '时区名称不正确。')
+            output = Path(values.get('outputDirectory', str(self.output))).expanduser().resolve()
+            output.mkdir(parents=True, exist_ok=True)
+            if output != self.output:
+                previous = self.output
+                # Copy owned documents without overwriting anything in the chosen directory.
+                files = list(previous.glob('transcripts/*.md')) + list(previous.glob('daily/*.md')) + list(previous.glob('analysis/*.md'))
+                files += list(previous.glob('prompts/*.md')) + list(previous.glob('notes/*.md')) + list(previous.glob('organization/**/*.json'))
+                files += list(previous.glob('sources/**/*.md')) + list(previous.glob('sources/**/index.json'))
+                files += list(previous.glob('documents/*.md')) + list(previous.glob('.generated/documents/*.md')) + list(previous.glob('.history/documents/*.md'))
+                files += list(previous.glob('.generated/sources/**/*.md')) + list(previous.glob('.history/sources/**/*.md'))
+                files += [previous / 'memory.md', previous / 'memory-inbox.md', previous / 'memory-archive.md']
+                for source in files:
+                    if not source.is_file() or source.is_symlink():
+                        continue
+                    relative = source.relative_to(previous).as_posix()
+                    target = (output / relative).resolve()
+                    if output not in target.parents:
+                        raise StoreError(400, '目标目录中存在不支持的文件链接。')
+                    if not target.exists():
+                        self._atomic(target, source.read_bytes())
+                        row = self.db.execute('SELECT * FROM exports WHERE root=? AND path=?', (str(previous), relative)).fetchone()
+                        if row:
+                            with self.db:
+                                self.db.execute('INSERT OR REPLACE INTO exports VALUES (?,?,?,?,?,?,?)',
+                                    (str(output), relative, row['last_hash'], row['semantic_hash'], row['state'],
+                                     row['generated_path'] if relative.startswith(('sources/','documents/')) else None, stamp()))
+            with self.db:
+                self.db.execute('UPDATE settings SET value=? WHERE key=?', (timezone, 'timeZone'))
+                self.db.execute('UPDATE settings SET value=? WHERE key=?', (str(output), 'outputDirectory'))
+            self.output = output
+            self._initialize_files()
+            self.catalog.reconcile()
+            # A new output location intentionally leaves old files intact.
+            self.export_memory()
+            self.catch_up()
+            return self.status()

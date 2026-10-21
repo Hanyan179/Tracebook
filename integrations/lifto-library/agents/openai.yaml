@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tracebook Library"
+  short_description: "Find personal evidence in your authorized Tracebook library"
+  default_prompt: "Use $lifto-library to find relevant personal notes and memories, read the sources, and answer with clear source references."
