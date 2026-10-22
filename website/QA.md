@@ -55,8 +55,17 @@ Two original AI-generated editorial scenes replace the homepage CSS device hero 
 
 This revision covers the hero, a watch-capture scene, and a connected four-step synthetic workflow: configured phone Back Tap, scheduled daily material/optional analysis, scoped CLI reading, and manual evidence-backed memory confirmation. Source review confirms Back Tap requires a configured phone shortcut, scheduled analysis requires an enabled configured model and is not scheduled recording, CLI access is scoped read-only capabilities/search/query/read, and four-source memory confirmation/revision is manual. None is promoted as unrestricted automatic processing. Actual rendered website acceptance remains pending owner authentication; reviewing the generated images does not establish website rendering quality.
 
-## Full-story local revision (v4, not deployed)
+## Full-story revision (v4)
 
 The homepage now has eight editorial chapters with distinct compositions: product overview, separate phone Back Tap/watch recording scenes, scheduled previous-day review, multi-source index, scoped CLI lookup linked to original text, manual memory case file with expandable revision example, owned files, and development status. Three generated photographs have been inspected as assets. The entire website has not been rendered in an authorized browser.
 
-Eight static tests pass, including bilingual relative image sources and scenario capability limits. A standalone ZIP may include only the six generated HTML pages, two CSS files and eight public PNG assets; no hosting manifest, source code, credentials, user records or internal reports. Relative paths are checked statically for file-based preview; opening and interaction in an actual browser remain untested. External GitHub writes and publication remain paused after an authorization rejection.
+Eight static tests pass, including bilingual relative image sources and scenario capability limits. A standalone ZIP may include only the six generated HTML pages, two CSS files and eight public PNG assets; no hosting manifest, source code, credentials, user records or internal reports. Relative paths are checked statically for file-based preview; opening and interaction in an actual browser remain untested. The temporary GitHub authorization block was resolved by explicit user approval before resuming the same official flow.
+
+### Published full-story revision
+
+- GitHub implementation commit: `d263929b826d076c321adece357225c03db91270` on `codex/website-bilingual`, PR #1. Source checks succeeded: https://github.com/Hanyan179/Tracebook/actions/runs/39790630276.
+- Site static source: `561275394948347a1bdb814c4363d05442dee3e6`. Documentation-only commits after the implementation do not change this deployed build.
+- Deployment: `appgdep_6ada157dee108191beece17b37a25f2a`, succeeded 2026-10-22 13:54 UTC. Saved Site version 3 (design revision v4): `appgprj_6ad9ece5bbc08191a76a405e03152566~appgver_5dad6e44620c819184327240b10882d8`.
+- URL: https://tracebook.rare-raven-7022.chatgpt.site . Access remains owner-only; no sharing change. Prior Site versions 1 and 2 are retained as rollback points.
+- Deployment archive contains exactly 16 static output files and the hosting manifest; every file was byte-compared against the intended source. No application source, user archive, credentials or internal records are included.
+- Independent static design/content review converged after fixing timestamp provenance, same-source quotation continuity, small-text size and metadata contrast. Generated assets were viewed directly. Actual rendered desktop/mobile layout, keyboard behavior and screen-reader acceptance remain unverified because the private cloud browser is not signed in. Deployment success is not visual acceptance.
