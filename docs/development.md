@@ -69,6 +69,14 @@ DerivedData/Mac/Build/Products/Debug/VoiceMemoryMac.app/Contents/MacOS/VoiceMemo
 
 `.github/workflows/ci.yml` 检查公开文件范围、文档链接、节点测试、工程可重复生成和无个人签名的三端构建。仅使用合成数据，不配置真实模型、云盘或个人账号。
 
+桌面构建后还会实际启动应用包内的节点，验证合成笔记→候选→确认→历史与文件，避免仅编译成功而遗漏运行时模块。本地可执行：
+
+```sh
+/usr/bin/python3 scripts/check-packaged-node.py DerivedData/Mac/Build/Products/Debug/VoiceMemoryMac.app
+```
+
+手机与手表的大部分界面检查可使用独立模拟器，不占用实体手机。模拟器不包含应用商店，不能用购买账号下载第三方商店版应用；自有源码构建可安装。后台录音、真实传输时机、耗电、系统手势和云账号仍需真机专项。
+
 在本地暂存文件后执行 `python3 scripts/check-public-tree.py`，检查实际将提交的内容。脚本拦截常见凭证模式、本机私人路径、数据库、签名和本地交接；它不能证明所有隐私风险都已消除，需要同时检查变更。
 
 首次公开为源码开发版本，没有自动发布应用二进制或创建稳定版本承诺。发布安装包前还需干净机器运行、解释器分发、签名公证、升级回滚和真实链路验收。

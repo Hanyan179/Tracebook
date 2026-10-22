@@ -50,11 +50,13 @@ struct RecordingLibraryScreen: View {
                         Text(Date.now, format: .dateTime.month().day().weekday())
                             .font(.caption).foregroundStyle(AppPalette.muted)
                     }.padding(.top, 8)
+                    if !typeSize.isAccessibilitySize {
                     Text("此刻，值得留下。")
                         .font(.system(.largeTitle, weight: .semibold)).tracking(-1)
                         .fixedSize(horizontal: false, vertical: true)
                     Text("一句想法，或一场长谈。")
                         .font(.subheadline).foregroundStyle(AppPalette.muted)
+                    }
                     Button {
                         Task {
                             if !recorder.ready { await recorder.prepare() }

@@ -69,7 +69,7 @@ icon_resources = {
 }
 node_resources = [
     add(path, "PBXFileReference", lastKnownFileType="text.script.python", path=path, sourceTree="SOURCE_ROOT")
-    for path in ["node/server.py", "node/store.py", "node/catalog.py", "node/knowledge.py", "node/exchange.py", "node/analysis.py", "node/local_sources.py", "node/compressed_io.py", "node/documents.py"]
+    for path in sorted(str(path.relative_to(ROOT)) for path in (ROOT / "node").glob("*.py"))
 ]
 node_resources.append(add("python-runtime", "PBXFileReference", lastKnownFileType="folder",
     path="DerivedData/PythonRuntime", sourceTree="SOURCE_ROOT"))

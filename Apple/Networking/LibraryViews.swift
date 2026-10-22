@@ -20,7 +20,9 @@ extension View {
 struct LibraryPageHeader: View {
     let title: String
     let subtitle: String
+    @Environment(\.dynamicTypeSize) private var typeSize
     var body: some View {
+        if !typeSize.isAccessibilitySize {
         HStack(alignment: .center, spacing: 24) {
             VStack(alignment: .leading, spacing: 12) {
                 Text("声记 · 资料库").font(.caption).foregroundStyle(AppPalette.muted)
@@ -30,6 +32,7 @@ struct LibraryPageHeader: View {
             Spacer(minLength: 8)
             BrandMark(size: markSize)
         }.padding(.vertical, 10)
+        }
     }
     private var titleStyle: Font.TextStyle {
         #if os(iOS)

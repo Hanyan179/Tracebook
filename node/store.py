@@ -19,6 +19,7 @@ from exchange import DataExchange
 from analysis import DailyAnalysis, DEFAULT_RULES
 from local_sources import LocalSources
 from documents import DocumentImports
+from memories import Memories
 
 MAX_AUDIO = 2 * 1024 * 1024 * 1024
 PROMPTS = {
@@ -121,7 +122,9 @@ class Store:
             self._ensure_transcript(row['id'])
         self.local_sources = LocalSources(self)
         self.documents = DocumentImports(self)
+        self.memories = Memories(self)
         self.catalog = Catalog(self)
+        self.memories.migrate()
         self.knowledge = Knowledge(self)
         self.exchange = DataExchange(self)
         self.analysis = DailyAnalysis(self)
@@ -414,40 +417,23 @@ class Store:
 
     def candidates(self):
         with self.lock:
-            return [{**dict(r), 'sources': json.loads(r['sources'])} for r in self.db.execute('SELECT * FROM candidates ORDER BY created_at DESC')]
+            return [self.memories.data(r) for r in self.db.execute('SELECT * FROM candidates ORDER BY created_at DESC')]
 
-    def add_candidate(self, text, sources):
-        if not isinstance(text, str) or not text.strip() or len(text) > 10000 or not isinstance(sources, list) or not sources:
-            raise StoreError(400, '请填写记忆建议并选择来源。')
-        with self.lock:
-            ids = sorted({canonical_id(i) for i in sources})
-            for rid in ids:
-                self.manifest(rid)
-            cid = str(uuid.uuid4()).upper();now = stamp()
-            with self.db:
-                self.db.execute('INSERT INTO candidates VALUES (?,?,?,?,?,?)', (cid, text.strip(), json.dumps(ids), 'pending', now, now))
-            self.catalog.index_memory(cid)
-            self.export_memory()
-            return {'id': cid}
+    def add_candidate(self, text, sources=None, evidence=None, request_id=None):
+        return self.memories.add(text, sources, evidence, request_id)
 
     def decide_candidate(self, cid, decision):
         if decision not in ('confirmed', 'rejected'):
             raise StoreError(400, '无效的记忆操作。')
-        with self.lock:
-            row = self.db.execute('SELECT state FROM candidates WHERE id=?', (canonical_id(cid),)).fetchone()
-            if not row:
-                raise StoreError(404, '找不到这条建议。')
-            if row['state'] not in ('pending', decision):
-                raise StoreError(409, '这条建议已处理，请重新读取。')
-            with self.db:
-                self.db.execute('UPDATE candidates SET state=?,updated_at=? WHERE id=?', (decision, stamp(), canonical_id(cid)))
-            self.catalog.index_memory(canonical_id(cid))
-            return self.export_memory()
+        result = self.memories.update(cid, {'state': decision}, legacy=True)
+        return {'exports': result['exports']}
 
     def export_memory(self):
         results = []
         names = {r['id']:r['name'] for r in self.catalog.categories('memory')} if hasattr(self, 'catalog') else {}
-        for state, relative, title in [('confirmed', 'memory.md', '长期记忆'), ('pending', 'memory-inbox.md', '待确认记忆'), ('archived', 'memory-archive.md', '已归档记忆')]:
+        for state, relative, title in [('confirmed', 'memory.md', '长期记忆'), ('pending', 'memory-inbox.md', '待确认记忆'),
+                                       ('inactive', 'memory-inactive.md', '已停用记忆'), ('rejected', 'memory-rejected.md', '已忽略记忆'),
+                                       ('archived', 'memory-archive.md', '已归档记忆')]:
             rows = [r for r in self.candidates() if r['state'] == state]
             if hasattr(self, 'catalog'):
                 rows = []
@@ -464,11 +450,21 @@ class Store:
                 for r in entries:
                     text += '### ' + r['id'] + '\n\n' + r['text'] + '\n\n'
                     if state == 'archived':
-                        text += '确认状态：' + {'confirmed': '已确认', 'pending': '待确认', 'rejected': '已忽略'}[r['state']] + '\n\n'
+                        text += '确认状态：' + {'confirmed': '已确认', 'pending': '待确认', 'rejected': '已忽略', 'inactive': '已停用'}[r['state']] + '\n\n'
                     tags = r.get('organization', {}).get('tags', [])
                     if tags: text += '标签：' + '、'.join(tags) + '\n\n'
-                    text += '来源：' + '、'.join('[' + i + '](transcripts/' + i + '.md)' for i in r['sources']) + '\n\n'
+                    links = []
+                    for evidence in r.get('evidence', []):
+                        label = evidence['title'] or evidence['id']
+                        label = label.replace('[', '').replace(']', '').replace('\n', ' ')
+                        relative_source = evidence.get('path') or ({'recording': 'transcripts', 'note': 'notes', 'document': 'documents'}.get(evidence['kind'], 'sources') + '/' + evidence['id'] + '.md')
+                        links.append('[' + label + '](' + relative_source + ')')
+                        if evidence['quote']:
+                            text += '> ' + evidence['quote'].replace('\n', '\n> ') + '\n\n'
+                    text += '来源：' + '、'.join(links) + '\n\n'
+                    text += '[依据与修订历史](memories/' + r['id'] + '.json)\n\n'
             results.append(self.export(relative, text, digest(json.dumps(rows, sort_keys=True).encode())))
+        results += self.memories.export_history()
         return {'exports': results}
 
     def status(self):
@@ -495,7 +491,8 @@ class Store:
                 files += list(previous.glob('sources/**/*.md')) + list(previous.glob('sources/**/index.json'))
                 files += list(previous.glob('documents/*.md')) + list(previous.glob('.generated/documents/*.md')) + list(previous.glob('.history/documents/*.md'))
                 files += list(previous.glob('.generated/sources/**/*.md')) + list(previous.glob('.history/sources/**/*.md'))
-                files += [previous / 'memory.md', previous / 'memory-inbox.md', previous / 'memory-archive.md']
+                files += list(previous.glob('memory*.md')) + list(previous.glob('memories/*.json'))
+                files += list(previous.glob('.generated/memories/**/*.md')) + list(previous.glob('.history/memories/**/*.md'))
                 for source in files:
                     if not source.is_file() or source.is_symlink():
                         continue
@@ -510,7 +507,7 @@ class Store:
                             with self.db:
                                 self.db.execute('INSERT OR REPLACE INTO exports VALUES (?,?,?,?,?,?,?)',
                                     (str(output), relative, row['last_hash'], row['semantic_hash'], row['state'],
-                                     row['generated_path'] if relative.startswith(('sources/','documents/')) else None, stamp()))
+                                     row['generated_path'] if relative.startswith(('sources/','documents/','memories/')) else None, stamp()))
             with self.db:
                 self.db.execute('UPDATE settings SET value=? WHERE key=?', (timezone, 'timeZone'))
                 self.db.execute('UPDATE settings SET value=? WHERE key=?', (str(output), 'outputDirectory'))

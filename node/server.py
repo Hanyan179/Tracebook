@@ -291,9 +291,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, store.candidates())
             if self.command == 'POST':
                 b = self.body_json()
-                return self.send_json(201, store.add_candidate(b.get('text'), b.get('sources')))
-        if len(parts) == 3 and parts[:2] == ['v1', 'candidates'] and self.command == 'PUT':
-            return self.send_json(200, store.decide_candidate(parts[2], self.body_json().get('state')))
+                return self.send_json(201, store.add_candidate(b.get('text'), b.get('sources'), b.get('evidence'), b.get('requestID')))
+        if len(parts) == 3 and parts[:2] == ['v1', 'candidates']:
+            if self.command == 'GET':
+                return self.send_json(200, store.memories.detail(parts[2]))
+            if self.command == 'PUT':
+                values = self.body_json()
+                if 'memoryRevision' not in values and set(values) == {'state'}:
+                    return self.send_json(200, store.decide_candidate(parts[2], values['state']))
+                return self.send_json(200, store.memories.update(parts[2], values))
+        if len(parts) == 4 and parts[:2] == ['v1', 'candidates'] and parts[3] == 'history' and self.command == 'GET':
+            parameters = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            return self.send_json(200, store.memories.history(parts[2], parameters.get('before', [None])[-1]))
         if len(parts) == 3 and parts[:2] == ['v1', 'prompts'] and parts[2] in ('daily-summary', 'memory-extraction'):
             relative = 'prompts/' + parts[2] + '.md'
             if self.command == 'GET':

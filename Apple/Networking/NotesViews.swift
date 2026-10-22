@@ -133,6 +133,8 @@ struct NoteReader: View {
     @State private var editing = false
     @State private var organizing = false
     @State private var error: String?
+    @State private var proposing: KnowledgeSource?
+    @State private var proposalSaved = false
     var body: some View {
         VStack(spacing: 0) {
             HStack {
@@ -148,12 +150,26 @@ struct NoteReader: View {
                     Text(verbatim: note.day ?? "").font(.caption).foregroundStyle(.secondary)
                     if let document { MarkdownReader(text: document.text ?? "") }
                     else if error == nil { ProgressView() }
+                    if let document, !(document.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Button("提出记忆建议", systemImage: "bookmark.badge.plus") {
+                            Task {
+                                do {
+                                    guard let client = workspace.client else { throw NodeFailure(message: "请先连接资料库。") }
+                                    proposing = try await client.read("v1/sources/note/" + note.id.uuidString, as: KnowledgeSource.self)
+                                } catch { self.error = error.localizedDescription }
+                            }
+                        }
+                        if proposalSaved { Text("已加入待确认记忆。").font(.caption).foregroundStyle(.secondary) }
+                    }
                     if let error { Text(L(error)); Button("重新读取") { Task { await load() } } }
                 }.padding(32).frame(maxWidth: 850, alignment: .leading).frame(maxWidth: .infinity)
             }
         }.task { await load() }.sourceLinks(workspace: workspace)
             .sheet(isPresented: $editing, onDismiss: { Task { await load(); await workspace.refresh() } }) { NoteEditor(workspace: workspace, noteID: note.id).appLanguage() }
             .sheet(isPresented: $organizing) { OrganizationEditor(store: workspace, kind: "note", id: note.id, initial: note.organization ?? .init()).appLanguage() }
+            .sheet(item: $proposing) { source in
+                MemoryProposalSheet(workspace: workspace, source: source, sourceText: source.text ?? "") { proposalSaved = true }.appLanguage()
+            }
     }
     private func load() async {
         do {

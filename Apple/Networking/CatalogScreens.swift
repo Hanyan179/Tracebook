@@ -128,6 +128,7 @@ struct NodeDailyView: View {
 }
 
 struct NodeMemoryView: View {
+    @Environment(\.dynamicTypeSize) private var typeSize
     @ObservedObject var store: NodeWorkspaceStore
     @StateObject private var loader = LibraryLoader<NodeCandidate>()
     @State private var filter = LibraryFilter(state: "confirmed")
@@ -145,7 +146,8 @@ struct NodeMemoryView: View {
                     VStack(alignment: .leading, spacing: 14) { scopePicker; actions }
                 }
                 LibraryFilters(filter: $filter, facets: loader.facets)
-                Text("\(loader.total) 条记忆").font(.caption).foregroundStyle(AppPalette.muted)
+                Text(LF("%d 条记忆", loader.total)).font(.caption).foregroundStyle(AppPalette.muted)
+                if let notice = store.memoryNotice { Text(L(notice)).font(.callout).foregroundStyle(.secondary) }
                 if let problem = store.problem { Text(problem).font(.footnote).foregroundStyle(AppPalette.muted) }
                 if !(store.status?.conflicts.isEmpty ?? true) {
                     Text("部分导出文件包含人工修改，新内容已另存，请在归档目录核对。")
@@ -159,9 +161,9 @@ struct NodeMemoryView: View {
                                 Button { selected = candidate } label: {
                                     Text(candidate.text).font(.body).lineSpacing(5).lineLimit(6)
                                         .frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(.primary)
-                                }.buttonStyle(.plain).accessibilityLabel("查看记忆：\(candidate.text)")
+                                }.buttonStyle(.plain).accessibilityLabel(LF("查看记忆：%@", candidate.text))
                                 HStack {
-                                    Label("\(candidate.sources.count) 条来源", systemImage: "link")
+                                    Label(LF("%d 条来源", candidate.sourceCount), systemImage: "link")
                                     Spacer()
                                     Button("整理分类") { editing = candidate }.buttonStyle(.plain)
                                 }.font(.caption).foregroundStyle(AppPalette.muted)
@@ -187,11 +189,13 @@ struct NodeMemoryView: View {
     private var scopePicker: some View {
         Picker("记忆状态", selection: $scope) {
             Text("已确认").tag("confirmed"); Text("待确认").tag("pending")
+            Text("已停用").tag("inactive")
             Text("已归档").tag("archived"); Text("已忽略").tag("rejected")
-        }.pickerStyle(.segmented).frame(maxWidth: 360)
+        }.pickerStyle(.menu)
     }
     private var actions: some View {
-        HStack(spacing: 14) {
+        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14)) : AnyLayout(HStackLayout(spacing: 14))
+        return layout {
             Button("分类管理") { managing = true }.buttonStyle(.bordered)
             NavigationLink("记忆文件", value: LibraryRoute.document(path: "v1/memory", title: "记忆文件", hint: "人工编辑会保留独立版本，分类列表来自确认条目。")).font(.caption)
             Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("刷新记忆列表")
@@ -204,27 +208,20 @@ struct NodeMemoryView: View {
     }
 }
 
-private struct MemoryDetail: View {
+struct MemoryDetail: View {
     @ObservedObject var store: NodeWorkspaceStore
     let candidate: NodeCandidate
     @Environment(\.dismiss) private var dismiss
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    HStack { BrandMark(size: 44); Text("长期记忆").font(.headline); Spacer() }
-                    Text(candidate.text).font(.title3).lineSpacing(7).textSelection(.enabled)
-                    Divider()
-                    Text("来源").font(.headline)
-                    ForEach(candidate.sources, id: \.self) { id in
-                        NavigationLink(value: LibraryRoute.recording(id)) {
-                            Label(L(store.records.first { $0.id == id }?.title ?? "来源录音 · \(id.uuidString.prefix(8))"), systemImage: "waveform")
-                        }
-                    }
-                }.padding(28)
-            }.background(AppPalette.canvas).navigationTitle("记忆详情")
-                .libraryDestinations(store: store)
+            MemoryContentView(workspace: store, initial: candidate).navigationTitle(L("记忆详情"))
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
-        }.frame(idealWidth: 600, idealHeight: 520).tint(.primary).appLanguage()
+        }.tint(.primary).appLanguage()
+        #if os(macOS)
+        .frame(minWidth: 580, idealWidth: 720, minHeight: 560)
+        #endif
     }
 }

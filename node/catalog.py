@@ -91,8 +91,8 @@ class Catalog:
         with self.s.lock:
             row=self.db.execute('SELECT * FROM candidates WHERE id=?',(cid,)).fetchone()
             if not row:return
-            data={**dict(row),'sources':json.loads(row['sources'])}
-            self._upsert('memory',cid,'',row['text'],dt.datetime.fromisoformat(row['created_at']),row['state'],data,row['updated_at']+row['state']+row['text'])
+            data=self.s.memories.data(row)
+            self._upsert('memory',cid,'',row['text'],dt.datetime.fromisoformat(row['created_at'].replace('Z','+00:00')),row['state'],data,row['updated_at']+row['state']+row['text'])
 
     def index_note(self, rid):
         with self.s.lock:
@@ -249,7 +249,7 @@ class Catalog:
                 try:
                     if dt.date.fromisoformat(selected_day).isoformat()!=selected_day:raise ValueError()
                 except (ValueError,TypeError):self.error(400,'日期不正确。')
-            if len(q)>200 or len(tag)>32 or len(category)>80 or state not in ('','ready','awaitingText','pending','confirmed','rejected','current','manual','conflict') or archived not in ('true','false','all'):self.error(400,'筛选条件不正确。')
+            if len(q)>200 or len(tag)>32 or len(category)>80 or state not in ('','ready','awaitingText','pending','confirmed','rejected','inactive','current','manual','conflict') or archived not in ('true','false','all'):self.error(400,'筛选条件不正确。')
             clauses=['kind=?'];values=[kind]
             if archived!='all':clauses.append('archived=?');values.append(int(archived=='true'))
             if selected_day:clauses.append('day=?');values.append(selected_day)

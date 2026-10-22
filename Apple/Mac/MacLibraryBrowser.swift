@@ -32,7 +32,7 @@ struct MacLibraryBrowser: View {
         switch kind {
         case .recording: return "从手机同步或导入音频后，原音会出现在这里。"
         case .daily: return "接收录音或保存笔记后，按日期查看来源记录。"
-        case .memory: return "可以从录音详情提出记忆建议，经确认后显示在这里。"
+        case .memory: return "从录音文字、笔记、本地输入或导入资料提出建议，确认后保留为记忆。"
         }
     }
     var body: some View {
@@ -54,9 +54,13 @@ struct MacLibraryBrowser: View {
                         Picker("范围", selection: $scope) {
                             Text(L(kind == .memory ? "已确认" : "资料库")).tag("active")
                             if kind == .memory { Text("待确认").tag("pending") }
+                            if kind == .memory { Text("已停用").tag("inactive") }
                             Text("已归档").tag("archived")
                             if kind == .memory { Text("已忽略").tag("rejected") }
-                        }.labelsHidden().pickerStyle(.segmented)
+                        }.labelsHidden().pickerStyle(.menu)
+                        if kind == .memory, let notice = store.memoryNotice {
+                            Text(L(notice)).font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                     HStack(spacing: 8) {
                         if kind != .daily {
@@ -111,7 +115,7 @@ struct MacLibraryBrowser: View {
                             VStack(alignment: .leading, spacing: 10) {
                                 Text(verbatim: item.text).font(.body).lineSpacing(3).lineLimit(3)
                                 OrganizationBadges(organization: item.organization ?? .init(), categories: facets.categories)
-                                Text(LF("%d 条来源", item.sources.count)).font(.caption).foregroundStyle(.secondary)
+                                Text(LF("%d 条来源", item.sourceCount)).font(.caption).foregroundStyle(.secondary)
                             }.padding(.vertical, 9).tag(item.id.uuidString)
                         }
                     }
@@ -225,6 +229,7 @@ struct MacDocumentReader: View {
     @State private var loadingSources = false
     @State private var source: UUID?
     @State private var noteSource: PersonalNote?
+    @State private var otherSource: KnowledgeSource?
     @State private var noteSources: [PersonalNote] = []
     @State private var noteCursor: String?
     @Environment(\.openSettings) private var openSettings
@@ -315,6 +320,7 @@ struct MacDocumentReader: View {
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { noteSource = nil } } }
             }.frame(minWidth: 660, minHeight: 580).appLanguage()
         }
+        .sheet(item: $otherSource) { value in KnowledgeSourceReader(workspace: store, source: value).appLanguage() }
         .environment(\.openURL, OpenURLAction { url in
             if let reference = LibraryReference.identity(url) {
                 if reference.kind == "note" {
@@ -322,7 +328,13 @@ struct MacDocumentReader: View {
                         do { noteSource = try await store.client?.read("v1/notes/" + reference.id.uuidString, as: PersonalNote.self) }
                         catch { problem = error.localizedDescription }
                     }
-                } else { source = reference.id }
+                } else if reference.kind == "recording" { source = reference.id }
+                else {
+                    Task {
+                        do { otherSource = try await store.client?.read("v1/sources/" + reference.kind + "/" + reference.id.uuidString, as: KnowledgeSource.self) }
+                        catch { problem = error.localizedDescription }
+                    }
+                }
                 return .handled
             }
             return url.scheme == "https" || url.scheme == "http" ? .systemAction : .discarded
@@ -420,27 +432,7 @@ private struct MacMemoryReader: View {
                 Button("整理分类", systemImage: "folder") { organizing = true }
             }.padding(30)
             Divider()
-            ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
-                    OrganizationBadges(organization: item.organization ?? .init(), categories: categories)
-                    Text(verbatim: item.text).font(.title3).lineSpacing(8).textSelection(.enabled)
-                    if item.state == "pending" {
-                        HStack {
-                            Button("确认记忆") { Task { await store.decide(item, confirmed: true) } }.buttonStyle(FilledButtonStyle())
-                            Button("忽略") { Task { await store.decide(item, confirmed: false) } }
-                        }
-                    }
-                    Divider()
-                    Label("来源", systemImage: "link").font(.headline)
-                    ForEach(item.sources, id: \.self) { id in
-                        NavigationLink(value: LibraryRoute.recording(id)) {
-                            Label(store.records.first { $0.id == id }?.title ?? id.uuidString, systemImage: "waveform")
-                        }
-                    }
-                    Text("记忆保留来源；归档不会改变确认状态。").font(.caption).foregroundStyle(.secondary)
-                    NavigationLink("查看记忆文件", value: LibraryRoute.document(path: "v1/memory", title: "记忆文件", hint: "修改会保留历史版本。"))
-                }.padding(30).frame(maxWidth: 1040, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
-            }
+            MemoryContentView(workspace: store, initial: item)
         }.sheet(isPresented: $organizing) {
             OrganizationEditor(store: store, kind: "memory", id: item.id, initial: item.organization ?? .init())
         }

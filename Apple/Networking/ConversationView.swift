@@ -171,6 +171,9 @@ struct KnowledgeSourceReader: View {
     @State private var error: String?
     @State private var sourceChanged = false
     @State private var currentSource: KnowledgeSource?
+    @State private var proposing = false
+    @State private var proposalSaved = false
+    @State private var memory: NodeCandidate?
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -188,10 +191,29 @@ struct KnowledgeSourceReader: View {
                     if let error { Text(L(error)).font(.caption).foregroundStyle(.secondary); Button("重新读取") { Task { await read(reset: true) } } }
                     if loading { ProgressView() }
                     if nextOffset != nil { Button("继续读取") { Task { await read(reset: false) } }.disabled(loading) }
+                    if ["note", "recording", "input", "document"].contains(source.kind), loaded, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        Divider()
+                        Button("提出记忆建议", systemImage: "bookmark.badge.plus") { proposing = true }.disabled(loading)
+                        if proposalSaved { Text("已加入待确认记忆。").font(.caption).foregroundStyle(.secondary) }
+                    }
+                    if source.kind == "memory", loaded {
+                        Button("查看记忆依据", systemImage: "link") {
+                            Task {
+                                do {
+                                    guard let client = workspace.client else { throw NodeFailure(message: "请先连接资料库。") }
+                                    memory = try await client.read("v1/candidates/" + source.id, as: NodeCandidate.self)
+                                } catch { self.error = error.localizedDescription }
+                            }
+                        }
+                    }
                 }.padding(28).frame(maxWidth: 850, alignment: .leading).frame(maxWidth: .infinity)
             }.background(AppPalette.canvas).navigationTitle(L("查看来源"))
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
         }.task { await read(reset: true) }.sourceLinks(workspace: workspace)
+            .sheet(isPresented: $proposing) {
+                MemoryProposalSheet(workspace: workspace, source: currentSource ?? source, sourceText: text) { proposalSaved = true }.appLanguage()
+            }
+            .sheet(item: $memory) { value in MemoryDetail(store: workspace, candidate: value) }
         #if os(macOS)
         .frame(minWidth: 680, idealWidth: 860, minHeight: 600, idealHeight: 760)
         #endif

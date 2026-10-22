@@ -62,3 +62,5 @@ jobs:
           xcodebuild -project VoiceMemory.xcodeproj -scheme VoiceMemory
           -sdk iphonesimulator -destination 'generic/platform=iOS Simulator'
           -derivedDataPath DerivedData/Phone CODE_SIGNING_ALLOWED=NO build
+      - name: Run the app-bundled node with synthetic data
+        run: /usr/bin/python3 scripts/check-packaged-node.py DerivedData/Mac/Build/Products/Debug/VoiceMemoryMac.app

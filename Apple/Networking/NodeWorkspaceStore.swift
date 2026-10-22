@@ -39,8 +39,14 @@ struct NodeCandidate: Codable, Identifiable, Sendable {
     let text: String
     let sources: [UUID]
     let state: String
+    var memoryRevision: Int?
+    var evidence: [MemoryEvidence]?
     var organization: LibraryOrganization?
     var day: String?
+    var sourceCount: Int { evidence?.count ?? sources.count }
+    var stateTitle: String {
+        switch state { case "confirmed": "已确认"; case "inactive": "已停用"; case "rejected": "已忽略"; default: "待确认" }
+    }
 }
 struct NodeConflict: Codable, Identifiable, Sendable {
     let path: String
@@ -69,6 +75,7 @@ final class NodeWorkspaceStore: ObservableObject {
     @Published private(set) var overview: LibraryOverview?
     @Published private(set) var libraryRevision = UUID()
     @Published var problem: String?
+    @Published var memoryNotice: String?
     @Published private(set) var loading = false
     @Published private(set) var downloadingID: UUID?
     let playback: AudioPlayback
@@ -110,6 +117,13 @@ final class NodeWorkspaceStore: ObservableObject {
         audioCache = [:]; playback.stop()
         NotificationCenter.default.post(name: .nodeConfigurationChanged, object: nil)
     }
+    /// A failed local startup must not leave another library displayed as ready.
+    func prepareForLocalStartup() {
+        configurationRevision = UUID(); loading = false
+        endpoint = ""; connected = false; records = []; days = []; candidates = []
+        status = nil; overview = nil; problem = nil; memoryNotice = nil
+        playback.stop(); libraryRevision = UUID()
+    }
     func disconnect() {
         ConnectionSecret.remove(); endpoint = ""; UserDefaults.standard.removeObject(forKey: "node.endpoint")
         configurationRevision = UUID(); loading = false
@@ -130,8 +144,11 @@ final class NodeWorkspaceStore: ObservableObject {
             async let overview = client.read("v1/library/overview", as: LibraryOverview.self)
             let result = try await (status, records, days, candidates, overview)
             guard revision == configurationRevision else { return }
+            let before = self.candidates.map { "\($0.id):\($0.memoryRevision ?? 0):\($0.state):\($0.text)" }.sorted()
+            let after = result.3.items.map { "\($0.id):\($0.memoryRevision ?? 0):\($0.state):\($0.text)" }.sorted()
             self.status = result.0; self.records = result.1.items; self.days = result.2.items
             self.candidates = result.3.items; self.overview = result.4
+            if before != after { libraryRevision = UUID() }
             let wasConnected = connected
             connected = true; problem = nil
             if !wasConnected {
@@ -159,20 +176,27 @@ final class NodeWorkspaceStore: ObservableObject {
         do { try await client.send("v1/daily/\(date)", method: "POST", body: [:]); await refresh(); libraryRevision = UUID() }
         catch { problem = error.localizedDescription }
     }
-    func addCandidate(text: String, source: UUID) async throws {
-        guard let client else { throw NodeFailure(message: "请先连接节点。") }
-        struct Body: Encodable { let text: String; let sources: [UUID] }
-        try await client.sendData("v1/candidates", method: "POST", body: JSONEncoder().encode(Body(text: text, sources: [source])))
-        await refresh()
-        libraryRevision = UUID()
-    }
     func decide(_ candidate: NodeCandidate, confirmed: Bool) async {
         guard let client else { return }
         do {
+            if candidate.memoryRevision != nil {
+                _ = try await updateMemory(candidate, state: confirmed ? "confirmed" : "rejected")
+                return
+            }
             try await client.send("v1/candidates/\(candidate.id.uuidString)", body: ["state": confirmed ? "confirmed" : "rejected"])
             await refresh()
             libraryRevision = UUID()
         } catch { problem = error.localizedDescription }
+    }
+    func updateMemory(_ candidate: NodeCandidate, state: String? = nil, text: String? = nil, requestID: UUID = UUID()) async throws -> NodeCandidate {
+        guard let client, let revision = candidate.memoryRevision else { throw NodeFailure(message: "请重新读取记忆后再操作。") }
+        struct Body: Encodable { let state: String?; let text: String?; let memoryRevision: Int; let requestID: UUID }
+        let data = try await client.sendData("v1/candidates/\(candidate.id.uuidString)", method: "PUT",
+                                           body: JSONEncoder().encode(Body(state: state, text: text, memoryRevision: revision, requestID: requestID)))
+        let updated = try JSONDecoder().decode(NodeCandidate.self, from: data)
+        memoryNotice = text != nil ? "记忆修订已保存。" : updated.state == "inactive" ? "记忆已停用，不再用于新的检索。" : updated.state == "confirmed" ? "记忆已确认。" : updated.state == "pending" ? "记忆已回到待确认。" : "记忆已忽略。"
+        await refresh(); libraryRevision = UUID()
+        return updated
     }
     func libraryChanged() async {
         libraryRevision = UUID()

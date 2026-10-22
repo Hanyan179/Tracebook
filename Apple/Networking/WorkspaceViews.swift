@@ -62,14 +62,12 @@ struct WorkspaceStatusRow: View {
 struct NodeRecordView: View {
     @ObservedObject var store: NodeWorkspaceStore
     let record: NodeRecord
-    @State private var candidate = ""
     @State private var latest: NodeRecord?
     @State private var categories: [LibraryCategory] = []
     @State private var organizing = false
     private var currentRecord: NodeRecord { latest ?? record }
-    @State private var suggesting = false
-    @State private var suggestionError: String?
-    @State private var suggestingBusy = false
+    @State private var suggestionSource: KnowledgeSource?
+    @State private var proposalSaved = false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -88,10 +86,17 @@ struct NodeRecordView: View {
                     Label(L(currentRecord.textState == "ready" ? "查看与编辑文字" : "添加文字记录"), systemImage: "text.alignleft")
                         .frame(maxWidth: .infinity, minHeight: 40)
                 }.buttonStyle(FilledButtonStyle())
-                Button("提出记忆建议", systemImage: "brain") { suggesting = true }
-                    .buttonStyle(.bordered)
-                Text("建议附带这条录音作为来源，确认后才写入长期记忆。")
+                Button("提出记忆建议", systemImage: "brain") {
+                    Task {
+                        do {
+                            guard let client = store.client else { throw NodeFailure(message: "请先连接资料库。") }
+                            suggestionSource = try await client.read("v1/sources/recording/" + record.id.uuidString, as: KnowledgeSource.self)
+                        } catch { store.problem = error.localizedDescription }
+                    }
+                }.buttonStyle(.bordered).disabled(currentRecord.textState != "ready")
+                Text(L(currentRecord.textState == "ready" ? "建议保留原文依据，确认后才成为记忆。" : "添加文字后，可以从原文提出记忆建议。"))
                     .font(.footnote).foregroundStyle(.secondary)
+                if proposalSaved { Text("已加入待确认记忆。").font(.caption).foregroundStyle(.secondary) }
             }.padding(28).frame(maxWidth: 760, alignment: .leading).frame(maxWidth: .infinity)
         }.background(AppPalette.canvas).navigationTitle(L("录音资料")).appLanguage()
             .sheet(isPresented: $organizing) {
@@ -105,28 +110,8 @@ struct NodeRecordView: View {
                     let result = try await (value, facets); latest = result.0; categories = result.1.categories
                 } catch { store.problem = error.localizedDescription }
             }
-            .sheet(isPresented: $suggesting) {
-                NavigationStack {
-                    Form {
-                        Section("希望长期记住什么") {
-                            TextEditor(text: $candidate).frame(minHeight: 160)
-                        }
-                        if let error = suggestionError { Text(error).foregroundStyle(.red) }
-                    }.navigationTitle("记忆建议")
-                        .toolbar {
-                            ToolbarItem(placement: .cancellationAction) { Button("取消") { suggesting = false } }
-                            ToolbarItem(placement: .confirmationAction) {
-                                Button("加入待确认") {
-                                    suggestingBusy = true
-                                    Task {
-                                        do { try await store.addCandidate(text: candidate, source: record.id); candidate = ""; suggesting = false }
-                                        catch { suggestionError = error.localizedDescription }
-                                        suggestingBusy = false
-                                    }
-                                }.disabled(candidate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || suggestingBusy)
-                            }
-                        }
-                }.frame(minWidth: 300, minHeight: 300).appLanguage()
+            .sheet(item: $suggestionSource) { source in
+                MemoryProposalSheet(workspace: store, source: source, sourceText: source.text ?? "") { proposalSaved = true }.appLanguage()
             }
             .onDisappear { store.playback.stop() }
     }

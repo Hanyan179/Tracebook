@@ -182,7 +182,7 @@ class DataExchange:
                         for file in sorted((self.s.output/folder).glob('*.md')):
                             relative=folder+'/'+file.name;data=self.s._path(relative).read_bytes()
                             archive.writestr(relative,data);manifest['files'].append({'path':relative,'sha256':hashlib.sha256(data).hexdigest()})
-                    for filename in ['memory.md','memory-inbox.md']:
+                    for filename in ['memory.md','memory-inbox.md','memory-inactive.md','memory-rejected.md','memory-archive.md']:
                         data=self.s.read_document(filename)['text'].encode();archive.writestr(filename,data)
                         manifest['files'].append({'path':filename,'sha256':hashlib.sha256(data).hexdigest()})
                     source_files = list((self.s.output/'sources').rglob('*'))
@@ -191,8 +191,12 @@ class DataExchange:
                     source_files += list((self.s.output/'documents').glob('*.md'))
                     source_files += list((self.s.output/'.generated/documents').glob('*.md'))
                     source_files += list((self.s.output/'.history/documents').glob('*.md'))
+                    source_files += list((self.s.output/'memories').glob('*.json'))
+                    source_files += list((self.s.output/'.generated/memories').rglob('*.md'))
+                    source_files += list((self.s.output/'.history/memories').rglob('*.md'))
                     for file in sorted(source_files):
-                        if file.is_file() and not file.is_symlink() and (file.suffix=='.md' or file.name=='index.json'):
+                        memory_file = 'memories' in file.relative_to(self.s.output).parts and file.suffix == '.json'
+                        if file.is_file() and not file.is_symlink() and (file.suffix=='.md' or file.name=='index.json' or memory_file):
                             relative=file.relative_to(self.s.output).as_posix();data=self.s._path(relative).read_bytes()
                             archive.writestr(relative,data);manifest['files'].append({'path':relative,'sha256':hashlib.sha256(data).hexdigest()})
                     for kind,key in [('note','notes'),('recording','recordings'),('memory','candidates'),('document','documents')]:

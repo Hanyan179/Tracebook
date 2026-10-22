@@ -33,6 +33,7 @@ final class LocalNodeController: ObservableObject {
     func start(workspace: NodeWorkspaceStore) async {
         guard !starting else { return }
         starting = true; problem = nil
+        workspace.prepareForLocalStartup()
         defer { starting = false }
         do {
             guard let script = Bundle.main.url(forResource: "server", withExtension: "py") else {
