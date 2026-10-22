@@ -204,7 +204,7 @@ private struct MemoryEditSheet: View {
                         Text("草稿已保留。核对差异后，再保存修订。").font(.footnote).foregroundStyle(.secondary)
                     }
                 }
-            }.navigationTitle(L("修订记忆"))
+            }.formStyle(.grouped).navigationTitle(L("修订记忆"))
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif
@@ -263,7 +263,7 @@ struct MemoryProposalSheet: View {
                 Text("保存后进入待确认，确认后才成为长期记忆。")
                     .font(.footnote).foregroundStyle(.secondary)
                 if let error { Text(L(error)).foregroundStyle(.secondary) }
-            }.navigationTitle(L("记忆建议"))
+            }.formStyle(.grouped).navigationTitle(L("记忆建议"))
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif
