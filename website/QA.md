@@ -2,12 +2,12 @@
 
 ## Scope
 
-Six static pages (Chinese and English product, getting started and privacy). Source baseline: `4afe6e2b7c26e85ab8e7090328027f4ad609fc00`. Existing logo assets were visually inspected and reused unchanged. No client, node or data-contract changes. The initial code-only delivery was followed by an explicitly authorized, owner-private static deployment.
+Six static pages (Chinese and English product, getting started and privacy). Initial source baseline: `4afe6e2b7c26e85ab8e7090328027f4ad609fc00`; current capability statements rechecked against `4af50d5ba1479a46e105d7b32477f34e1fb56fe1`. Existing logo assets were visually inspected and reused unchanged. No client, node or data-contract changes. The initial code-only delivery was followed by an explicitly authorized, owner-private static deployment.
 
 ## Passed
 
 - Standard-library build produces all six HTML pages deterministically.
-- Six dependency-free unit tests: expected page count; local links, assets and fragments; external repository document destinations against the checked-out source; landmarks and image alternatives; explicit product limits; language-switch round trips; brand asset equality; no scripts/forms/iframes/event handlers; focus and reduced-motion CSS presence.
+- Seven dependency-free unit tests: expected page count; local links, assets and fragments; external repository document destinations against the checked-out source; landmarks and image alternatives; explicit product limits; language-switch round trips; brand asset equality; no scripts/forms/iframes/event handlers; focus and reduced-motion CSS presence.
 - Independent read-only content review against the brief, development and security documents found no blocking content issue. Corrected a duplicate English page-title brand during review.
 - All external link destinations are the known project repository, existing public documents, or its private vulnerability reporting route. No unverified download or signup links.
 - Static site has no JavaScript requirement or runtime third-party assets.
@@ -25,7 +25,7 @@ Before treating visual acceptance as complete, run `tests/browser_check.py`, ins
 - Source-only release, no signed/notarized installer.
 - Conversation returns local retrieval, not generated model answers.
 - Text formats are UTF-8 `.md`, `.markdown`, `.txt`, `.text`, up to 2 MB per file; no claim of PDF/Office/scan support.
-- Confirmation exists for recording-backed candidates; unified multi-source memory and revision remain unfinished.
+- Four text source types support manual candidates, confirmation, revision, deactivation, restoration, evidence and history; automated model organization remains unfinished.
 - Real automatic transcription and real-model quality acceptance remain unfinished.
 - Queues, checks and folder exchange are not a claim of verified remote/background cloud sync.
 - Portable text export excludes original audio and credentials and is not a full restore package.
@@ -46,3 +46,5 @@ The homepage now uses original HTML/CSS product illustrations, not running app s
 These are synthetic/concept illustrations, clearly labeled on the page. Recording is not presented as automatic transcription; retrieval does not generate an answer. Manual multi-source memory/revision is available in main 4af50d5; automated model memory organization remains in development. Recording controls in the illustration are non-interactive, not false download or playback buttons.
 
 Static checks are repeated for this revision. Rendered desktop/mobile, overflow, actual keyboard/focus, and visual contrast acceptance remain **unverified**: the live private Site requires owner login in the cloud browser. No access policy was changed to bypass this gate. The existing v1 remains available as a rollback version.
+
+Version 2 deployment succeeded: `appgdep_6ad9f18d132c8191a6ceb419e3c0ba39`; exact deployed static source `859a82fdb54fde3ad183b98efb8e0f31f69ed326`. The Site remains owner-only (access revision 1), and version 1 is retained. This is deployment verification, not rendered visual acceptance.
