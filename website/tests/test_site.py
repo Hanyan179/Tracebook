@@ -49,6 +49,16 @@ class SiteTests(unittest.TestCase):
         for word in ['不会生成模型回答','真实自动转写仍在开发','尚无已签名','不是完整备份','真实模型质量尚未验收']:self.assertIn(word,zh)
         for word in ['does not generate model answers','transcription is still in development','No signed','not a full backup','Real-model quality is not yet validated']:self.assertIn(word,en)
         for path in self.paths:self.assertNotIn('声记',path.read_text())
+    def test_illustration_labels_and_source_return(self):
+        for relative,label in [("index.html","非运行截图"),("en/index.html","not running app screenshots")]:
+            text=(ROOT/"dist"/relative).read_text()
+            self.assertIn(label,text)
+            for cls in ("device-stage","day-scene","memory-scene","source-scene","folder-art"):
+                self.assertIn(cls,text)
+            self.assertIn('href="#original-example"',text)
+            self.assertIn('id="original-example"',text)
+        for relative in ("privacy.html","en/privacy.html"):
+            self.assertIn("ChatGPT Sites",(ROOT/"dist"/relative).read_text())
     def test_language_switch_roundtrip(self):
         for path in self.paths:
             p=Page(path.read_text()); href=next(a['href'] for t,a in p.tags if a.get('class')=='language')

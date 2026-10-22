@@ -38,3 +38,11 @@ The user subsequently requested deployment. Version 1 was published successfully
 The earlier local browser limitations remain historical facts. Hosted-browser findings will be recorded separately rather than retroactively claiming those local checks passed.
 
 The independent cloud-browser visit to the live URL displayed the expected private sign-in gate ("Sign in required" / "Log in to access"), not the website. The reviewer did not change sharing or bypass authentication. Therefore hosted product rendering, responsive layout and actual website interactions are still unverified; successful deployment and the access gate are not visual acceptance. The owner can sign in to inspect the deployed version.
+
+## Visual revision (22 October 2026)
+
+The homepage now uses original HTML/CSS product illustrations, not running app screenshots: a three-device composition, three synthetic source entries, original/candidate/confirmed layers, a retrieval excerpt linked to its synthetic original, and file ownership artwork. English and Chinese have equivalent content. The public Auday reference was visually inspected in the cloud browser; none of its images, copy, metrics or layouts were copied. Layout details were grounded in MacOverview, MacLibraryBrowser, ConversationView, PhoneRecordingScreen and WatchRecordingView source.
+
+These are synthetic/concept illustrations, clearly labeled on the page. Recording is not presented as automatic transcription; retrieval does not generate an answer. Manual multi-source memory/revision is available in main 4af50d5; automated model memory organization remains in development. Recording controls in the illustration are non-interactive, not false download or playback buttons.
+
+Static checks are repeated for this revision. Rendered desktop/mobile, overflow, actual keyboard/focus, and visual contrast acceptance remain **unverified**: the live private Site requires owner login in the cloud browser. No access policy was changed to bypass this gate. The existing v1 remains available as a rollback version.
