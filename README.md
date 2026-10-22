@@ -6,6 +6,8 @@ An early-stage personal memory system with native Apple clients and user-owned f
 
 [开发说明](docs/development.md) · [架构与能力](docs/architecture.md) · [持续迭代清单](ROADMAP.md) · [参与开发](CONTRIBUTING.md) · [安全说明](SECURITY.md)
 
+产品体验以 [Auday（录音与记忆应用）的流程研究](docs/auday-experience.md)为主要对照，保留本项目的多来源资料、用户文件夹和个性化采集入口。后续官网开发可从[云电脑协作交接](docs/website-brief.md)开始；官网目前尚未实现。
+
 ## 当前能做什么
 
 | 能力 | 当前状态 |

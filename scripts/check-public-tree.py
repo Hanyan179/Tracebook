@@ -19,7 +19,8 @@ def main():
     names = set(paths)
     failures = []
     private_names = {'AGENTS.md', 'design-qa.md', 'docs/HANDOFF.md', 'Config/Local.xcconfig'}
-    public_docs = {'docs/architecture.md', 'docs/development.md', 'docs/open-source-research.md'}
+    public_docs = {'docs/architecture.md', 'docs/development.md', 'docs/open-source-research.md',
+                   'docs/auday-experience.md', 'docs/website-brief.md'}
     private_suffixes = {'.db', '.sqlite', '.sqlite3', '.mobileprovision', '.p12', '.p8', '.key',
                         '.caf', '.m4a', '.wav', '.mp3'}
     patterns = {
