@@ -1,6 +1,6 @@
 # Tracebook website
 
-中英文静态官网：产品首页、开始使用、隐私说明。内容依据 2026-10-22 的公开 README、ROADMAP、website brief、开发与安全说明。仅修改 `website/`，不运行资料节点，不部署。
+中英文静态官网：产品首页、开始使用、隐私说明。内容依据 2026-10-22 的公开 README、ROADMAP、website brief、开发与安全说明。仅修改 `website/`，不运行资料节点。已按后续明确授权部署静态站点，默认仅站点所有者可访问。
 
 ## Build and preview
 
@@ -11,7 +11,7 @@ python3 website/build.py
 python3 -m http.server 4317 --bind 127.0.0.1 --directory website/dist
 ```
 
-在运行服务器的同一台机器打开 `http://127.0.0.1:4317/`。英文入口为 `/en/`。输出 `website/dist/` 可由普通静态服务器提供，不依赖 SPA rewrite；未配置任何托管或部署。
+在运行服务器的同一台机器打开 `http://127.0.0.1:4317/`。英文入口为 `/en/`。输出 `website/dist/` 可由普通静态服务器提供，不依赖 SPA rewrite；可独立使用，不依赖托管服务。
 
 ## Checks
 
@@ -42,3 +42,11 @@ python3 website/tests/browser_check.py
 语言切换是对应页面之间的普通链接；所有内容和导航无需 JavaScript。没有统计脚本、收集表单、账号、Cookie、外部字体或运行时第三方资源。链接均为真实仓库或维护文档，不提供下载、等待名单或假产品演示。流程图仅是文字说明，并明确标注不是运行画面。
 
 更新产品能力时先核对源码和实际验收，再同步中英文、日期及边界测试。不要将官网静态检查称为客户端、真实模型或同步验收。新增域名、托管、表单、分析或收费服务需另行明确授权。
+
+## Hosted preview
+
+当前部署地址：https://tracebook.rare-raven-7022.chatgpt.site
+
+站点默认仅所有者本人可访问，没有扩大为公开访问。`website/.openai/hosting.json` 保存独立站点身份，后续必须复用，不能重复创建。源码仓库 PR 与托管源码仓库是分离的；发布只同步生成的六页、三个静态资源和 hosting manifest，不上传客户端、运行资料或检查日志。
+
+托管版本 1 对应静态源提交 `f1b5ede56a833f75548d75ef149578053fc07106`，由官方流程精确推送、打包并部署。该发布不代表原生客户端、转写、模型质量或云同步通过验收。共享权限的进一步变化需明确授权。

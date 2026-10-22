@@ -2,7 +2,7 @@
 
 ## Scope
 
-Six static pages (Chinese and English product, getting started and privacy). Source baseline: `4afe6e2b7c26e85ab8e7090328027f4ad609fc00`. Existing logo assets were visually inspected and reused unchanged. No client, node, data contract, deployment or account changes.
+Six static pages (Chinese and English product, getting started and privacy). Source baseline: `4afe6e2b7c26e85ab8e7090328027f4ad609fc00`. Existing logo assets were visually inspected and reused unchanged. No client, node or data-contract changes. The initial code-only delivery was followed by an explicitly authorized, owner-private static deployment.
 
 ## Passed
 
@@ -18,7 +18,7 @@ No real website screenshots were produced. An isolated local preview process was
 
 The browser script is supplied for a compatible environment, but it has NOT passed here. Desktop/mobile rendering, visual contrast, clipping, touch hit areas, actual keyboard focus, browser back/forward behavior, reduced-motion emulation and no-JavaScript navigation still require real-browser validation. CSS and HTML inspection alone do not establish these outcomes. Screen-reader and real-device checks also remain outstanding.
 
-Before publication, run `tests/browser_check.py`, inspect every generated screenshot, verify all intended links and the complete keyboard path, and check touch/zoom/contrast with real rendering. Preview must not be substituted by a fake app screenshot. No publication target has been authorized.
+Before treating visual acceptance as complete, run `tests/browser_check.py`, inspect every generated screenshot, verify all intended links and the complete keyboard path, and check touch/zoom/contrast with real rendering. Preview must not be substituted by a fake app screenshot. At the initial code-only delivery, no publication target had been authorized; the later private deployment is recorded below.
 
 ## Product limitations retained in both languages
 
@@ -30,3 +30,11 @@ Before publication, run `tests/browser_check.py`, inspect every generated screen
 - Queues, checks and folder exchange are not a claim of verified remote/background cloud sync.
 - Portable text export excludes original audio and credentials and is not a full restore package.
 - Third-party model processing depends on configuration and activation; provider fees may apply. No absolute “data never leaves your device” claim.
+
+## Authorized hosted preview
+
+The user subsequently requested deployment. Version 1 was published successfully through the official Sites workflow at https://tracebook.rare-raven-7022.chatgpt.site from exact pushed static-source commit `f1b5ede56a833f75548d75ef149578053fc07106`. Access was verified as owner-only, with no additional users or groups. Only generated website files and the hosting manifest were packaged. No other site or GitHub main branch was changed.
+
+The earlier local browser limitations remain historical facts. Hosted-browser findings will be recorded separately rather than retroactively claiming those local checks passed.
+
+The independent cloud-browser visit to the live URL displayed the expected private sign-in gate ("Sign in required" / "Log in to access"), not the website. The reviewer did not change sharing or bypass authentication. Therefore hosted product rendering, responsive layout and actual website interactions are still unverified; successful deployment and the access gate are not visual acceptance. The owner can sign in to inspect the deployed version.
