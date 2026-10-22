@@ -48,3 +48,15 @@ These are synthetic/concept illustrations, clearly labeled on the page. Recordin
 Static checks are repeated for this revision. Rendered desktop/mobile, overflow, actual keyboard/focus, and visual contrast acceptance remain **unverified**: the live private Site requires owner login in the cloud browser. No access policy was changed to bypass this gate. The existing v1 remains available as a rollback version.
 
 Version 2 deployment succeeded: `appgdep_6ad9f18d132c8191a6ceb419e3c0ba39`; exact deployed static source `859a82fdb54fde3ad183b98efb8e0f31f69ed326`. The Site remains owner-only (access revision 1), and version 1 is retained. This is deployment verification, not rendered visual acceptance.
+
+## Photography revision (v3)
+
+Two original AI-generated editorial scenes replace the homepage CSS device hero and introduce a concrete watch-capture moment. Images were generated with the built-in image-generation tool, inspected directly, and encoded as responsive optimized PNG assets. No Auday image, screenshot or wording is reused. Screens remain blank; the real brand, headline, provenance label and synthetic source card are accessible HTML. The scenes are visibly labeled AI-generated, not client screenshots. Narrow layouts place text below independently cropped images rather than over the device.
+
+This revision covers the hero, a watch-capture scene, and a connected four-step synthetic workflow: configured phone Back Tap, scheduled daily material/optional analysis, scoped CLI reading, and manual evidence-backed memory confirmation. Source review confirms Back Tap requires a configured phone shortcut, scheduled analysis requires an enabled configured model and is not scheduled recording, CLI access is scoped read-only capabilities/search/query/read, and four-source memory confirmation/revision is manual. None is promoted as unrestricted automatic processing. Actual rendered website acceptance remains pending owner authentication; reviewing the generated images does not establish website rendering quality.
+
+## Full-story local revision (v4, not deployed)
+
+The homepage now has eight editorial chapters with distinct compositions: product overview, separate phone Back Tap/watch recording scenes, scheduled previous-day review, multi-source index, scoped CLI lookup linked to original text, manual memory case file with expandable revision example, owned files, and development status. Three generated photographs have been inspected as assets. The entire website has not been rendered in an authorized browser.
+
+Eight static tests pass, including bilingual relative image sources and scenario capability limits. A standalone ZIP may include only the six generated HTML pages, two CSS files and eight public PNG assets; no hosting manifest, source code, credentials, user records or internal reports. Relative paths are checked statically for file-based preview; opening and interaction in an actual browser remain untested. External GitHub writes and publication remain paused after an authorization rejection.

@@ -13,7 +13,7 @@ class Page(HTMLParser):
     def handle_starttag(self,tag,attrs):
         a=dict(attrs); self.tags.append((tag,a))
         if 'id' in a:self.ids.append(a['id'])
-        for key in ('href','src'):
+        for key in ('href','src','srcset'):
             if key in a:self.refs.append(a[key])
 class SiteTests(unittest.TestCase):
     @classmethod
@@ -50,15 +50,22 @@ class SiteTests(unittest.TestCase):
         for word in ['does not generate model answers','transcription is still in development','No signed','not a full backup','Real-model quality is not yet validated']:self.assertIn(word,en)
         for path in self.paths:self.assertNotIn('声记',path.read_text())
     def test_illustration_labels_and_source_return(self):
-        for relative,label in [("index.html","非运行截图"),("en/index.html","not running app screenshots")]:
+        for relative,label in [("index.html","非运行截图"),("en/index.html","not a running screenshot")]:
             text=(ROOT/"dist"/relative).read_text()
             self.assertIn(label,text)
-            for cls in ("device-stage","day-scene","memory-scene","source-scene","folder-art"):
+            for cls in ("story-hero","tap-scene","calendar-spread","source-workbench","terminal-spread","memory-dossier","ownership-spread"):
                 self.assertIn(cls,text)
             self.assertIn('href="#original-example"',text)
             self.assertIn('id="original-example"',text)
         for relative in ("privacy.html","en/privacy.html"):
             self.assertIn("ChatGPT Sites",(ROOT/"dist"/relative).read_text())
+    def test_scenario_limits_and_photography(self):
+        for relative,terms in [("index.html",["次日","轻点背面","原音","不能录音、改文件、确认记忆","手动提出的候选"]),("en/index.html",["THE NEXT DAY","Back Tap","Not scheduled recording","cannot record, edit files, confirm memory","MANUALLY"])]:
+            text=(ROOT/"dist"/relative).read_text()
+            for term in terms:self.assertIn(term,text)
+            self.assertIn("AI",text)
+            self.assertIn("integrations/lifto-library/scripts/lifto.py",text)
+            self.assertEqual(sum(t=="picture" for t,a in Page(text).tags),3)
     def test_language_switch_roundtrip(self):
         for path in self.paths:
             p=Page(path.read_text()); href=next(a['href'] for t,a in p.tags if a.get('class')=='language')
