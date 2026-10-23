@@ -227,3 +227,99 @@ private func folderRecoveryFixture(_ root: URL) throws -> (RecordingLibrary, Rec
     #expect(throws: RecordingIngress.IngressError.self) { try exchange.publish(output) }
     #expect(try Data(contentsOf: outside) == original)
 }
+
+@Test func explicitFolderRecoveryKeepsTheEntirePreviousCopyAndWaitsForReceipt() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (source, record, output, exchange) = try folderRecoveryFixture(root)
+    let hash = try exchange.publish(output)
+    let original = try Data(contentsOf: source.audioURL(for: record))
+    let package = try exchange.package(record.id)
+    let manifest = try Data(contentsOf: package.appendingPathComponent("manifest.json"))
+    let bad = Data("incomplete exchange copy".utf8)
+    try bad.write(to: package.appendingPathComponent(record.audioFilename))
+    try Data("human recovery note".utf8).write(to: package.appendingPathComponent("note.txt"))
+    let plan = try exchange.previewRecovery(output)
+    #expect(try Data(contentsOf: package.appendingPathComponent(record.audioFilename)) == bad)
+    #expect(!FileManager.default.fileExists(atPath: exchange.root.appendingPathComponent("VoiceMemory/recovery").path))
+    let archive = try exchange.recover(output, expected: plan)
+    #expect(try Data(contentsOf: archive.appendingPathComponent(record.audioFilename)) == bad)
+    #expect(try Data(contentsOf: archive.appendingPathComponent("manifest.json")) == manifest)
+    #expect(try String(contentsOf: archive.appendingPathComponent("note.txt"), encoding: .utf8) == "human recovery note")
+    #expect(try AudioDigest.sha256(package.appendingPathComponent(record.audioFilename)) == hash)
+    #expect(try Data(contentsOf: source.audioURL(for: record)) == original)
+    #expect(try exchange.receipt(record.id) == nil)
+    #expect(throws: FolderExchange.RecoveryError.self) { try exchange.previewRecovery(output) }
+    let receipt = try RecordingIngress.accept(audio: package.appendingPathComponent(record.audioFilename),
+                                              manifestData: Data(contentsOf: package.appendingPathComponent("manifest.json")),
+                                              into: RecordingLibrary(root: root.appendingPathComponent("desktop")))
+    try exchange.acknowledge(receipt)
+    #expect(try exchange.receipt(record.id)?.audioSHA256 == hash)
+    #expect(try exchange.packageIDs() == [record.id])
+}
+
+@Test func explicitFolderRecoveryRefusesChangesSincePreviewWithoutMovingFiles() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (_, record, output, exchange) = try folderRecoveryFixture(root)
+    _ = try exchange.publish(output)
+    let package = try exchange.package(record.id)
+    try Data("first damaged copy".utf8).write(to: package.appendingPathComponent(record.audioFilename))
+    let preview = try exchange.previewRecovery(output)
+    let changed = Data("a later change".utf8)
+    try changed.write(to: package.appendingPathComponent("manifest.json"))
+    #expect(throws: FolderExchange.RecoveryError.self) { try exchange.recover(output, expected: preview) }
+    #expect(try Data(contentsOf: package.appendingPathComponent("manifest.json")) == changed)
+    #expect(!FileManager.default.fileExists(atPath: exchange.root.appendingPathComponent("VoiceMemory/recovery").path))
+}
+
+@Test func explicitFolderRecoveryRefusesAnyReceiptIncludingOneArrivingAfterPreview() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (_, record, output, exchange) = try folderRecoveryFixture(root)
+    let hash = try exchange.publish(output)
+    let package = try exchange.package(record.id)
+    let bad = Data("preserved conflicting audio".utf8)
+    try bad.write(to: package.appendingPathComponent(record.audioFilename))
+    let preview = try exchange.previewRecovery(output)
+    try exchange.acknowledge(TransferReceipt(recordingID: record.id, audioSHA256: hash, nodeID: "synthetic", durable: true))
+    #expect(throws: FolderExchange.RecoveryError.self) { try exchange.recover(output, expected: preview) }
+    let receipt = exchange.root.appendingPathComponent("VoiceMemory/receipts/" + record.id.uuidString + ".json")
+    try Data("unfinished receipt".utf8).write(to: receipt)
+    #expect(throws: FolderExchange.RecoveryError.self) { try exchange.previewRecovery(output) }
+    #expect(try Data(contentsOf: package.appendingPathComponent(record.audioFilename)) == bad)
+    #expect(try Data(contentsOf: receipt) == Data("unfinished receipt".utf8))
+    #expect(!FileManager.default.fileExists(atPath: exchange.root.appendingPathComponent("VoiceMemory/recovery").path))
+}
+
+@Test func explicitFolderRecoveryRejectsArchiveSymlinkAndKeepsOriginalPackage() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (_, record, output, exchange) = try folderRecoveryFixture(root)
+    _ = try exchange.publish(output)
+    let package = try exchange.package(record.id)
+    try Data("preserve me".utf8).write(to: package.appendingPathComponent(record.audioFilename))
+    let preview = try exchange.previewRecovery(output)
+    let outside = root.appendingPathComponent("outside")
+    try FileManager.default.createDirectory(at: outside, withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(at: exchange.root.appendingPathComponent("VoiceMemory/recovery"), withDestinationURL: outside)
+    #expect(throws: RecordingIngress.IngressError.self) { try exchange.recover(output, expected: preview) }
+    #expect(try FileManager.default.contentsOfDirectory(atPath: outside.path).isEmpty)
+    #expect(FileManager.default.fileExists(atPath: package.path))
+}
+
+@Test func explicitFolderRecoveryRequiresNewReviewAfterTheOriginalTitleChanges() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (source, record, output, exchange) = try folderRecoveryFixture(root)
+    _ = try exchange.publish(output)
+    let package = try exchange.package(record.id)
+    try Data("old conflicting copy".utf8).write(to: package.appendingPathComponent(record.audioFilename))
+    let preview = try exchange.previewRecovery(output)
+    try source.rename(id: record.id, title: "A revised local title")
+    let updated = try RecordingExport.prepare(id: record.id, from: source, to: root.appendingPathComponent("updated"))
+    #expect(throws: FolderExchange.RecoveryError.self) { try exchange.recover(updated, expected: preview) }
+    #expect(try source.recording(id: record.id).title == "A revised local title")
+    #expect(FileManager.default.fileExists(atPath: package.path))
+    #expect(!FileManager.default.fileExists(atPath: exchange.root.appendingPathComponent("VoiceMemory/recovery").path))
+}

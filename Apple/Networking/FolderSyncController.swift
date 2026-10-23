@@ -204,12 +204,70 @@ final class FolderSyncController: ObservableObject {
         switch job.state {
         case .delivered: return "电脑已接收"
         case .awaitingReceipt: return "等待电脑接收"
-        case .failed: return "等待重试"
+        case .failed: return "需要处理"
         default: return "等待同步"
         }
     }
     var delivered: Int { jobs.filter { $0.target == "folder:" + folderID && $0.state == .delivered }.count }
     var waiting: Int { jobs.filter { $0.target == "folder:" + folderID && $0.state != .delivered }.count }
+    var failedJobs: [TransferJob] {
+        jobs.filter { $0.target == "folder:" + folderID && $0.state == .failed }.sorted { $0.updatedAt > $1.updatedAt }
+    }
+    func title(for id: UUID) -> String {
+        #if os(iOS)
+        let record = CaptureRecorder.shared.recordings.first { $0.id == id }
+        return record?.displayTitle ?? LF("录音 %@", String(id.uuidString.prefix(8)))
+        #else
+        let record = try? NodeSyncController.shared.library.recording(id: id)
+        return record?.title ?? LF("录音 %@", String(id.uuidString.prefix(8)))
+        #endif
+    }
+    #if os(iOS)
+    struct RecoveryPlan: Sendable {
+        let target: String
+        let folderName: String
+        let snapshot: FolderExchange.RecoverySnapshot
+    }
+    func previewRecovery(_ job: TransferJob) async throws -> RecoveryPlan {
+        guard !busy, job.target == "folder:" + folderID, SyncRoute.current == .folder else {
+            throw FolderExchange.RecoveryError.changed
+        }
+        busy = true; defer { busy = false }
+        let url = try resolve(), library = CaptureRecorder.shared.library
+        let snapshot = try await Task.detached(priority: .utility) {
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            let temp = FileManager.default.temporaryDirectory.appendingPathComponent("folder-recovery-" + UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: temp) }
+            let output = try RecordingExport.prepare(id: job.recordingID, from: library, to: temp)
+            return try Self.coordinated(url, writing: false) { try FolderExchange(root: $0).previewRecovery(output) }
+        }.value
+        return RecoveryPlan(target: job.target, folderName: folderName, snapshot: snapshot)
+    }
+    func recover(_ plan: RecoveryPlan) async throws {
+        guard !busy, plan.target == "folder:" + folderID, SyncRoute.current == .folder else {
+            throw FolderExchange.RecoveryError.changed
+        }
+        busy = true; defer { busy = false }
+        let url = try resolve(), library = CaptureRecorder.shared.library, journal = self.journal
+        let updated = try await Task.detached(priority: .utility) {
+            let access = url.startAccessingSecurityScopedResource()
+            defer { if access { url.stopAccessingSecurityScopedResource() } }
+            let temp = FileManager.default.temporaryDirectory.appendingPathComponent("folder-recovery-" + UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: temp) }
+            let output = try RecordingExport.prepare(id: plan.snapshot.recordingID, from: library, to: temp)
+            var job = try journal.load().first { $0.target == plan.target && $0.recordingID == plan.snapshot.recordingID }
+                ?? TransferJob(recordingID: plan.snapshot.recordingID, target: plan.target)
+            guard job.state != .delivered else { throw FolderExchange.RecoveryError.receiptExists }
+            _ = try Self.coordinated(url, writing: true) { try FolderExchange(root: $0).recover(output, expected: plan.snapshot) }
+            job.audioSHA256 = plan.snapshot.originalSHA256; job.state = .awaitingReceipt
+            job.message = nil; job.nextAttemptAt = nil; job.attempts += 1; job.updatedAt = .now
+            try journal.save(job)
+            return try journal.load()
+        }.value
+        jobs = updated; problem = failedJobs.first?.message; lastChecked = .now
+    }
+    #endif
     private func resolve(allowStale: Bool = false) throws -> URL {
         guard let data = selection?.bookmark else { throw NodeFailure(message: "请先选择资料夹。") }
         var stale = false

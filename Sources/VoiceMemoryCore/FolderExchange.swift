@@ -2,6 +2,23 @@ import Foundation
 
 /// Immutable audio packages and receipts. The file provider owns cloud delivery timing.
 public struct FolderExchange: Sendable {
+    public struct RecoverySnapshot: Equatable, Sendable {
+        public let recordingID: UUID
+        public let originalSHA256: String
+        public let originalManifestSHA256: String
+        public let manifestSHA256: String?
+        public let copySHA256: String?
+    }
+    public enum RecoveryError: Error, LocalizedError {
+        case receiptExists, changed, unnecessary
+        public var errorDescription: String? {
+            switch self {
+            case .receiptExists: "此录音已有接收回执，请先在电脑核对。已接收内容不会被重新发送替换。"
+            case .changed: "录音或资料夹内容已变化，请重新查看恢复方案。"
+            case .unnecessary: "交换副本已可用或正在补传，请重新检查接收状态。"
+            }
+        }
+    }
     public let root: URL
     public init(root: URL) { self.root = root }
     public var inbox: URL { root.appendingPathComponent("VoiceMemory/inbox") }
@@ -69,6 +86,59 @@ public struct FolderExchange: Sendable {
             throw RecordingIngress.IngressError.conflict
         }
         return true
+    }
+
+    /// Preview is read-only. Any receipt, even an unreadable one, blocks replacement.
+    public func previewRecovery(_ output: RecordingExport) throws -> RecoverySnapshot {
+        let manifest = try decodeManifest(Data(contentsOf: output.manifestURL))
+        try validate(manifest, id: manifest.recording.id, checksum: manifest.audioSHA256)
+        guard try AudioDigest.sha256(output.audioURL) == manifest.audioSHA256 else { throw RecoveryError.changed }
+        let snapshot = try recoverySnapshot(manifest.recording.id, originalSHA256: manifest.audioSHA256,
+                                            originalManifestSHA256: AudioDigest.sha256(output.manifestURL))
+        if snapshot.copySHA256 == manifest.audioSHA256,
+           (try? hasPublication(manifest.recording.id, audioSHA256: manifest.audioSHA256)) == true {
+            throw RecoveryError.unnecessary
+        }
+        return snapshot
+    }
+
+    /// The caller coordinates this entire operation. A moved package is never removed,
+    /// including if publication fails; a later ordinary refresh can finish the missing send.
+    public func recover(_ output: RecordingExport, expected: RecoverySnapshot) throws -> URL {
+        guard try previewRecovery(output) == expected else { throw RecoveryError.changed }
+        let source = try package(expected.recordingID)
+        let archive = root.appendingPathComponent("VoiceMemory/recovery")
+            .appendingPathComponent(expected.recordingID.uuidString + "-" + UUID().uuidString)
+        try safe(archive)
+        try FileManager.default.createDirectory(at: archive.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.moveItem(at: source, to: archive)
+        _ = try publish(output)
+        return archive
+    }
+
+    private func recoverySnapshot(_ id: UUID, originalSHA256: String, originalManifestSHA256: String) throws -> RecoverySnapshot {
+        let receiptURL = receipts.appendingPathComponent(id.uuidString + ".json")
+        try safe(receiptURL)
+        guard !FileManager.default.fileExists(atPath: receiptURL.path) else { throw RecoveryError.receiptExists }
+        let target = try package(id)
+        guard FileManager.default.fileExists(atPath: target.path) else { throw RecoveryError.unnecessary }
+        let kind = try target.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        guard kind.isDirectory == true, kind.isSymbolicLink != true else {
+            throw RecordingIngress.IngressError.invalidManifest
+        }
+        func hash(_ name: String) throws -> String? {
+            let url = target.appendingPathComponent(name)
+            try safe(url)
+            guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+            let kind = try url.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard kind.isRegularFile == true, kind.isSymbolicLink != true else {
+                throw RecordingIngress.IngressError.invalidManifest
+            }
+            return try AudioDigest.sha256(url)
+        }
+        return try RecoverySnapshot(recordingID: id, originalSHA256: originalSHA256,
+                                    originalManifestSHA256: originalManifestSHA256,
+                                    manifestSHA256: hash("manifest.json"), copySHA256: hash(id.uuidString + ".caf"))
     }
 
     private func validate(_ manifest: RecordingExportManifest, id: UUID, checksum: String) throws {
