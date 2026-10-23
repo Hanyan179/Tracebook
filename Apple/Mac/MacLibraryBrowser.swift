@@ -12,6 +12,7 @@ struct MacLibraryBrowser: View {
     let kind: DesktopLibraryKind
     var importAudio: (() -> Void)?
     var setupSync: (() -> Void)?
+    var importBusy = false
     @StateObject private var recordings = LibraryLoader<NodeRecord>()
     @StateObject private var days = LibraryLoader<NodeDaily>()
     @StateObject private var memories = LibraryLoader<NodeCandidate>()
@@ -149,6 +150,14 @@ struct MacLibraryBrowser: View {
             filter.state = kind == .memory ? (value == "active" ? "confirmed" : value == "archived" ? "" : value) : ""
         }
         .sheet(isPresented: $managing) { CategoryManager(store: store, kind: kind.rawValue) }
+        .toolbar {
+            if kind == .recording, !showsEmptyRecordingActions, let importAudio {
+                ToolbarItem {
+                    Button(action: importAudio) { Label(L(importBusy ? "正在导入" : "导入音频"), systemImage: "plus") }
+                        .disabled(importBusy).keyboardShortcut("i", modifiers: [.command, .shift])
+                }
+            }
+        }
         .background {
             Button("") { searching = true }.keyboardShortcut("f", modifiers: .command).hidden()
         }
@@ -180,8 +189,11 @@ struct MacLibraryBrowser: View {
                 Text(L(problem ?? (total == 0 ? emptyHint : "在左侧选择，内容会在这里展开。")))
             } actions: {
                 if problem != nil { Button("重新读取") { Task { await reload() } } }
-                if kind == .recording && total == 0 && !filter.hasSearchFilters && scope == "active" {
-                    if let importAudio { Button("导入音频", action: importAudio).buttonStyle(FilledButtonStyle()) }
+                if showsEmptyRecordingActions {
+                    if let importAudio {
+                        Button(L(importBusy ? "正在导入" : "导入音频"), action: importAudio).buttonStyle(FilledButtonStyle())
+                            .disabled(importBusy).keyboardShortcut("i", modifiers: [.command, .shift])
+                    }
                     if let setupSync { Button("连接手机", action: setupSync) }
                 }
                 if kind == .memory && scope == "active" && (store.overview?.pendingMemoryCount ?? 0) > 0 {
@@ -189,6 +201,9 @@ struct MacLibraryBrowser: View {
                 }
             }
         }
+    }
+    private var showsEmptyRecordingActions: Bool {
+        kind == .recording && !loading && problem == nil && total == 0 && !filter.hasSearchFilters && scope == "active"
     }
     private func reload() async {
         var effective = filter

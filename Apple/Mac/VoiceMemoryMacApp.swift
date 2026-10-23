@@ -88,21 +88,13 @@ struct MacWorkspaceView: View {
                     case .sync: syncPage
                     case .sources: LocalSourcesView(workspace: workspace)
                     case .recordings: MacLibraryBrowser(store: workspace, kind: .recording,
-                        importAudio: { importing = true }, setupSync: { section = .sync })
+                        importAudio: { importing = true }, setupSync: { section = .sync }, importBusy: importBusy)
                     case .daily: MacLibraryBrowser(store: workspace, kind: .daily)
                     case .memory: MacLibraryBrowser(store: workspace, kind: .memory)
                     }
                 }.navigationTitle(L((section ?? .recordings).title))
                     .libraryDestinations(store: workspace)
                     .background(AppPalette.canvas)
-                    .toolbar {
-                        if section == .recordings {
-                            ToolbarItem {
-                                Button { importing = true } label: { Label(L(importBusy ? "正在导入" : "导入音频"), systemImage: "plus") }
-                                    .disabled(importBusy).keyboardShortcut("i", modifiers: [.command, .shift])
-                            }
-                        }
-                    }
             }.id((section?.rawValue ?? "") + language)
                 .navigationSplitViewColumnWidth(min: 680, ideal: 1000)
                 .toolbar(removing: .sidebarToggle)
