@@ -134,9 +134,10 @@ struct NodeMemoryView: View {
                 }
                 LibraryFilters(filter: $filter, facets: loader.facets)
                 Text(LF("%d 条记忆", loader.total)).font(.caption).foregroundStyle(AppPalette.muted)
+                MemoryFileDeliveryButton(store: store)
                 if let notice = store.memoryNotice { Text(L(notice)).font(.callout).foregroundStyle(.secondary) }
                 if let problem = store.problem { Text(problem).font(.footnote).foregroundStyle(AppPalette.muted) }
-                if !(store.status?.conflicts.isEmpty ?? true) {
+                if store.status?.memoryDelivery == nil && !(store.status?.conflicts.isEmpty ?? true) {
                     Text("部分导出文件包含人工修改，新内容已另存，请在归档目录核对。")
                         .font(.footnote).foregroundStyle(AppPalette.muted)
                 }

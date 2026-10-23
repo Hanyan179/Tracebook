@@ -56,6 +56,7 @@ struct MacLibraryBrowser: View {
                         .textFieldStyle(.roundedBorder).focused($searching)
                     if kind == .memory {
                         MemoryScopeControls(selection: $scope, confirmedValue: "active", pendingCount: store.overview?.pendingMemoryCount)
+                        MemoryFileDeliveryButton(store: store)
                         if let notice = store.memoryNotice { Text(L(notice)).font(.caption).foregroundStyle(.secondary) }
                     } else if kind == .recording {
                         Picker("范围", selection: $scope) {

@@ -51,7 +51,7 @@ struct NodeCandidate: Codable, Identifiable, Sendable {
         switch state { case "confirmed": "已确认"; case "inactive": "已停用"; case "rejected": "已忽略"; default: "待确认" }
     }
 }
-struct NodeConflict: Codable, Identifiable, Sendable {
+struct NodeConflict: Codable, Identifiable, Sendable, Equatable {
     let path: String
     let state: String
     let generatedPath: String?
@@ -65,6 +65,7 @@ struct NodeStatus: Codable, Sendable {
     let summaryMode: String
     var analysisConfigured: Bool?
     var transcriptionConfigured: Bool?
+    var memoryDelivery: MemoryFileDelivery?
     let conflicts: [NodeConflict]
 }
 
@@ -197,8 +198,14 @@ final class NodeWorkspaceStore: ObservableObject {
     func updateMemory(_ candidate: NodeCandidate, state: String? = nil, text: String? = nil, requestID: UUID = UUID()) async throws -> NodeCandidate {
         guard let client, let revision = candidate.memoryRevision else { throw NodeFailure(message: "请重新读取记忆后再操作。") }
         struct Body: Encodable { let state: String?; let text: String?; let memoryRevision: Int; let requestID: UUID }
-        let data = try await client.sendData("v1/candidates/\(candidate.id.uuidString)", method: "PUT",
-                                           body: JSONEncoder().encode(Body(state: state, text: text, memoryRevision: revision, requestID: requestID)))
+        let data: Data
+        do {
+            data = try await client.sendData("v1/candidates/\(candidate.id.uuidString)", method: "PUT",
+                                            body: JSONEncoder().encode(Body(state: state, text: text, memoryRevision: revision, requestID: requestID)))
+        } catch {
+            if let code = (error as? NodeFailure)?.statusCode, code >= 500 { await refresh() }
+            throw error
+        }
         let updated = try JSONDecoder().decode(NodeCandidate.self, from: data)
         memoryNotice = text != nil ? "记忆修订已保存。" : updated.state == "inactive" ? "记忆已停用，不再用于新的检索。" : updated.state == "confirmed" ? "记忆已确认。" : updated.state == "pending" ? "记忆已回到待确认。" : "记忆已忽略。"
         await refresh(); libraryRevision = UUID()

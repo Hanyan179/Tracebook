@@ -437,6 +437,24 @@ class Store:
         return {'exports': result['exports']}
 
     def export_memory(self):
+        with self.lock:
+            with self.db:
+                self.memories.mark_delivery_pending()
+                self.db.execute('UPDATE memory_delivery SET last_attempt=? WHERE id=1', (stamp(),))
+            try:
+                result = self._export_memory()
+            except Exception:
+                # Exception text may contain local paths or file contents. Keep a safe user message.
+                with self.db:
+                    self.db.execute('UPDATE memory_delivery SET problem=? WHERE id=1',
+                                    ('记忆已保存在资料库，部分文字文件尚未写入。请检查电脑上的资料夹是否可用及剩余空间，然后重试。',))
+                raise
+            with self.db:
+                self.db.execute('UPDATE memory_delivery SET pending=0,output_root=?,last_success=?,problem=NULL WHERE id=1',
+                                (str(self.output), stamp()))
+            return result
+
+    def _export_memory(self):
         results = []
         names = {r['id']:r['name'] for r in self.catalog.categories('memory')} if hasattr(self, 'catalog') else {}
         for state, relative, title in [('confirmed', 'memory.md', '长期记忆'), ('pending', 'memory-inbox.md', '待确认记忆'),
@@ -482,6 +500,7 @@ class Store:
                     'recognitionEnabled': self.transcription.state()['automatic'],
                     'transcriptionConfigured': self.transcription.configuration is not None,
                     'summaryMode': 'sourceDraft', 'conflicts': conflicts,
+                    'memoryDelivery': self.memories.delivery_status(),
                     'analysisConfigured':hasattr(self,'analysis') and self.analysis.configuration is not None}
 
     def configure(self, values):

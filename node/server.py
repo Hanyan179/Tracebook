@@ -151,6 +151,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200,store.transcription.pause(parts[2]))
             if len(parts) == 4 and parts[3] == 'generated' and self.command == 'GET':
                 return self.send_json(200,store.transcription.generated(parts[2]))
+        if parts==['v1','memory-delivery'] and self.command=='GET':
+            return self.send_json(200,store.memories.delivery_status())
+        if parts==['v1','memory-delivery','retry'] and self.command=='POST':
+            self.body_json()
+            return self.send_json(200,store.memories.deliver_pending(force=True))
         if parts==['v1','model-session']:
             if not ipaddress.ip_address(self.client_address[0]).is_loopback:raise StoreError(403,'请在资料库所在电脑配置模型。')
             if self.command=='POST':return self.send_json(200,store.analysis.configure(self.body_json()))
@@ -429,6 +434,10 @@ def main():
     stopped = threading.Event()
     def schedule():
         while not stopped.is_set():
+            try:
+                store.memories.deliver_pending()
+            except Exception:
+                pass  # File recovery is independent of analysis and source scanning.
             try:
                 store.catch_up()
                 store.analysis.catch_up()

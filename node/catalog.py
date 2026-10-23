@@ -202,6 +202,7 @@ class Catalog:
                     else:
                         cid=str(uuid.uuid4()).upper()
                         self.db.execute('INSERT INTO library_categories(id,scope,name,normalized) VALUES (?,?,?,?)',(cid,kind,name,normalized(name)))
+                    if kind=='memory':self.s.memories.mark_delivery_pending()
             except sqlite3.IntegrityError:self.error(409,'这个分类名称已经存在。')
             self.export_categories()
             if kind=='memory':self.s.export_memory()
@@ -232,6 +233,7 @@ class Catalog:
                 self.db.execute('DELETE FROM library_tags WHERE kind=? AND id=?',(kind,rid))
                 self.db.executemany('INSERT INTO library_tags VALUES (?,?,?,?)',[(kind,rid,t,normalized(t)) for t in tags])
                 self._search_index(kind,rid)
+                if kind=='memory':self.s.memories.mark_delivery_pending()
             result=self.detail(kind,rid)
             raw=json.dumps({'id':rid,'kind':kind,**result['organization']},ensure_ascii=False,indent=2)
             self.s.export('organization/'+kind+'/'+rid+'.json',raw,hashlib.sha256(raw.encode()).hexdigest())

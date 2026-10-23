@@ -177,6 +177,7 @@ struct MemoryComparisonSheet: View {
                 await workspace.libraryChanged(); saved(updated); dismiss()
             } catch {
                 problem = error.localizedDescription
+                if let code = (error as? NodeFailure)?.statusCode, code >= 500 { await workspace.refresh() }
                 // A definite client rejection cannot be repaired by repeating an old decision.
                 // For transport/server failures keep its ID to recover an unknown commit outcome.
                 if let code = (error as? NodeFailure)?.statusCode, (400..<500).contains(code), code != 408, code != 429 {

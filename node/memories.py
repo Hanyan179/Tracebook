@@ -24,9 +24,15 @@ class Memories:
             target_revision INTEGER NOT NULL, created_at TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS memory_relation_candidate ON memory_relations(candidate_id);
         CREATE INDEX IF NOT EXISTS memory_relation_target ON memory_relations(target_id);
+        CREATE TABLE IF NOT EXISTS memory_delivery(
+            id INTEGER PRIMARY KEY CHECK(id=1), pending INTEGER NOT NULL,
+            output_root TEXT, last_success TEXT, problem TEXT);
+        INSERT OR IGNORE INTO memory_delivery(id,pending) VALUES (1,1);
         ''')
         if 'proposal' not in {r[1] for r in self.db.execute('PRAGMA table_info(memory_details)')}:
             with self.db:self.db.execute('ALTER TABLE memory_details ADD COLUMN proposal TEXT')
+        if 'last_attempt' not in {r[1] for r in self.db.execute('PRAGMA table_info(memory_delivery)')}:
+            with self.db:self.db.execute('ALTER TABLE memory_delivery ADD COLUMN last_attempt TEXT')
 
     def error(self, status, message):
         from store import StoreError
@@ -55,7 +61,7 @@ class Memories:
         for row in rows:
             self.s.catalog.index_memory(row['id'])
         if rows:
-            self.s.export_memory()
+            self.deliver_pending()
 
     def source(self, kind, identifier):
         from store import canonical_id
@@ -157,6 +163,35 @@ class Memories:
         value = self.data(row)
         self.db.execute('INSERT INTO memory_versions VALUES (?,?,?,?,?)',
                         (cid, value['memoryRevision'], action, json.dumps(value, ensure_ascii=False), now))
+        self.mark_delivery_pending()
+
+    def mark_delivery_pending(self):
+        """Caller owns the transaction: a committed change must survive a crash before export."""
+        self.db.execute('UPDATE memory_delivery SET pending=1,problem=NULL WHERE id=1')
+
+    def delivery_status(self):
+        with self.s.lock:
+            row = self.db.execute('SELECT * FROM memory_delivery WHERE id=1').fetchone()
+            same_root = row['output_root'] == str(self.s.output)
+            pending = bool(row['pending']) or not same_root
+            names = {'memory.md', 'memory-inbox.md', 'memory-inactive.md', 'memory-rejected.md', 'memory-archive.md'}
+            conflicts = [dict(r) for r in self.db.execute(
+                "SELECT path,state,generated_path AS generatedPath FROM exports WHERE root=? AND state='conflict' ORDER BY path",
+                (str(self.s.output),)) if r['path'] in names or r['path'].startswith('memories/')]
+            return {'state': ('failed' if row['problem'] else 'pending') if pending else ('review' if conflicts else 'ready'),
+                    'lastAttemptAt': row['last_attempt'],
+                    'lastSuccessAt': row['last_success'] if same_root else None,
+                    'problem': row['problem'] if pending else None, 'conflicts': conflicts}
+
+    def deliver_pending(self, force=False):
+        """Only project saved data; never run a model or repeat a memory decision."""
+        with self.s.lock:
+            if force or self.delivery_status()['state'] in ('pending', 'failed'):
+                try:
+                    self.s.export_memory()
+                except Exception:
+                    pass  # export_memory keeps the durable failure; retry on the next scheduler pass.
+            return self.delivery_status()
 
     def detail(self, cid):
         from store import canonical_id, StoreError

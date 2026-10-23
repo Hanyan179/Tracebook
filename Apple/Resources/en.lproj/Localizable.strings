@@ -1322,3 +1322,37 @@
 "记忆已归档，请重新选择。" = "This memory has been archived. Choose another memory.";
 "记忆对照已保存，原文与历史保留。" = "Memory decision saved. Sources and history are preserved.";
 "对照" = "Compare";
+
+"记忆文件写入失败" = "Memory files could not be written";
+
+"记忆文件待写入" = "Memory files awaiting delivery";
+
+"记忆文件需核对" = "Memory files need review";
+
+"记忆文件已更新" = "Memory files updated";
+
+"电脑运行时会自动补写已保存的记忆。也可以立即重试。" = "Saved memories will be written automatically while the computer is running. You can also retry now.";
+
+"人工修改的文件已保留，新内容已另存。请在电脑资料夹中核对，重试不会覆盖人工修改。" = "Your edited files are preserved and new content is saved separately. Review both in the computer folder. Retrying will not overwrite your edits.";
+
+"当前记忆文字和修订历史已写入电脑资料夹。此状态不代表云端同步完成。" = "Current memory text and revision history have been written to the computer folder. This does not confirm cloud sync.";
+
+"记忆已保存在资料库，部分文字文件尚未写入。请检查电脑上的资料夹是否可用及剩余空间，然后重试。" = "Memories are saved in the library, but some text files could not be written. Check that the computer folder is available and has free space, then retry.";
+
+"最近完整写入" = "Last complete write";
+
+"电脑资料夹" = "Computer folder";
+
+"需要核对的文件" = "Files to review";
+
+"新内容另存于" = "New content saved at";
+
+"重新检查并写入" = "Check and write again";
+
+"只补写已保存的文字和历史，不重新整理或确认记忆。" = "Writes only saved text and history, without generating or confirming memories again.";
+
+"文件状态" = "File status";
+
+"记忆文件状态" = "Memory file status";
+
+"最近检查" = "Last checked";
