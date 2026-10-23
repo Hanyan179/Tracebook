@@ -1579,3 +1579,27 @@
 "本次所选资料" = "Selected sources";
 
 "整理资料" = "Organize";
+
+"可能相关的记忆" = "Possibly related memories";
+
+"引用同一份资料" = "Same source";
+
+"文字基本相同" = "Matching wording";
+
+"文字相近" = "Similar wording";
+
+"按文字与来源在本机查找，未发送给模型。相近内容可能属于不同的人，请核对后再处理。" = "Found locally by wording and sources; nothing is sent to a model. Similar content may refer to different people. Review before deciding.";
+
+"没有找到相关项，仍可在下方搜索已有记忆。" = "No related items found. You can still search existing memories below.";
+
+"在本机检查了最近 %d / %d 条已确认记忆，最多显示 5 条。" = "Checked the latest %d of %d confirmed memories locally. Up to 5 results are shown.";
+
+"更早的记忆尚未比较，请使用下方搜索继续核对。" = "Earlier memories have not been compared. Use search below to check them.";
+
+"重新查找相关记忆" = "Find related memories again";
+
+"这条建议已处理或归档，请重新读取。" = "This proposal has been reviewed or archived. Reload it.";
+
+"收起全部记忆" = "Hide all memories";
+
+"浏览全部已确认记忆" = "Browse all confirmed memories";

@@ -2,6 +2,7 @@
 from __future__ import annotations
 import hashlib
 import json
+import unicodedata
 import uuid
 
 
@@ -234,6 +235,43 @@ class Memories:
                            'otherText': json.loads(snapshot['document'])['text'] if snapshot else '',
                            'createdAt': row['created_at']})
         return values
+
+    def related(self, cid):
+        """Local retrieval hints only: neither shared wording nor a source proves identity."""
+        from store import canonical_id
+        from catalog import normalized
+        def wording(text):
+            return ''.join(c for c in normalized(text) if unicodedata.category(c)[0] in ('L','N','M'))
+        def grams(text):
+            return {text[i:i+2] for i in range(len(text)-1)}
+        with self.s.lock:
+            cid=canonical_id(cid)
+            row=self.db.execute('SELECT * FROM candidates WHERE id=?',(cid,)).fetchone()
+            if not row:self.error(404,'找不到这条记忆。')
+            archived=self.db.execute("SELECT archived FROM library_items WHERE kind='memory' AND id=?",(cid,)).fetchone()
+            if row['state']!='pending' or (archived and archived['archived']):
+                self.error(409,'这条建议已处理或归档，请重新读取。')
+            current=self.data(row);text=wording(current['text']);tokens=grams(text)
+            sources={(e['kind'],e['id']) for e in current['evidence']}
+            where="c.state='confirmed' AND c.id!=? AND coalesce(l.archived,0)=0"
+            joins=" FROM candidates c LEFT JOIN library_items l ON l.kind='memory' AND l.id=c.id "
+            total=self.db.execute('SELECT count(*)'+joins+'WHERE '+where,(cid,)).fetchone()[0]
+            rows=self.db.execute('SELECT c.*'+joins+'WHERE '+where+' ORDER BY c.updated_at DESC,c.id DESC LIMIT 500',(cid,)).fetchall()
+            matches=[]
+            for other in rows:
+                value=self.data(other);other_text=wording(value['text']);other_tokens=grams(other_text)
+                shared=bool(sources & {(e['kind'],e['id']) for e in value['evidence']})
+                exact=len(text)>=4 and text==other_text
+                overlap=len(tokens & other_tokens)
+                similarity=2*overlap/max(1,len(tokens)+len(other_tokens))
+                similar=overlap>=4 and similarity>=0.5
+                if not (shared or exact or similar):continue
+                reasons=(['sameWording'] if exact else ['similarWording'] if similar else [])+(['sharedSource'] if shared else [])
+                matches.append(((exact,shared,similarity),{'id':value['id'],'text':value['text'],
+                    'memoryRevision':value['memoryRevision'],'reasons':reasons}))
+            matches.sort(key=lambda item:item[0],reverse=True)
+            return {'items':[value for _,value in matches[:5]],'checkedCount':len(rows),'totalCount':total,
+                    'truncated':total>len(rows),'memoryRevision':current['memoryRevision']}
 
     def resolve(self, cid, values):
         """An explicit human decision commits both states, history and receipt together."""

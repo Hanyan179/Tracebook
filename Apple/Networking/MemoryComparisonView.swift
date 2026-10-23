@@ -1,5 +1,20 @@
 import SwiftUI
 
+private struct RelatedMemories: Decodable {
+    struct Item: Decodable, Identifiable {
+        let id: UUID
+        let text: String
+        let reasons: [String]
+        var reason: String {
+            reasons.map { L($0 == "sharedSource" ? "引用同一份资料" : $0 == "sameWording" ? "文字基本相同" : "文字相近") }.joined(separator: " · ")
+        }
+    }
+    let items: [Item]
+    let checkedCount: Int
+    let totalCount: Int
+    let truncated: Bool
+}
+
 struct MemoryRelation: Codable, Identifiable, Sendable {
     let id: UUID
     let kind: String
@@ -36,63 +51,101 @@ struct MemoryComparisonSheet: View {
     @State private var requestID = UUID()
     @State private var retryDecision: String?
     @State private var confirmation: String?
+    @State private var suggestions: RelatedMemories?
+    @State private var suggestionsLoading = false
+    @State private var suggestionsProblem: String?
+    @State private var browseAll = false
     private var incoming: NodeCandidate { proposal ?? candidate }
     private var filter: LibraryFilter { var value = LibraryFilter(); value.query = query; value.state = "confirmed"; return value }
     var body: some View {
         NavigationStack {
-            Form {
-                Section("新建议") { summary(incoming) }
-                if let target {
-                    Section("已有记忆") {
-                        summary(target)
-                        Button("选择另一条记忆") { self.target = nil; problem = nil; retryDecision = nil; requestID = UUID() }
-                            .disabled(busy || retryDecision != nil)
+            ScrollViewReader { proxy in
+                Form {
+                    Section("新建议") { summary(incoming) }
+                    if let target {
+                        Section("已有记忆") {
+                            summary(target)
+                            Button("选择另一条记忆") { self.target = nil; problem = nil; retryDecision = nil; requestID = UUID() }
+                                .disabled(busy || retryDecision != nil)
+                        }
+                        Section("核对后处理") {
+                            Text("请核对两边的原文与说话人，再决定是否重复、补充或替代。")
+                                .font(.callout).foregroundStyle(.secondary)
+                            decisionButton("重复，保留已有记忆", kind: "duplicate")
+                            decisionButton("作为补充，保留两条", kind: "supplement")
+                            decisionButton("用新建议替代旧记忆", kind: "replace")
+                        }
+                    } else {
+                        Section("可能相关的记忆") {
+                            Text("按文字与来源在本机查找，未发送给模型。相近内容可能属于不同的人，请核对后再处理。")
+                                .font(.footnote).foregroundStyle(.secondary)
+                            if suggestionsLoading { ProgressView("正在读取") }
+                            if let suggestions {
+                                ForEach(suggestions.items) { item in
+                                    Button { Task { await readPair(item.id) } } label: {
+                                        VStack(alignment: .leading, spacing: 6) {
+                                            Text(verbatim: item.text).lineLimit(3)
+                                            Text(verbatim: item.reason).font(.caption).foregroundStyle(.secondary)
+                                        }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                    }.buttonStyle(.plain).disabled(busy)
+                                }
+                                if suggestions.items.isEmpty { Text("没有找到相关项，仍可在下方搜索已有记忆。") }
+                                Text(LF("在本机检查了最近 %d / %d 条已确认记忆，最多显示 5 条。", suggestions.checkedCount, suggestions.totalCount))
+                                    .font(.footnote).foregroundStyle(.secondary)
+                                if suggestions.truncated {
+                                    Text("更早的记忆尚未比较，请使用下方搜索继续核对。")
+                                        .font(.footnote).foregroundStyle(.secondary)
+                                }
+                            }
+                            if let suggestionsProblem { Text(L(suggestionsProblem)).foregroundStyle(.secondary) }
+                            Button("重新查找相关记忆") { Task { await loadSuggestions() } }.disabled(busy || suggestionsLoading)
+                        }
+                        Section("选择已确认记忆") {
+                            TextField("搜索已有记忆", text: $query).disabled(busy)
+                            if query.isEmpty && suggestions?.items.isEmpty != true {
+                                Button(browseAll ? "收起全部记忆" : "浏览全部已确认记忆") { browseAll.toggle() }.disabled(busy)
+                            }
+                            if !query.isEmpty || suggestions?.items.isEmpty == true || browseAll {
+                                Text("选择需要对照的记忆；列表不代表系统已判断它们存在冲突。")
+                                    .font(.footnote).foregroundStyle(.secondary)
+                                ForEach(loader.items.filter { $0.id != candidate.id }) { item in
+                                    Button { Task { await readPair(item.id) } } label: {
+                                        Text(verbatim: item.text).fixedSize(horizontal: false, vertical: true)
+                                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                                    }.buttonStyle(.plain).disabled(busy)
+                                }
+                                if loader.loading { ProgressView("正在读取") }
+                                else if loader.items.isEmpty && loader.problem == nil { Text("没有找到可对照的已确认记忆。") }
+                                if let failure = loader.problem {
+                                    Text(L(failure)).foregroundStyle(.secondary)
+                                    Button("重新读取") { Task { await loader.reload(client: workspace.client, kind: "memory", filter: filter) } }
+                                }
+                                if loader.nextCursor != nil {
+                                    Button("继续读取") { Task { await loader.more(client: workspace.client, kind: "memory", filter: filter) } }
+                                        .disabled(loader.loading || busy)
+                                }
+                            }
+                        }
                     }
-                    Section("核对后处理") {
-                        Text("请核对两边的原文与说话人，再决定是否重复、补充或替代。")
-                            .font(.callout).foregroundStyle(.secondary)
-                        decisionButton("重复，保留已有记忆", kind: "duplicate")
-                        decisionButton("作为补充，保留两条", kind: "supplement")
-                        decisionButton("用新建议替代旧记忆", kind: "replace")
+                    if busy { ProgressView("正在处理") }
+                    if let problem {
+                        Section {
+                            Text(L(problem)).foregroundStyle(.secondary)
+                            if let retryDecision {
+                                Button("重试同一次处理") { resolve(retryDecision) }.disabled(busy)
+                            }
+                            if let target {
+                                Button("重新读取新旧记忆") { Task { await readPair(target.id) } }.disabled(busy)
+                            }
+                        }.id("comparisonProblem")
                     }
-                } else {
-                    Section("选择已确认记忆") {
-                        TextField("搜索已有记忆", text: $query).disabled(busy)
-                        Text("选择需要对照的记忆；列表不代表系统已判断它们存在冲突。")
-                            .font(.footnote).foregroundStyle(.secondary)
-                        ForEach(loader.items.filter { $0.id != candidate.id }) { item in
-                            Button { Task { await readPair(item.id) } } label: {
-                                Text(verbatim: item.text).fixedSize(horizontal: false, vertical: true)
-                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            }.buttonStyle(.plain).disabled(busy)
-                        }
-                        if loader.loading { ProgressView("正在读取") }
-                        else if loader.items.isEmpty && loader.problem == nil { Text("没有找到可对照的已确认记忆。") }
-                        if let failure = loader.problem {
-                            Text(L(failure)).foregroundStyle(.secondary)
-                            Button("重新读取") { Task { await loader.reload(client: workspace.client, kind: "memory", filter: filter) } }
-                        }
-                        if loader.nextCursor != nil {
-                            Button("继续读取") { Task { await loader.more(client: workspace.client, kind: "memory", filter: filter) } }
-                                .disabled(loader.loading || busy)
-                        }
+                    Text("替代会确认新建议并停用旧记忆。补充会保留两条已确认记忆。重复只忽略新建议。原文与历史均保留。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }.formStyle(.grouped)
+                    .onChange(of: problem) { _, value in
+                        if value != nil { proxy.scrollTo("comparisonProblem", anchor: .top) }
                     }
-                }
-                if busy { ProgressView("正在处理") }
-                if let problem {
-                    Section {
-                        Text(L(problem)).foregroundStyle(.secondary)
-                        if let retryDecision {
-                            Button("重试同一次处理") { resolve(retryDecision) }.disabled(busy)
-                        }
-                        if let target {
-                            Button("重新读取新旧记忆") { Task { await readPair(target.id) } }.disabled(busy)
-                        }
-                    }
-                }
-                Text("替代会确认新建议并停用旧记忆。补充会保留两条已确认记忆。重复只忽略新建议。原文与历史均保留。")
-                    .font(.footnote).foregroundStyle(.secondary)
-            }.formStyle(.grouped)
+            }
                 #if os(iOS)
                 .navigationTitle(L("对照"))
                 .navigationBarTitleDisplayMode(.inline)
@@ -108,6 +161,7 @@ struct MemoryComparisonSheet: View {
                 } message: { Text("请核对上方新旧内容。两条记忆中任何一条被修改时，本次处理会停止。") }
         }
         .task(id: workspace.endpoint + filter.signature) { await loader.reload(client: workspace.client, kind: "memory", filter: filter) }
+        .task(id: workspace.endpoint + candidate.id.uuidString) { await loadSuggestions() }
         .onAppear { workspace.memoryNotice = nil }
         .interactiveDismissDisabled(busy)
         .sheet(item: $evidence) { item in
@@ -158,6 +212,16 @@ struct MemoryComparisonSheet: View {
             proposal = fresh; target = previous; requestID = UUID(); retryDecision = nil
             problem = fresh.state == "pending" && previous.state == "confirmed" ? nil : "新旧记忆已被修改，请重新读取并核对后再处理。"
         } catch { problem = error.localizedDescription }
+    }
+    private func loadSuggestions() async {
+        suggestions = nil; suggestionsProblem = nil
+        guard let client = workspace.client else { suggestionsProblem = "请先连接资料库。"; return }
+        suggestionsLoading = true
+        defer { suggestionsLoading = false }
+        do {
+            let result = try await client.read("v1/candidates/\(candidate.id.uuidString)/related", as: RelatedMemories.self)
+            if !Task.isCancelled { suggestions = result }
+        } catch { if !Task.isCancelled { suggestionsProblem = error.localizedDescription } }
     }
     private func resolve(_ kind: String) {
         guard let client = workspace.client, let target, let revision = incoming.memoryRevision,
