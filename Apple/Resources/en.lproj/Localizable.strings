@@ -1214,3 +1214,8 @@
 "交换副本已可用或正在补传，请重新检查接收状态。" = "The exchange copy is ready or being resent. Check its receipt status again.";
 
 "关闭" = "Close";
+
+"接收回执暂不可读。电脑会核对已保存的原音并重新提供回执。" = "The receipt cannot be read yet. The computer will verify its saved audio and provide the receipt again.";
+"接收回执与这条原音不一致。现有回执已保留，请在电脑核对。" = "The receipt does not match this recording. It has been preserved. Review it on the computer.";
+"接收回执正在变化，请稍后重新检查。" = "The receipt is changing. Check again shortly.";
+"电脑原音尚未通过校验，不能补写回执。请保留手机原音并在电脑核对。" = "The saved audio could not be verified, so a receipt cannot be restored. Keep the phone original and review the computer copy.";

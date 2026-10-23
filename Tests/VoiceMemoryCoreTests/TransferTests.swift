@@ -323,3 +323,94 @@ private func folderRecoveryFixture(_ root: URL) throws -> (RecordingLibrary, Rec
     #expect(FileManager.default.fileExists(atPath: package.path))
     #expect(!FileManager.default.fileExists(atPath: exchange.root.appendingPathComponent("VoiceMemory/recovery").path))
 }
+
+@Test func receiptRestorationUsesVerifiedLocalAudioEvenAfterTheExchangePackageDisappears() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (_, record, output, exchange) = try folderRecoveryFixture(root)
+    _ = try exchange.publish(output)
+    let desktop = RecordingLibrary(root: root.appendingPathComponent("desktop"))
+    let receipt = try RecordingIngress.accept(audio: output.audioURL, manifestData: Data(contentsOf: output.manifestURL), into: desktop)
+    try desktop.rename(id: record.id, title: "Keep this local title")
+    let metadataURL = desktop.root.appendingPathComponent(record.id.uuidString + ".json")
+    let metadata = try Data(contentsOf: metadataURL)
+    try FileManager.default.removeItem(at: exchange.package(record.id))
+    #expect(try exchange.restoreReceipt(receipt, from: desktop))
+    #expect(try exchange.receipt(record.id)?.audioSHA256 == receipt.audioSHA256)
+    #expect(try exchange.restoreReceipt(receipt, from: desktop) == false)
+    #expect(try Data(contentsOf: metadataURL) == metadata)
+    #expect(try exchange.packageIDs().isEmpty)
+    #expect(try desktop.load().recordings.count == 1)
+}
+
+@Test func receiptRestorationRetainsMalformedBytesAndDoesNotCreateRepeatedArchives() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (_, record, output, exchange) = try folderRecoveryFixture(root)
+    let desktop = RecordingLibrary(root: root.appendingPathComponent("desktop"))
+    let receipt = try RecordingIngress.accept(audio: output.audioURL, manifestData: Data(contentsOf: output.manifestURL), into: desktop)
+    try exchange.acknowledge(receipt)
+    let path = exchange.root.appendingPathComponent("VoiceMemory/receipts/" + record.id.uuidString + ".json")
+    let broken = Data("unfinished synthetic receipt".utf8)
+    try broken.write(to: path)
+    #expect(throws: FolderExchange.ReceiptError.self) { try exchange.receipt(record.id) }
+    #expect(try exchange.restoreReceipt(receipt, from: desktop))
+    let archives = try FileManager.default.contentsOfDirectory(at: exchange.root.appendingPathComponent("VoiceMemory/recovery/receipts"), includingPropertiesForKeys: nil)
+    #expect(archives.count == 1)
+    #expect(try Data(contentsOf: #require(archives.first)) == broken)
+    #expect(try exchange.restoreReceipt(receipt, from: desktop) == false)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: archives[0].deletingLastPathComponent().path).count == 1)
+}
+
+@Test func receiptRestorationNeverOverwritesADifferentDecodableReceipt() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (_, record, output, exchange) = try folderRecoveryFixture(root)
+    let desktop = RecordingLibrary(root: root.appendingPathComponent("desktop"))
+    let expected = try RecordingIngress.accept(audio: output.audioURL, manifestData: Data(contentsOf: output.manifestURL), into: desktop)
+    try exchange.acknowledge(TransferReceipt(recordingID: record.id, audioSHA256: String(repeating: "f", count: 64), nodeID: "another-receiver", durable: true))
+    let path = exchange.root.appendingPathComponent("VoiceMemory/receipts/" + record.id.uuidString + ".json")
+    let previous = try Data(contentsOf: path)
+    for _ in 0..<2 {
+        #expect(throws: FolderExchange.ReceiptError.self) { try exchange.restoreReceipt(expected, from: desktop) }
+        #expect(try Data(contentsOf: path) == previous)
+    }
+    #expect(!FileManager.default.fileExists(atPath: exchange.root.appendingPathComponent("VoiceMemory/recovery").path))
+}
+
+@Test func receiptRestorationCannotAcknowledgeDamagedLocalAudio() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (_, record, output, exchange) = try folderRecoveryFixture(root)
+    let desktop = RecordingLibrary(root: root.appendingPathComponent("desktop"))
+    let expected = try RecordingIngress.accept(audio: output.audioURL, manifestData: Data(contentsOf: output.manifestURL), into: desktop)
+    var damaged = try Data(contentsOf: desktop.audioURL(for: record)); damaged[damaged.count - 1] ^= 0xff
+    try damaged.write(to: desktop.audioURL(for: record))
+    #expect(throws: FolderExchange.ReceiptError.self) { try exchange.restoreReceipt(expected, from: desktop) }
+    #expect(try exchange.receipt(record.id) == nil)
+    #expect(try Data(contentsOf: desktop.audioURL(for: record)) == damaged)
+}
+
+@Test func receiptRestorationRejectsOutsideReceiptAndArchiveLinks() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (_, record, output, exchange) = try folderRecoveryFixture(root)
+    let desktop = RecordingLibrary(root: root.appendingPathComponent("desktop"))
+    let expected = try RecordingIngress.accept(audio: output.audioURL, manifestData: Data(contentsOf: output.manifestURL), into: desktop)
+    try exchange.acknowledge(expected)
+    let path = exchange.root.appendingPathComponent("VoiceMemory/receipts/" + record.id.uuidString + ".json")
+    let outside = root.appendingPathComponent("outside.json")
+    try FileManager.default.moveItem(at: path, to: outside)
+    let original = try Data(contentsOf: outside)
+    try FileManager.default.createSymbolicLink(at: path, withDestinationURL: outside)
+    #expect(throws: RecordingIngress.IngressError.self) { try exchange.restoreReceipt(expected, from: desktop) }
+    #expect(try Data(contentsOf: outside) == original)
+    try FileManager.default.removeItem(at: path)
+    let broken = Data("preserved invalid receipt".utf8); try broken.write(to: path)
+    let outsideFolder = root.appendingPathComponent("outside-folder")
+    try FileManager.default.createDirectory(at: outsideFolder, withIntermediateDirectories: true)
+    try FileManager.default.createSymbolicLink(at: exchange.root.appendingPathComponent("VoiceMemory/recovery"), withDestinationURL: outsideFolder)
+    #expect(throws: RecordingIngress.IngressError.self) { try exchange.restoreReceipt(expected, from: desktop) }
+    #expect(try Data(contentsOf: path) == broken)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: outsideFolder.path).isEmpty)
+}

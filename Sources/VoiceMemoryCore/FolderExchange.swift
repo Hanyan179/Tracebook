@@ -19,6 +19,17 @@ public struct FolderExchange: Sendable {
             }
         }
     }
+    public enum ReceiptError: Error, LocalizedError {
+        case unreadable, conflicting, changed, unverifiedOriginal
+        public var errorDescription: String? {
+            switch self {
+            case .unreadable: "接收回执暂不可读。电脑会核对已保存的原音并重新提供回执。"
+            case .conflicting: "接收回执与这条原音不一致。现有回执已保留，请在电脑核对。"
+            case .changed: "接收回执正在变化，请稍后重新检查。"
+            case .unverifiedOriginal: "电脑原音尚未通过校验，不能补写回执。请保留手机原音并在电脑核对。"
+            }
+        }
+    }
     public let root: URL
     public init(root: URL) { self.root = root }
     public var inbox: URL { root.appendingPathComponent("VoiceMemory/inbox") }
@@ -169,7 +180,50 @@ public struct FolderExchange: Sendable {
         let path = receipts.appendingPathComponent(id.uuidString + ".json")
         try safe(path)
         guard FileManager.default.fileExists(atPath: path.path) else { return nil }
-        return try JSONDecoder().decode(TransferReceipt.self, from: Data(contentsOf: path))
+        let data = try Data(contentsOf: path)
+        do { return try JSONDecoder().decode(TransferReceipt.self, from: data) }
+        catch { throw ReceiptError.unreadable }
+    }
+    /// The caller coordinates the selected folder. Healthy receipts are left unchanged.
+    /// Missing or undecodable receipts require a matching durable local recording first.
+    @discardableResult
+    public func restoreReceipt(_ expected: TransferReceipt, from library: RecordingLibrary) throws -> Bool {
+        guard expected.durable, expected.audioSHA256.count == 64,
+              expected.audioSHA256.allSatisfy({ $0.isHexDigit }) else { throw ReceiptError.unverifiedOriginal }
+        let path = receipts.appendingPathComponent(expected.recordingID.uuidString + ".json")
+        func readExisting() throws -> Data? {
+            try safe(path)
+            guard FileManager.default.fileExists(atPath: path.path) else { return nil }
+            let kind = try path.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey])
+            guard kind.isRegularFile == true, kind.isSymbolicLink != true else { throw RecordingIngress.IngressError.invalidManifest }
+            return try Data(contentsOf: path)
+        }
+        let previous = try readExisting()
+        if let previous, let actual = try? JSONDecoder().decode(TransferReceipt.self, from: previous) {
+            guard actual.durable, actual.recordingID == expected.recordingID,
+                  actual.audioSHA256 == expected.audioSHA256 else { throw ReceiptError.conflicting }
+            return false
+        }
+        let record = try library.recording(id: expected.recordingID)
+        let audio = library.audioURL(for: record)
+        guard record.isPlayable,
+              Int64((try audio.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 0) == record.byteCount,
+              try AudioDigest.sha256(audio) == expected.audioSHA256 else { throw ReceiptError.unverifiedOriginal }
+        guard try readExisting() == previous else { throw ReceiptError.changed }
+        if previous != nil {
+            let archive = root.appendingPathComponent("VoiceMemory/recovery/receipts")
+                .appendingPathComponent(expected.recordingID.uuidString + "-" + UUID().uuidString + ".json")
+            try safe(archive)
+            try FileManager.default.createDirectory(at: archive.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try FileManager.default.moveItem(at: path, to: archive)
+        }
+        try FileManager.default.createDirectory(at: receipts, withIntermediateDirectories: true)
+        let staging = receipts.appendingPathComponent(".receipt-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: staging) }
+        try JSONEncoder().encode(expected).write(to: staging, options: .atomic)
+        // Do not replace a different receipt that arrived during local verification.
+        try FileManager.default.moveItem(at: staging, to: path)
+        return true
     }
     public func acknowledge(_ receipt: TransferReceipt) throws {
         let path = receipts.appendingPathComponent(receipt.recordingID.uuidString + ".json")

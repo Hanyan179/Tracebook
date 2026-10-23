@@ -167,12 +167,23 @@ final class FolderSyncController: ObservableObject {
                     }
                 }
                 #else
-                let ids = try Self.coordinated(url, writing: false) { try FolderExchange(root: $0).packageIDs() }
+                let published = try Self.coordinated(url, writing: false) { try FolderExchange(root: $0).packageIDs() }
+                let received = current.filter { $0.target == target && $0.audioSHA256 != nil }.map(\.recordingID)
+                let ids = Set(published).union(received).sorted { $0.uuidString < $1.uuidString }
                 for id in ids {
                     var job = current.first { $0.target == target && $0.recordingID == id }
                         ?? TransferJob(recordingID: id, target: target)
-                    guard job.state != .delivered else { continue }
                     do {
+                        if let hash = job.audioSHA256 {
+                            let receipt = TransferReceipt(recordingID: id, audioSHA256: hash, nodeID: "desktop-library", durable: true)
+                            let repaired = try Self.coordinated(url, writing: true) {
+                                try FolderExchange(root: $0).restoreReceipt(receipt, from: library)
+                            }
+                            if repaired || job.state != .delivered {
+                                try job.acknowledge(receipt); try persist(job)
+                            }
+                            continue
+                        }
                         let package = try exchange.package(id)
                         let manifest = try Self.coordinated(package.appendingPathComponent("manifest.json"), writing: false) { try Data(contentsOf: $0) }
                         let temp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".caf")
@@ -182,7 +193,7 @@ final class FolderSyncController: ObservableObject {
                         }
                         let accepted = try RecordingIngress.accept(audio: temp, manifestData: manifest, into: library)
                         let receipt = TransferReceipt(recordingID: id, audioSHA256: accepted.audioSHA256, nodeID: "desktop-library", durable: true)
-                        try Self.coordinated(url, writing: true) { try FolderExchange(root: $0).acknowledge(receipt) }
+                        _ = try Self.coordinated(url, writing: true) { try FolderExchange(root: $0).restoreReceipt(receipt, from: library) }
                         job.audioSHA256 = receipt.audioSHA256; job.attempts += 1
                         try job.acknowledge(receipt); try persist(job)
                     } catch {
