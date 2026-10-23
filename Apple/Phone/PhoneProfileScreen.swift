@@ -7,10 +7,12 @@ struct PhoneProfileScreen: View {
     @AppStorage("sync.route") private var route = SyncRoute.current.rawValue
     @State private var tour = false
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.locale) private var locale
 
     private var recordingCount: Int { recorder.recordings.filter { $0.trashedAt == nil }.count }
     private var storage: String {
-        ByteCountFormatter.string(fromByteCount: recorder.recordings.reduce(0) { $0 + $1.byteCount }, countStyle: .file)
+        recorder.recordings.reduce(Int64(0)) { $0 + $1.byteCount }
+            .formatted(.byteCount(style: .file, spellsOutZero: false).locale(locale))
     }
     private var syncDetail: String {
         if route == SyncRoute.folder.rawValue {
