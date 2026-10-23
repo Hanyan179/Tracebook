@@ -10,6 +10,7 @@ struct RecordingLibraryScreen: View {
     @State private var displayLimit = 60
     @State private var query = ""
     @State private var searching = false
+    @FocusState private var searchFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var filter = 0
     @State private var importing = false
@@ -36,27 +37,8 @@ struct RecordingLibraryScreen: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 26) {
-                VStack(alignment: .leading, spacing: 24) {
-                    let headingLayout = typeSize.isAccessibilitySize
-                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
-                        : AnyLayout(HStackLayout(spacing: 8))
-                    headingLayout {
-                        HStack(spacing: 8) {
-                            BrandMark(size: 26).frame(width: 20).accessibilityHidden(true)
-                            Text("声记").font(.subheadline.weight(.semibold))
-                        }
-                        if !typeSize.isAccessibilitySize { Spacer() }
-                        Text(Date.now, format: .dateTime.month().day().weekday())
-                            .font(.caption).foregroundStyle(AppPalette.muted)
-                    }.padding(.top, 8)
-                    if !typeSize.isAccessibilitySize {
-                    Text("此刻，值得留下。")
-                        .font(.system(.largeTitle, weight: .semibold)).tracking(-1)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("一句想法，或一场长谈。")
-                        .font(.subheadline).foregroundStyle(AppPalette.muted)
-                    }
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 12) {
                     Button {
                         Task {
                             if !recorder.ready { await recorder.prepare() }
@@ -66,14 +48,13 @@ struct RecordingLibraryScreen: View {
                         HStack(spacing: 12) {
                             Image(systemName: "mic.fill").font(.system(size: 22)).accessibilityHidden(true)
                             Text("开始录音").fontWeight(.semibold)
-                            Spacer()
-                            if !typeSize.isAccessibilitySize { Image(systemName: "arrow.up.right").font(.subheadline).accessibilityHidden(true) }
-                        }.padding(.horizontal, 23).padding(.vertical, 20)
+                            Spacer(minLength: 0)
+                        }.padding(.horizontal, 20).padding(.vertical, 16).frame(minHeight: 56)
                             .foregroundStyle(AppPalette.actionText(scheme))
                             .background(AppPalette.actionFill(scheme), in: Capsule())
                     }.buttonStyle(QuietPressStyle()).disabled(recorder.busy || importBusy)
                         .accessibilityIdentifier("phone.record.toggle")
-                }.padding(.bottom, 18)
+                }.padding(.bottom, 4)
                 let actionsLayout = typeSize.isAccessibilitySize
                     ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
                     : AnyLayout(HStackLayout(spacing: 8))
@@ -81,10 +62,12 @@ struct RecordingLibraryScreen: View {
                     Text("最近记录").font(.headline)
                     if !typeSize.isAccessibilitySize { Spacer() }
                     HStack(spacing: 12) {
-                    Button {
-                        withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { searching.toggle(); if !searching { query = "" } }
-                    } label: { Image(systemName: "magnifyingglass").font(.system(size: 20)).frame(width: 44, height: 44) }
-                        .accessibilityLabel("搜索录音")
+                    if !searching {
+                        Button {
+                            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { searching = true }
+                        } label: { Image(systemName: "magnifyingglass").font(.system(size: 20)).frame(width: 44, height: 44) }
+                            .accessibilityLabel("搜索录音")
+                    }
                     Menu {
                         Button("导入音频", systemImage: "square.and.arrow.down") { importing = true }
                             .accessibilityIdentifier("phone.import")
@@ -98,11 +81,29 @@ struct RecordingLibraryScreen: View {
                     }
                 }.buttonStyle(QuietPressStyle())
                 if searching {
-                    HStack(spacing: 12) {
-                        Image(systemName: "magnifyingglass").foregroundStyle(AppPalette.muted)
-                        TextField("搜索标题", text: $query).textInputAutocapitalization(.never)
-                    }.padding(16).background(PhoneStyle.surface, in: RoundedRectangle(cornerRadius: 16))
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    let searchLayout = typeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                        : AnyLayout(HStackLayout(spacing: 8))
+                    searchLayout {
+                        HStack(spacing: 8) {
+                            Image(systemName: "magnifyingglass").foregroundStyle(AppPalette.muted)
+                            TextField("搜索标题", text: $query).textInputAutocapitalization(.never)
+                                .autocorrectionDisabled().submitLabel(.search).focused($searchFocused)
+                                .onAppear { searchFocused = true }
+                                .onSubmit { searchFocused = false }
+                                .accessibilityLabel("搜索标题")
+                            if !query.isEmpty {
+                                Button { query = ""; searchFocused = true } label: {
+                                    Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary).frame(width: 44, height: 44)
+                                }.buttonStyle(.plain).accessibilityLabel("清除搜索")
+                            }
+                        }.padding(.horizontal, 12).frame(minHeight: 48)
+                            .background(PhoneStyle.surface, in: RoundedRectangle(cornerRadius: 12))
+                        Button("取消") {
+                            searchFocused = false
+                            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { searching = false; query = "" }
+                        }.buttonStyle(.plain).frame(minWidth: 44, minHeight: 44)
+                    }.transition(.opacity)
                 }
                 if typeSize.isAccessibilitySize {
                     Picker("筛选录音", selection: $filter) {
@@ -113,10 +114,10 @@ struct RecordingLibraryScreen: View {
                     ForEach(Array(["全部", "录音", "导入"].enumerated()), id: \.offset) { index, name in
                         Button { filter = index } label: {
                             Text(LocalizedStringKey(name)).font(.caption.weight(filter == index ? .semibold : .regular))
-                                .padding(.horizontal, 18).padding(.vertical, 10)
+                                .padding(.horizontal, 18).padding(.vertical, 10).frame(minHeight: 44)
                                 .foregroundStyle(filter == index ? PhoneStyle.ink : .secondary)
                                 .background(filter == index ? PhoneStyle.surface : .clear, in: Capsule())
-                        }.buttonStyle(QuietPressStyle())
+                        }.buttonStyle(QuietPressStyle()).accessibilityAddTraits(filter == index ? .isSelected : [])
                     }
                     Spacer()
                   }
@@ -164,7 +165,7 @@ struct RecordingLibraryScreen: View {
                         Button("再看 60 条") { displayLimit += 60 }.font(.subheadline).frame(maxWidth: .infinity).padding(.vertical, 14)
                     }
                 }
-            }.padding(.horizontal, 26).padding(.top, 12).padding(.bottom, 32)
+            }.padding(.horizontal, 20).padding(.top, 12).padding(.bottom, 24)
         }
         .background(PhoneStyle.canvas)
         .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: filter)
