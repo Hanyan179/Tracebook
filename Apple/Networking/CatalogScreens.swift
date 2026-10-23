@@ -149,10 +149,10 @@ struct NodeMemoryView: View {
                                     Text(candidate.text).font(.body).lineSpacing(5).lineLimit(6)
                                         .frame(maxWidth: .infinity, alignment: .leading).foregroundStyle(.primary)
                                 }.buttonStyle(.plain).accessibilityLabel(LF("查看记忆：%@", candidate.text))
-                                HStack {
+                                (typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout())) {
                                     Label(LF("%d 条来源", candidate.sourceCount), systemImage: "link")
-                                    Spacer()
-                                    Button("整理分类") { editing = candidate }.buttonStyle(.plain)
+                                    if !typeSize.isAccessibilitySize { Spacer() }
+                                    Button("整理分类") { editing = candidate }.buttonStyle(.plain).frame(minHeight: 44)
                                 }.font(.caption).foregroundStyle(AppPalette.muted)
                                 if scope == "pending" {
                                     (typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout())) {

@@ -203,10 +203,10 @@ struct KnowledgeSourceReader: View {
                     }
                     if let error { Text(L(error)).font(.caption).foregroundStyle(.secondary); Button("重新读取") { Task { await read(reset: true) } } }
                     if loading { ProgressView() }
-                    if nextOffset != nil { Button("继续读取") { Task { await read(reset: false) } }.disabled(loading) }
+                    if nextOffset != nil, error == nil { Button("继续读取") { Task { await read(reset: false) } }.disabled(loading) }
                     if ["note", "recording", "input", "document"].contains(source.kind), loaded, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Divider()
-                        Button("提出记忆建议", systemImage: "bookmark.badge.plus") { proposing = true }.disabled(loading)
+                        Button("提出记忆建议", systemImage: "bookmark.badge.plus") { proposing = true }.disabled(loading || error != nil)
                         if proposalSaved { Text("已加入待确认记忆。").font(.caption).foregroundStyle(.secondary) }
                     }
                     if source.kind == "memory", loaded {
@@ -235,7 +235,7 @@ struct KnowledgeSourceReader: View {
         #endif
     }
     private func read(reset: Bool) async {
-        guard let client = workspace.client else { return }
+        guard let client = workspace.client else { error = "请先连接资料库。"; return }
         loading = true; error = nil; defer { loading = false }
         do {
             var query = ["offset": String(reset ? 0 : (nextOffset ?? 0)), "limit": "16000"]

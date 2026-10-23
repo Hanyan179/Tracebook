@@ -1,25 +1,6 @@
 import Combine
 import Foundation
 
-enum LibraryReference {
-    static func identity(_ url: URL) -> (kind: String, id: UUID)? {
-        let parts = url.path.split(separator: "/")
-        if url.scheme == "tracebook", url.host == "source", parts.count == 2,
-           ["note", "recording", "input", "document"].contains(String(parts[0])), let id = UUID(uuidString: String(parts[1])) {
-            return (String(parts[0]), id)
-        }
-        guard url.scheme == nil, let filename = parts.last, filename.hasSuffix(".md"),
-              let id = UUID(uuidString: String(filename.dropLast(3))) else { return nil }
-        if parts.count == 2, let kind = ["notes": "note", "transcripts": "recording", "documents": "document"][String(parts[0])] {
-            return (kind, id)
-        }
-        if parts.count == 5, parts[0] == "sources", parts[3] == "inputs", UUID(uuidString: String(parts[2])) != nil {
-            return ("input", id)
-        }
-        return nil
-    }
-}
-
 struct KnowledgeSource: Codable, Identifiable, Sendable {
     let id: String
     let kind: String
