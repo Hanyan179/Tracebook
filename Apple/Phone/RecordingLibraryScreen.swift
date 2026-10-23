@@ -11,6 +11,7 @@ struct RecordingLibraryScreen: View {
     @State private var query = ""
     @State private var searching = false
     @FocusState private var searchFocused: Bool
+    @Namespace private var filterSelection
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var filter = 0
     @State private var importing = false
@@ -103,7 +104,7 @@ struct RecordingLibraryScreen: View {
                             searchFocused = false
                             withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) { searching = false; query = "" }
                         }.buttonStyle(.plain).frame(minWidth: 44, minHeight: 44)
-                    }.transition(.opacity)
+                    }.transition(reduceMotion ? .opacity : .opacity.combined(with: .move(edge: .top)))
                 }
                 if typeSize.isAccessibilitySize {
                     Picker("筛选录音", selection: $filter) {
@@ -116,7 +117,15 @@ struct RecordingLibraryScreen: View {
                             Text(LocalizedStringKey(name)).font(.caption.weight(filter == index ? .semibold : .regular))
                                 .padding(.horizontal, 18).padding(.vertical, 10).frame(minHeight: 44)
                                 .foregroundStyle(filter == index ? PhoneStyle.ink : .secondary)
-                                .background(filter == index ? PhoneStyle.surface : .clear, in: Capsule())
+                                .background {
+                                    if filter == index {
+                                        if reduceMotion { Capsule().fill(PhoneStyle.surface) }
+                                        else {
+                                            Capsule().fill(PhoneStyle.surface)
+                                                .matchedGeometryEffect(id: "recording-filter", in: filterSelection)
+                                        }
+                                    }
+                                }
                         }.buttonStyle(QuietPressStyle()).accessibilityAddTraits(filter == index ? .isSelected : [])
                     }
                     Spacer()
