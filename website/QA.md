@@ -69,3 +69,13 @@ Eight static tests pass, including bilingual relative image sources and scenario
 - URL: https://tracebook.rare-raven-7022.chatgpt.site . Access remains owner-only; no sharing change. Prior Site versions 1 and 2 are retained as rollback points.
 - Deployment archive contains exactly 16 static output files and the hosting manifest; every file was byte-compared against the intended source. No application source, user archive, credentials or internal records are included.
 - Independent static design/content review converged after fixing timestamp provenance, same-source quotation continuity, small-text size and metadata contrast. Generated assets were viewed directly. Actual rendered desktop/mobile layout, keyboard behavior and screen-reader acceptance remain unverified because the private cloud browser is not signed in. Deployment success is not visual acceptance.
+
+## Interactive landing candidate (v5, not published)
+
+The reference at https://auday.ai/ was inspected in the cloud browser at 1180 × 757, including its actual sticky sequence, rotating life scenes, capture interaction, five full-height results, source navigation and lower-page pacing. The implementation uses original imagery and its own synthetic content, not reference images or UI copy. Three additional generated scene photographs were inspected directly.
+
+Local checks: nine Python structural/link/content/privacy/determinism checks and four Node pure-state tests pass. The states verify capture start/stop/reset, memory confirmation/deactivation/restoration (not unconfirmation), source filtering and sticky progress thresholds. These are not real-browser clicks. The updated optional browser test includes the new controls and remains unexecuted; only its Python syntax was checked.
+
+Read-only source review prompted fixes to dark-section text, hidden controls, elapsed demo timing, distinct CLI result panels, internal source focus/highlight, keyboard visibility in the source wall and mobile hero text space. No-JS uses native links/details with enhanced controls hidden; reduced motion disables pinning and automatic scene changes. These behaviors are inspected in source but still require real browser acceptance.
+
+The public owner-only URL still serves v4. V5 has not been submitted or published. No rendered v5 screenshots, mobile acceptance or visual parity claim is made. The private cloud browser currently encounters the Site authentication gate; permissions have not been expanded.

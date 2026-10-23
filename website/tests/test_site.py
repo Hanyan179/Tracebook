@@ -27,8 +27,11 @@ class SiteTests(unittest.TestCase):
                 self.assertEqual(len(p.ids),len(set(p.ids)))
                 for tag in ('h1','main','header','footer'):
                     self.assertEqual(sum(t==tag for t,a in p.tags),1)
-                self.assertFalse(any(t in ('script','iframe','form','input','video','audio') for t,a in p.tags))
+                self.assertFalse(any(t in ('iframe','form','input','video','audio') for t,a in p.tags))
                 self.assertFalse(any(k.startswith('on') for t,a in p.tags for k in a))
+                scripts=[a for t,a in p.tags if t=='script']
+                self.assertEqual(len(scripts),1 if path.name=='index.html' else 0)
+                for script in scripts:self.assertTrue(script.get('src','').endswith('assets/landing.js'));self.assertIn('defer',script)
                 self.assertEqual(next(a['lang'] for t,a in p.tags if t=='html'),'en' if path.parent.name=='en' else 'zh-CN')
                 self.assertEqual(sum(a.get('aria-current')=='page' for t,a in p.tags),1)
                 self.assertTrue(any(t=='a' and a.get('href')=='#main' for t,a in p.tags))
@@ -46,26 +49,26 @@ class SiteTests(unittest.TestCase):
                         if u.fragment:self.assertIn(u.fragment,Page(target.read_text()).ids)
     def test_content_boundaries(self):
         zh=(ROOT/'dist/index.html').read_text(); en=(ROOT/'dist/en/index.html').read_text()
-        for word in ['不会生成模型回答','真实自动转写仍在开发','尚无已签名','不是完整备份','真实模型质量尚未验收']:self.assertIn(word,zh)
-        for word in ['does not generate model answers','transcription is still in development','No signed','not a full backup','Real-model quality is not yet validated']:self.assertIn(word,en)
+        for word in ['不会生成模型回答','语音转写已接入，真实服务质量未验收','尚无已签名','不是完整备份','真实模型质量尚未验收']:self.assertIn(word,zh)
+        for word in ['does not generate model answers','real-service quality is not validated','No signed','not a full backup','Real-model quality is not yet validated']:self.assertIn(word,en)
         for path in self.paths:self.assertNotIn('声记',path.read_text())
     def test_illustration_labels_and_source_return(self):
-        for relative,label in [("index.html","非运行截图"),("en/index.html","not a running screenshot")]:
+        for relative,label in [("index.html","非运行截图"),("en/index.html","not an app screenshot")]:
             text=(ROOT/"dist"/relative).read_text()
             self.assertIn(label,text)
-            for cls in ("story-hero","tap-scene","calendar-spread","source-workbench","terminal-spread","memory-dossier","ownership-spread"):
+            for cls in ("black-stage","pin-section","day-carousel","capture-theatre","day-product","cli-experience","source-reflections","closing-columns"):
                 self.assertIn(cls,text)
             self.assertIn('href="#original-example"',text)
             self.assertIn('id="original-example"',text)
         for relative in ("privacy.html","en/privacy.html"):
             self.assertIn("ChatGPT Sites",(ROOT/"dist"/relative).read_text())
     def test_scenario_limits_and_photography(self):
-        for relative,terms in [("index.html",["次日","轻点背面","原音","不能录音、改文件、确认记忆","手动提出的候选"]),("en/index.html",["THE NEXT DAY","Back Tap","Not scheduled recording","cannot record, edit files, confirm memory","MANUALLY"])]:
+        for relative,terms in [("index.html",["次日","轻点背面","原音","不写文件、不批准记忆、不录音","手动候选"]),("en/index.html",["NEXT DAY","Back Tap","not scheduled recording","no file writes, memory approvals, recording","Manual candidate"])]:
             text=(ROOT/"dist"/relative).read_text()
             for term in terms:self.assertIn(term,text)
             self.assertIn("AI",text)
             self.assertIn("integrations/lifto-library/scripts/lifto.py",text)
-            self.assertEqual(sum(t=="picture" for t,a in Page(text).tags),3)
+            self.assertGreaterEqual(sum(t=="picture" for t,a in Page(text).tags),10)
     def test_language_switch_roundtrip(self):
         for path in self.paths:
             p=Page(path.read_text()); href=next(a['href'] for t,a in p.tags if a.get('class')=='language')
@@ -77,6 +80,20 @@ class SiteTests(unittest.TestCase):
         self.assertIn(':focus-visible',css); self.assertIn('prefers-reduced-motion:reduce',css)
         self.assertNotIn('@import',css); self.assertNotIn('url(',css)
         self.assertEqual((ROOT/'assets/brand-mark.png').read_bytes(),(ROOT.parent/'Apple/Resources/Brand.xcassets/BrandMark.imageset/brand-mark.png').read_bytes())
+    def test_interactive_demo_privacy_and_states(self):
+        js=(ROOT/'assets/landing.js').read_text()
+        for forbidden in ('fetch(', 'XMLHttpRequest', 'WebSocket', 'getUserMedia', 'localStorage', 'sessionStorage', 'sendBeacon'):
+            self.assertNotIn(forbidden,js)
+        for relative in ('index.html','en/index.html'):
+            page=Page((ROOT/'dist'/relative).read_text())
+            self.assertTrue(any('data-memory-reset' in a for t,a in page.tags))
+            self.assertTrue(any('data-scene-pause' in a for t,a in page.tags))
+            self.assertEqual(sum('data-story-tab' in a for t,a in page.tags),3)
+            self.assertEqual(sum('data-cli-step' in a for t,a in page.tags),3)
+            for tag,a in page.tags:
+                if tag=='button':self.assertEqual(a.get('type'),'button')
+        self.assertIn("'inactive'",js)
+        self.assertNotIn('撤销确认',(ROOT/'dist/index.html').read_text())
     def test_repeat_build_is_deterministic(self):
         first={str(p.relative_to(ROOT/'dist')):p.read_bytes() for p in (ROOT/'dist').rglob('*') if p.is_file()}
         site.build()
