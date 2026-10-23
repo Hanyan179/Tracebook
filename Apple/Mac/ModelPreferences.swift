@@ -114,13 +114,14 @@ private struct ModelProfileEditor: View {
     @State private var result: String?
     @State private var remove = false
     @State private var saving = false
+    @State private var speech: ModelRuntimeState?
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
                 Label(LocalizedStringKey(role.title), systemImage: role == .summary ? "text.badge.star" : "waveform")
                     .font(.headline)
                 Spacer()
-                Text(L(role == .summary ? (workspace.status?.analysisConfigured == true ? "文字模型已配置" : "等待配置") : "识别暂未启用")).font(.caption).foregroundStyle(.secondary)
+                Text(L(role == .summary ? (workspace.status?.analysisConfigured == true ? "文字模型已配置" : "等待配置") : (workspace.status?.transcriptionConfigured == true ? "语音服务已配置" : "等待配置"))).font(.caption).foregroundStyle(.secondary)
             }
             Picker("处理方式", selection: $draft.mode) {
                 Text("稍后配置").tag(ModelConfiguration.Mode.unconfigured)
@@ -134,6 +135,12 @@ private struct ModelProfileEditor: View {
                         Button("DeepSeek") { draft.endpoint = "https://api.deepseek.com"; draft.model = "deepseek-flash" }
                         Button("OpenAI") { draft.endpoint = "https://api.openai.com/v1"; draft.model = "" }
                         Text("模型名称可以自行修改。").font(.caption).foregroundStyle(.secondary)
+                    }.controlSize(.small)
+                } else {
+                    HStack {
+                        Text("快速填写").font(.caption).foregroundStyle(.secondary)
+                        Button("OpenAI") { draft.endpoint = "https://api.openai.com/v1"; draft.model = "gpt-transcribe" }
+                        Text("也可填写兼容的语音服务。").font(.caption).foregroundStyle(.secondary)
                     }.controlSize(.small)
                 }
                 LabeledContent("服务地址") {
@@ -152,7 +159,22 @@ private struct ModelProfileEditor: View {
                             .accessibilityIdentifier(role.rawValue + ".key")
                     }
                 }
-                Text(L(role == .summary ? "用于每日分析。生成时会把所选日期的文字发送到这个服务；密钥只交给本机处理进程，不写入资料文件。" : "语音识别尚未接入。这里仅保存配置，填写后不会自动转写。"))
+                Text(L(role == .summary ? "用于每日分析。生成时会把所选日期的文字发送到这个服务；密钥只交给本机处理进程，不写入资料文件。" : "用于录音转写。保存后可在原音页面选择一条录音发送；自动转写需要另行开启。"))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if role == .transcription {
+                Toggle("自动转写新接收的录音", isOn: Binding(get: { speech?.automatic ?? false }, set: { value in
+                    Task {
+                        saving = true; defer { saving = false }
+                        do {
+                            guard let client = workspace.client else { throw NodeFailure(message: "请先连接资料库。") }
+                            let data = try await client.sendData("v1/transcription-settings", method: "PUT", body: JSONEncoder().encode(["automatic": value]))
+                            speech = try JSONDecoder().decode(ModelRuntimeState.self, from: data)
+                            await workspace.refresh()
+                        } catch { result = error.localizedDescription }
+                    }
+                })).disabled(speech?.configured != true)
+                Text("开启后，新接收的原音会发送到已保存的语音服务，可能产生费用。历史录音需逐条选择。关闭会暂停队列，正在发送的一段可能仍会完成。")
                     .font(.caption).foregroundStyle(.secondary)
             }
             if draft.mode == .managed {
@@ -174,16 +196,18 @@ private struct ModelProfileEditor: View {
                         defer { saving = false }
                         do {
                             try preferences.save(draft, role: role, secret: secret); secret = ""
-                            if role == .summary { try await ModelRuntime.activate(workspace: workspace) }
+                            try await ModelRuntime.activate(workspace: workspace)
+                            await loadSpeech()
                             result = role == .summary
                                 ? (workspace.status?.analysisConfigured == true ? "配置已保存。可在每日记录中生成分析。" : "参数已保存，仍需配置可用的服务与密钥。")
-                                : "语音识别配置已保存，识别尚未启用。"
+                                : (workspace.status?.transcriptionConfigured == true ? "语音配置已保存，尚未进行真实服务验证。可在原音页面转写。" : "参数已保存，仍需配置可用的服务与密钥。")
                         } catch { result = error.localizedDescription }
                     }
                 }.buttonStyle(FilledButtonStyle()).disabled(saving).accessibilityIdentifier(role.rawValue + ".save")
             }
         }.padding(22).background(AppPalette.surface, in: RoundedRectangle(cornerRadius: 16)).disabled(saving)
             .onAppear { draft = preferences.profile(role) }
+            .task { await loadSpeech() }
             .onChange(of: draft.endpoint) { _, _ in secret = ""; result = nil }
             .onChange(of: draft.mode) { _, _ in secret = ""; result = nil }
             .confirmationDialog("移除这项模型密钥？", isPresented: $remove) {
@@ -191,11 +215,17 @@ private struct ModelProfileEditor: View {
                     Task {
                         do {
                             try preferences.removeSecret(role, draft)
-                            if role == .summary { try await ModelRuntime.activate(workspace: workspace) }
+                            try await ModelRuntime.activate(workspace: workspace)
+                            await loadSpeech()
                             result = "密钥已移除。"
                         } catch { result = error.localizedDescription }
                     }
                 }
             }
+    }
+    private func loadSpeech() async {
+        guard role == .transcription else { return }
+        do { speech = try await workspace.client?.read("v1/transcription-settings", as: ModelRuntimeState.self) }
+        catch { result = error.localizedDescription }
     }
 }

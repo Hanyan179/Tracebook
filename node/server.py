@@ -25,6 +25,11 @@ class Server(ThreadingHTTPServer):
         self.store, self.token = store, token
         self.upload_slots = threading.BoundedSemaphore(3)
         super().__init__(address, Handler)
+        self.store.transcription.start_worker()
+
+    def server_close(self):
+        self.store.transcription.close()
+        super().server_close()
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = 'HTTP/1.1'
@@ -122,6 +127,25 @@ class Handler(BaseHTTPRequestHandler):
                 if parts[3]=='commit':return self.send_json(200,store.documents.commit(parts[2]))
                 if parts[3]=='cancel':return self.send_json(200,store.documents.cancel(parts[2]))
             raise StoreError(404,'找不到这次资料导入。')
+        if parts in (['v1','transcription-session'], ['v1','transcription-settings']):
+            if not ipaddress.ip_address(self.client_address[0]).is_loopback:
+                raise StoreError(403,'请在资料库所在电脑配置语音服务。')
+            if self.command == 'GET':return self.send_json(200,store.transcription.state())
+            if parts[1] == 'transcription-session' and self.command == 'POST':
+                return self.send_json(200,store.transcription.configure(self.body_json()))
+            if parts[1] == 'transcription-settings' and self.command == 'PUT':
+                return self.send_json(200,store.transcription.set_automatic(self.body_json()))
+        if len(parts) in (3,4) and parts[:2] == ['v1','transcriptions']:
+            if len(parts) == 3:
+                if self.command == 'GET':return self.send_json(200,store.transcription.status(parts[2]))
+                if self.command == 'POST':
+                    self.body_json()
+                    return self.send_json(202,store.transcription.enqueue(parts[2]))
+            if len(parts) == 4 and parts[3] == 'pause' and self.command == 'POST':
+                self.body_json()
+                return self.send_json(200,store.transcription.pause(parts[2]))
+            if len(parts) == 4 and parts[3] == 'generated' and self.command == 'GET':
+                return self.send_json(200,store.transcription.generated(parts[2]))
         if parts==['v1','model-session']:
             if not ipaddress.ip_address(self.client_address[0]).is_loopback:raise StoreError(403,'请在资料库所在电脑配置模型。')
             if self.command=='POST':return self.send_json(200,store.analysis.configure(self.body_json()))

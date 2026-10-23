@@ -20,6 +20,7 @@ from analysis import DailyAnalysis, DEFAULT_RULES
 from local_sources import LocalSources
 from documents import DocumentImports
 from memories import Memories
+from transcription import Transcription
 
 MAX_AUDIO = 2 * 1024 * 1024 * 1024
 PROMPTS = {
@@ -128,6 +129,7 @@ class Store:
         self.knowledge = Knowledge(self)
         self.exchange = DataExchange(self)
         self.analysis = DailyAnalysis(self)
+        self.transcription = Transcription(self)
 
     def _ensure_transcript(self, rid):
         try:
@@ -140,7 +142,9 @@ class Store:
             pass
 
     def close(self):
-        if self.local_sources.close():
+        sources_closed = self.local_sources.close()
+        speech_closed = self.transcription.close()
+        if sources_closed and speech_closed:
             self.db.close()
 
     def setting(self, key):
@@ -241,6 +245,7 @@ class Store:
             self._ensure_transcript(rid)
             self.catalog.index_recording(rid)
             self.catalog.index_daily(self.day_for(manifest['recording']))
+            self.transcription.wake.set()
             return self.receipt(rid)
 
     def receipt(self, rid):
@@ -471,7 +476,9 @@ class Store:
         with self.lock:
             conflicts = [dict(r) for r in self.db.execute("SELECT path,state,generated_path AS generatedPath FROM exports WHERE root=? AND state='conflict'", (str(self.output),))]
             return {'nodeID': self.setting('nodeID'), 'timeZone': self.setting('timeZone'), 'outputDirectory': str(self.output),
-                    'recognitionEnabled': False, 'summaryMode': 'sourceDraft', 'conflicts': conflicts,
+                    'recognitionEnabled': self.transcription.state()['automatic'],
+                    'transcriptionConfigured': self.transcription.configuration is not None,
+                    'summaryMode': 'sourceDraft', 'conflicts': conflicts,
                     'analysisConfigured':hasattr(self,'analysis') and self.analysis.configuration is not None}
 
     def configure(self, values):
@@ -493,6 +500,7 @@ class Store:
                 files += list(previous.glob('.generated/sources/**/*.md')) + list(previous.glob('.history/sources/**/*.md'))
                 files += list(previous.glob('memory*.md')) + list(previous.glob('memories/*.json'))
                 files += list(previous.glob('.generated/memories/**/*.md')) + list(previous.glob('.history/memories/**/*.md'))
+                files += list(previous.glob('.generated/transcripts/**/*.md')) + list(previous.glob('.history/transcripts/**/*.md'))
                 for source in files:
                     if not source.is_file() or source.is_symlink():
                         continue
@@ -507,7 +515,7 @@ class Store:
                             with self.db:
                                 self.db.execute('INSERT OR REPLACE INTO exports VALUES (?,?,?,?,?,?,?)',
                                     (str(output), relative, row['last_hash'], row['semantic_hash'], row['state'],
-                                     row['generated_path'] if relative.startswith(('sources/','documents/','memories/')) else None, stamp()))
+                                     row['generated_path'] if relative.startswith(('sources/','documents/','memories/','transcripts/')) else None, stamp()))
             with self.db:
                 self.db.execute('UPDATE settings SET value=? WHERE key=?', (timezone, 'timeZone'))
                 self.db.execute('UPDATE settings SET value=? WHERE key=?', (str(output), 'outputDirectory'))

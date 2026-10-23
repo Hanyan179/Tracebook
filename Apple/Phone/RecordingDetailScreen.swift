@@ -6,6 +6,7 @@ struct RecordingDetailScreen: View {
     @EnvironmentObject private var playback: AudioPlayback
     @EnvironmentObject private var sync: NodeSyncController
     @EnvironmentObject private var folder: FolderSyncController
+    @EnvironmentObject private var workspace: NodeWorkspaceStore
     @AppStorage("sync.route") private var route = SyncRoute.current.rawValue
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.colorScheme) private var scheme
@@ -88,10 +89,19 @@ struct RecordingDetailScreen: View {
                         }.font(.subheadline)
                         if record.isPlayable {
                             VStack(alignment: .leading, spacing: 10) {
-                                Label("自动转写尚未启用", systemImage: "text.alignleft").font(.subheadline.weight(.medium))
-                                Text("当前保存的是原音。接收成功不代表已经生成文字。")
-                                    .font(.footnote).foregroundStyle(.secondary)
-                                NavigationLink("查看同步状态") { PhoneSyncScreen() }.font(.subheadline)
+                                if route == SyncRoute.direct.rawValue && workspace.connected && workspace.records.contains(where: { $0.id == record.id }) {
+                                    TranscriptionView(store: workspace, recordingID: record.id)
+                                    NavigationLink {
+                                        NodeDocumentEditor(store: workspace, path: "v1/recordings/\(record.id.uuidString)/transcript", title: "文字记录", hint: "结合原音校对文字，人工修改会保留。")
+                                    } label: {
+                                        Label("查看与编辑文字", systemImage: "text.alignleft")
+                                    }
+                                } else {
+                                    Label("原音保存在手机", systemImage: "waveform").font(.subheadline.weight(.medium))
+                                    Text("电脑接收后可进行转写。资料夹模式下，请在电脑查看文字与任务状态。")
+                                        .font(.footnote).foregroundStyle(.secondary)
+                                    NavigationLink("查看同步状态") { PhoneSyncScreen() }.font(.subheadline)
+                                }
                             }.frame(maxWidth: .infinity, alignment: .leading)
                         }
                         if let note = record.note {

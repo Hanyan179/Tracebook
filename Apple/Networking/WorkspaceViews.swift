@@ -81,8 +81,11 @@ struct NodeRecordView: View {
                 Text(currentRecord.date, format: .dateTime.year().month().day().hour().minute()).foregroundStyle(.secondary)
                 OrganizationBadges(organization: currentRecord.organization ?? .init(), categories: categories)
                 NodeAudioControls(store: store, record: currentRecord, playback: store.playback)
-                NavigationLink(value: LibraryRoute.document(path: "v1/recordings/\(record.id.uuidString)/transcript", title: "文字记录",
-                                       hint: "可以先粘贴或手动补充文字，语音识别方式稍后接入。")) {
+                TranscriptionView(store: store, recordingID: record.id)
+                NavigationLink {
+                    NodeDocumentEditor(store: store, path: "v1/recordings/\(record.id.uuidString)/transcript", title: "文字记录",
+                                       hint: "结合原音校对文字，人工修改会保留。")
+                } label: {
                     Label(L(currentRecord.textState == "ready" ? "查看与编辑文字" : "添加文字记录"), systemImage: "text.alignleft")
                         .frame(maxWidth: .infinity, minHeight: 40)
                 }.buttonStyle(FilledButtonStyle())

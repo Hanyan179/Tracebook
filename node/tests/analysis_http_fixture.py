@@ -1,5 +1,10 @@
 """Loopback HTTPS fixture, never a real model or a production transport override."""
 import json
+import email.parser
+import email.policy
+import hashlib
+import io
+import wave
 from pathlib import Path
 import ssl
 import subprocess
@@ -11,7 +16,7 @@ from unittest.mock import patch
 
 
 class LocalModelFixture:
-    def __init__(self, directory):
+    def __init__(self, directory, port=0):
         self.root = Path(directory)
         self.root.mkdir(parents=True, exist_ok=True)
         self.control = self.root/'response.json'
@@ -36,7 +41,10 @@ class LocalModelFixture:
                 pass
 
             def do_POST(self):
-                body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
+                raw_request = self.rfile.read(int(self.headers['Content-Length']))
+                if self.path.endswith('/audio/transcriptions'):
+                    return self.speech(raw_request)
+                body = json.loads(raw_request)
                 with fixture.lock:
                     fixture.requests.append({'path': self.path, 'body': body,
                                              'hasAuthorization': self.headers.get('Authorization') == 'Bearer synthetic-model-key'})
@@ -61,7 +69,37 @@ class LocalModelFixture:
                 self.end_headers()
                 self.wfile.write(raw)
 
-        self.server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+            def speech(self, raw_request):
+                message = email.parser.BytesParser(policy=email.policy.default).parsebytes(
+                    ('Content-Type: ' + self.headers['Content-Type'] + '\r\nMIME-Version: 1.0\r\n\r\n').encode() + raw_request)
+                body = {}
+                for part in message.iter_parts():
+                    name = part.get_param('name', header='content-disposition')
+                    data = part.get_payload(decode=True)
+                    if name == 'file':
+                        with wave.open(io.BytesIO(data), 'rb') as audio:
+                            body['audio'] = {'frames': audio.getnframes(), 'rate': audio.getframerate(),
+                                             'channels': audio.getnchannels(), 'width': audio.getsampwidth(),
+                                             'sha256': hashlib.sha256(audio.readframes(audio.getnframes())).hexdigest()}
+                        body['filename'] = part.get_filename()
+                    else:
+                        body[name] = data.decode()
+                with fixture.lock:
+                    fixture.requests.append({'path': self.path, 'body': body,
+                        'hasAuthorization': self.headers.get('Authorization') == 'Bearer synthetic-model-key'})
+                control = json.loads(fixture.control.read_text())
+                time.sleep(min(3, max(0, control.get('delay', 0))))
+                mode = control.get('mode')
+                code = {'unauthorized': 401, 'rate_limit': 429, 'unavailable': 503, 'redirect': 307}.get(mode, 200)
+                text = '' if mode == 'empty' else control.get('text', 'Synthetic transcript.')
+                raw = b'not-json' if mode == 'malformed' else json.dumps({'text': text}).encode()
+                self.send_response(code)
+                if mode == 'redirect': self.send_header('Location', fixture.endpoint + '/must-not-follow')
+                self.send_header('Content-Length', str(len(raw)))
+                self.end_headers()
+                self.wfile.write(raw)
+
+        self.server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
         context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         context.load_cert_chain(self.certificate, self.key)
         self.server.socket = context.wrap_socket(self.server.socket, server_side=True)

@@ -14,13 +14,16 @@ enum ModelRuntime {
             throw NodeFailure(message: "请在本机资料库配置文字模型。")
         }
         let preferences = ModelPreferences()
-        let profile = preferences.profile(.summary)
-        guard profile.mode == .apiKey, let secret = preferences.secret(.summary, profile), !secret.isEmpty else {
-            try await client.sendData("v1/model-session", method: "POST", body: Data(#"{"clear":true}"#.utf8))
-            await workspace.refresh(); return
+        for role in ModelRole.allCases {
+            let path = role == .summary ? "v1/model-session" : "v1/transcription-session"
+            let profile = preferences.profile(role)
+            if profile.mode == .apiKey, let secret = preferences.secret(role, profile), !secret.isEmpty {
+                let validated = try profile.validated()
+                try await client.send(path, method: "POST", body: ["endpoint": validated.endpoint, "model": validated.model, "key": secret])
+            } else {
+                try await client.sendData(path, method: "POST", body: Data(#"{"clear":true}"#.utf8))
+            }
         }
-        let validated = try profile.validated()
-        try await client.send("v1/model-session", method: "POST", body: ["endpoint": validated.endpoint, "model": validated.model, "key": secret])
         await workspace.refresh()
     }
 }

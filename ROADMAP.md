@@ -18,7 +18,7 @@
 | --- | --- | --- | --- |
 | P1（下一优先级） | 扩展文档格式 | [文字导入](node/documents.py)支持 UTF-8（统一编码）的 `.md`、`.markdown`、`.txt`、`.text`；单份 2 MB（兆字节） | PDF（便携文档）、办公文档、扫描件逐种适配；保留页码、作者未知状态和解析失败，原文件不被改写 |
 | P1（下一优先级） | 来源覆盖与大资料恢复 | [工具扫描](node/local_sources.py)支持普通及压缩历史、持续补扫和暂停；过大记录与活跃文件仍有边界 | 可定位跳过原因；选择性重新处理；恢复不重复计数；新增工具有明确格式版本与样本，避免把系统上下文归为本人输入 |
-| P1（下一优先级） | 真实语音转写 | [模型设置](Apple/Mac/ModelPreferences.swift)有语音角色；[运行时](Apple/Mac/ModelRuntime.swift)目前只激活文字整理 | 实际音频请求、任务持久化、重试与去重；输出 `transcripts/<id>.md`，保留原音和人工修改；语音与文字凭证分开 |
+| P1（下一优先级） | 真实语音转写 | [语音任务](node/transcription.py)及独立密钥接入已实现；分段、重试、恢复和人工修改保护已做合成端到端验证，真实服务质量未验收 | 真实短录音与长录音使用实际服务验收；检查分段边界文字、断网恢复和费用。输出 `transcripts/<id>.md`，保留原音和人工修改；不以测试响应替代识别质量 |
 | P1（下一优先级） | 个性化入口与片段标记 | [采集偏好](Apple/Phone/CapturePreferences.swift)和[快捷动作](Apple/Shared/RecordingIntent.swift)已有；系统绑定与手表入口未全部验收，片段标记未实现 | 不同入口共用采集、编号与队列；开始/停止不重复；标记保留准确时间和来源；短录音结束即可进入处理，不强制等整小时结束 |
 | P1（下一优先级） | 低操作负担的云同步 | [资料夹交换](Apple/Networking/FolderSyncController.swift)、[直连队列](Apple/Networking/NodeSyncController.swift)已有；专用云端容器及异地链路未验收 | 优先 iCloud（苹果云服务）与已有同步资料夹，再评估 WebDAV（网络文件协议）；配置一次后自动补传，断网与电脑休眠后恢复，状态真实 |
 | P1（下一优先级） | 普通用户安装 | [本机节点](Apple/Mac/LocalNodeController.swift)仍依赖 `/usr/bin/python3`；压缩解码器已随构建打包 | 干净机器无需开发工具即可运行；补齐运行时分发、签名与公证、升级和回滚；发布前分别验证苹果芯片与英特尔架构 |

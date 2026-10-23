@@ -260,7 +260,7 @@ struct MacDocumentReader: View {
                             } else if document != nil {
                                 ContentUnavailableView("还没有文字", systemImage: "text.alignleft",
                                     description: Text(path.hasSuffix("/transcript")
-                                        ? L("自动转写尚未接入。可先编辑文字，原音继续保留。")
+                                        ? L("尚未生成文字。可在原音页面启动转写，也可以手动补充。")
                                         : L("可以先添加文字。")))
                             } else if problem == nil { ProgressView().frame(maxWidth: .infinity) }
                             else { Button("重新读取") { Task { await load() } } }
@@ -405,6 +405,8 @@ private struct MacRecordingReader: View {
             if let problem = playback.problem ?? store.problem {
                 Text(L(problem)).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 24).padding(.bottom, 12)
             }
+            Divider()
+            TranscriptionView(store: store, recordingID: record.id).padding(.horizontal, 24).padding(.vertical, 12)
             Divider()
             MacDocumentReader(store: store, path: "v1/recordings/\(record.id.uuidString)/transcript", title: record.title)
         }

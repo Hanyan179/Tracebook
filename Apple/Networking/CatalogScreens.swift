@@ -22,7 +22,7 @@ struct NodeRecordsView: View {
                 }
                 LibraryFilters(filter: $filter, facets: loader.facets)
                 HStack {
-                    Text("\(loader.total) 条录音").font(.caption).foregroundStyle(AppPalette.muted)
+                    Text(loader.total == 1 ? L("1 条录音") : LF("%lld 条录音", loader.total)).font(.caption).foregroundStyle(AppPalette.muted)
                     Spacer()
                     Picker("文字", selection: $filter.state) {
                         Text("全部文字状态").tag("")
@@ -35,7 +35,7 @@ struct NodeRecordsView: View {
                         VStack(alignment: .leading, spacing: 12) {
                             SectionHeading(title: day)
                             ForEach(loader.items.filter { ($0.day ?? "日期未知") == day }) { record in
-                                NavigationLink(value: LibraryRoute.recording(record.id)) { row(record) }
+                                NavigationLink { NodeRecordView(store: store, record: record) } label: { row(record) }
                                     .buttonStyle(QuietPressStyle())
                                     .contextMenu { Button("整理分类", systemImage: "folder") { editing = record } }
                             }

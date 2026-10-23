@@ -61,6 +61,7 @@ struct NodeStatus: Codable, Sendable {
     let recognitionEnabled: Bool
     let summaryMode: String
     var analysisConfigured: Bool?
+    var transcriptionConfigured: Bool?
     let conflicts: [NodeConflict]
 }
 
@@ -146,9 +147,11 @@ final class NodeWorkspaceStore: ObservableObject {
             guard revision == configurationRevision else { return }
             let before = self.candidates.map { "\($0.id):\($0.memoryRevision ?? 0):\($0.state):\($0.text)" }.sorted()
             let after = result.3.items.map { "\($0.id):\($0.memoryRevision ?? 0):\($0.state):\($0.text)" }.sorted()
+            let oldText = self.records.map { "\($0.id):\($0.textState):\($0.excerpt ?? "")" }.sorted()
+            let newText = result.1.items.map { "\($0.id):\($0.textState):\($0.excerpt ?? "")" }.sorted()
             self.status = result.0; self.records = result.1.items; self.days = result.2.items
             self.candidates = result.3.items; self.overview = result.4
-            if before != after { libraryRevision = UUID() }
+            if before != after || oldText != newText { libraryRevision = UUID() }
             let wasConnected = connected
             connected = true; problem = nil
             if !wasConnected {
