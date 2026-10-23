@@ -20,6 +20,7 @@ from analysis import DailyAnalysis, DEFAULT_RULES
 from local_sources import LocalSources
 from documents import DocumentImports
 from memories import Memories
+from memory_files import MemoryFiles
 from memory_extraction import MemoryExtraction
 from transcription import Transcription
 
@@ -124,6 +125,7 @@ class Store:
             self._ensure_transcript(row['id'])
         self.local_sources = LocalSources(self)
         self.documents = DocumentImports(self)
+        self.memory_files = MemoryFiles(self)
         self.memories = Memories(self)
         self.catalog = Catalog(self)
         self.memories.migrate()
@@ -314,13 +316,16 @@ class Store:
             path = self._path(relative);raw = text.encode();sha = digest(raw)
             row = self.db.execute('SELECT * FROM exports WHERE root=? AND path=?', (str(self.output), relative)).fetchone()
             current = path.read_bytes() if path.exists() else None
+            if (row and row['state'] == 'reviewed' and row['semantic_hash'] == semantic
+                    and current is not None and digest(current) == row['last_hash']):
+                return dict(row)
             if (row and row['state'] == 'conflict' and row['semantic_hash'] == semantic
                 and row['generated_path'] and self._path(row['generated_path']).exists()
                 and current is not None and digest(current) != row['last_hash']):
                 return dict(row)
             if current == raw:
                 state, generated = 'current', None
-            elif current is not None and (not row or row['state'] == 'manual' or digest(current) != row['last_hash']):
+            elif current is not None and (not row or row['state'] in ('manual', 'reviewed') or digest(current) != row['last_hash']):
                 generated = '.generated/' + relative + '/' + sha[:16] + '.md'
                 self._atomic(self._path(generated), raw)
                 state = 'conflict'

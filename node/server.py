@@ -153,6 +153,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200,store.transcription.generated(parts[2]))
         if parts==['v1','memory-delivery'] and self.command=='GET':
             return self.send_json(200,store.memories.delivery_status())
+        if parts==['v1','memory-files','preview'] and self.command=='GET':
+            values=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+            return self.send_json(200,store.memory_files.preview(values.get('path',[''])[-1]))
+        if parts==['v1','memory-files','resolve'] and self.command=='POST':
+            return self.send_json(200,store.memory_files.resolve(self.body_json()))
         if parts==['v1','memory-delivery','retry'] and self.command=='POST':
             self.body_json()
             return self.send_json(200,store.memories.deliver_pending(force=True))

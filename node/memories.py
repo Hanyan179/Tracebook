@@ -178,14 +178,20 @@ class Memories:
             conflicts = [dict(r) for r in self.db.execute(
                 "SELECT path,state,generated_path AS generatedPath FROM exports WHERE root=? AND state='conflict' ORDER BY path",
                 (str(self.s.output),)) if r['path'] in names or r['path'].startswith('memories/')]
-            return {'state': ('failed' if row['problem'] else 'pending') if pending else ('review' if conflicts else 'ready'),
+            reviewed = [r['path'] for r in self.db.execute("SELECT path FROM exports WHERE root=? AND state='reviewed' ORDER BY path", (str(self.s.output),))]
+            file_pending = self.s.memory_files.pending()
+            return {'state': 'failed' if file_pending else (('failed' if row['problem'] else 'pending') if pending else ('review' if conflicts else 'reviewed' if reviewed else 'ready')),
+                    'reviewedFiles': reviewed,
                     'lastAttemptAt': row['last_attempt'],
                     'lastSuccessAt': row['last_success'] if same_root else None,
-                    'problem': row['problem'] if pending else None, 'conflicts': conflicts}
+                    'problem': '文件核对操作尚未完成。原件和处理记录保留，电脑运行时会重试，也可以立即重新检查。' if file_pending else row['problem'] if pending else None, 'conflicts': conflicts}
 
     def deliver_pending(self, force=False):
         """Only project saved data; never run a model or repeat a memory decision."""
         with self.s.lock:
+            self.s.memory_files.recover()
+            if self.s.memory_files.pending():
+                return self.delivery_status()
             if force or self.delivery_status()['state'] in ('pending', 'failed'):
                 try:
                     self.s.export_memory()

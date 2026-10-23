@@ -6,17 +6,19 @@ struct MemoryFileDelivery: Codable, Sendable, Equatable {
     let lastAttemptAt: String?
     let problem: String?
     let conflicts: [NodeConflict]
+    var reviewedFiles: [String]?
     var title: String {
         switch state {
         case "failed": "记忆文件写入失败"
         case "pending": "记忆文件待写入"
         case "review": "记忆文件需核对"
+        case "reviewed": "已保留核对后的文件"
         default: "记忆文件已更新"
         }
     }
     var symbol: String {
         switch state {
-        case "ready": "checkmark.circle"
+        case "ready", "reviewed": "checkmark.circle"
         case "pending": "clock"
         default: "exclamationmark.triangle"
         }
@@ -50,6 +52,7 @@ private struct MemoryFileDeliveryView: View {
     @State private var delivery: MemoryFileDelivery?
     @State private var busy = false
     @State private var problem: String?
+    @State private var reviewing: NodeConflict?
     private var value: MemoryFileDelivery? { delivery ?? store.status?.memoryDelivery }
     var body: some View {
         NavigationStack {
@@ -65,7 +68,9 @@ private struct MemoryFileDeliveryView: View {
                         else if value.state == "pending" {
                             Text("电脑运行时会自动补写已保存的记忆。也可以立即重试。")
                         } else if value.state == "review" {
-                            Text("人工修改的文件已保留，新内容已另存。请在电脑资料夹中核对，重试不会覆盖人工修改。")
+                            Text("人工修改的文件已保留，新内容已另存。打开下方文件核对两个版本，重试不会覆盖人工修改。")
+                        } else if value.state == "reviewed" {
+                            Text("已保留你选定的文件内容。资料库中的记忆条目未改变；有新的记忆变化时仍会另存并提示核对。")
                         } else {
                             Text("当前记忆文字和修订历史已写入电脑资料夹。此状态不代表云端同步完成。")
                         }
@@ -95,6 +100,7 @@ private struct MemoryFileDeliveryView: View {
                                         Text(verbatim: generated).font(.callout)
                                     }
                                 }.textSelection(.enabled)
+                                Button("核对两个版本") { reviewing = file }
                             }
                         }
                     }
@@ -115,6 +121,7 @@ private struct MemoryFileDeliveryView: View {
                 #endif
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("完成") { dismiss() } } }
         }.task { await run(retry: false) }
+            .sheet(item: $reviewing) { file in MemoryFileReviewSheet(store: store, path: file.path).appLanguage() }
             .onChange(of: store.status?.memoryDelivery) { _, value in delivery = value }
             #if os(macOS)
             .frame(minWidth: 520, idealWidth: 600, minHeight: 500)

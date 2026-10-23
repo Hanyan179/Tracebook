@@ -236,6 +236,12 @@
 			"path" = "Apple/Networking/MemoryFileDeliveryView.swift";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"C51140044B5837CD6741D123" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Apple/Networking/MemoryFileReviewView.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"FF9031C5A8F72BF8CC01E44F" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -534,6 +540,12 @@
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "text.script.python";
 			"path" = "node/memory_extraction.py";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"E29E971597F9C47DC7915F0E" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.script.python";
+			"path" = "node/memory_files.py";
 			"sourceTree" = "SOURCE_ROOT";
 		};
 		"4867BF3E4C2A0C8E222DFF23" = {
@@ -959,6 +971,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "13D0FAF4912E8D459A89900A";
 		};
+		"903249DA839CD9A17A0EF3B0" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "C51140044B5837CD6741D123";
+		};
 		"0C463CA4ACC10F51BA0F344E" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "FF9031C5A8F72BF8CC01E44F";
@@ -1051,6 +1067,7 @@
 				"1D9DA90C416CFD018CEB13E5",
 				"8742495DE55603493E3DD03C",
 				"7E906EEA4C418D752EE34C01",
+				"903249DA839CD9A17A0EF3B0",
 				"0C463CA4ACC10F51BA0F344E",
 				"A7F560833D69C2A25315F6B6",
 				"9297037E910737937986B93D",
@@ -1253,6 +1270,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "13D0FAF4912E8D459A89900A";
 		};
+		"44E9469D4CB709935A55B095" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "C51140044B5837CD6741D123";
+		};
 		"8F00E1ADE98B37C911D63075" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "FF9031C5A8F72BF8CC01E44F";
@@ -1377,6 +1398,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "E92421E41351C3920E88F232";
 		};
+		"0A10EFA849D3F1B9281EA3F4" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "E29E971597F9C47DC7915F0E";
+		};
 		"C4E902F4FB76D191ECAA748B" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "4867BF3E4C2A0C8E222DFF23";
@@ -1440,6 +1465,7 @@
 				"C3EAF45A5B6F3851DEAEE74A",
 				"42360BCF6173809E2F739C27",
 				"D965C26F980DC97422B1A610",
+				"44E9469D4CB709935A55B095",
 				"8F00E1ADE98B37C911D63075",
 				"F7A52B73D5957C1531F3559D",
 				"D6F2AFE815EB821B8791D058",
@@ -1485,6 +1511,7 @@
 				"308F62AED88CCDE4905D39DA",
 				"9804351DB257F46281DE5AB4",
 				"CCC58450EC192820F31E5CC7",
+				"0A10EFA849D3F1B9281EA3F4",
 				"C4E902F4FB76D191ECAA748B",
 				"C589B3882108B610C05B0992",
 				"FDF82AB1BC14848957B3FB53",
@@ -1668,6 +1695,7 @@
 				"BD79AECDF30996D39C303050",
 				"BFAC432251E9754B47641B09",
 				"C248024E82778C6D70638608",
+				"C51140044B5837CD6741D123",
 				"CBBEDA66E9953B060766D1F0",
 				"CC3514153310FFCCB18CE0E1",
 				"CDF927D47EE7412FBDCCACC0",
@@ -1694,6 +1722,7 @@
 				"8305DB94823FD416601AB578",
 				"EBEA2448E15C9F6BE44B69BD",
 				"E92421E41351C3920E88F232",
+				"E29E971597F9C47DC7915F0E",
 				"4867BF3E4C2A0C8E222DFF23",
 				"F133B230F9341A0CC84E4DEA",
 				"8B0D777D4EB6CA613E17E9D3",

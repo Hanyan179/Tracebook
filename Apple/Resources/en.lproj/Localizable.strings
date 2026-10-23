@@ -1356,3 +1356,80 @@
 "记忆文件状态" = "Memory file status";
 
 "最近检查" = "Last checked";
+
+"已保留核对后的文件" = "Reviewed files kept";
+
+"人工修改的文件已保留，新内容已另存。打开下方文件核对两个版本，重试不会覆盖人工修改。" = "Your edits are preserved and new content is saved separately. Open a file below to compare both versions. Retrying will not overwrite your edits.";
+
+"已保留你选定的文件内容。资料库中的记忆条目未改变；有新的记忆变化时仍会另存并提示核对。" = "Your chosen file content is preserved. Memory entries in the library are unchanged. Future memory changes will be saved separately for review.";
+
+"文件核对操作尚未完成。原件和处理记录保留，电脑运行时会重试，也可以立即重新检查。" = "File review has not finished. Originals and the operation are preserved. Your computer will retry, or you can check again now.";
+
+"核对两个版本" = "Compare both versions";
+
+"已保留你的文件" = "Your file has been kept";
+
+"已采用新生成的文件" = "The generated file has been adopted";
+
+"资料库中的记忆条目和来源均未改变。" = "Memory entries and sources in the library are unchanged.";
+
+"原文件备份位置" = "Original file backup";
+
+"这里只处理导出文件，不会将文件中的修改自动写回记忆条目。采用新版本前会备份原文件。" = "This only changes exported files. File edits are not written back to memory entries. The original file is backed up before adopting a new version.";
+
+"你的当前文件" = "Your current file";
+
+"新生成的文件" = "New generated file";
+
+"重新读取两个版本" = "Reload both versions";
+
+"核对文件" = "Compare files";
+
+"核对记忆文件" = "Compare memory files";
+
+"按所选方式处理文件？" = "Apply this choice to the file?";
+
+"确认保留我的文件" = "Keep my file";
+
+"备份原件并采用新版本" = "Back up original and adopt new version";
+
+"预览后文件或记忆内容有变化时，本次操作会停止，要求重新核对。" = "If a file or memory changes after this preview, the operation stops so you can review the new versions.";
+
+"保留我的文件" = "Keep my file";
+
+"采用新生成的文件" = "Use generated file";
+
+"空文件" = "Empty file";
+
+"只能核对记忆文字与修订历史文件。" = "Only memory text and revision history files can be reviewed.";
+
+"记忆文件位置不正确。" = "The memory file location is invalid.";
+
+"核对的文件已移走或不可读取，请重新检查文件交付。" = "A reviewed file was moved or cannot be read. Check file delivery again.";
+
+"这份文件过大，请在电脑资料夹核对；应用内每个版本最多读取 128 KB。" = "This file is too large. Review it in the computer folder; in-app review supports up to 128 KB per version.";
+
+"这份文件不是可读取的文字，请在电脑资料夹核对。" = "This file cannot be read as text. Review it in the computer folder.";
+
+"记忆文件仍有未完成的写入，请先重新检查并写入。" = "Memory files still have pending writes. Check and write them again first.";
+
+"这个文件的冲突状态已变化，请返回文件状态重新读取。" = "This file conflict has changed. Return to file status and reload.";
+
+"另存文件位置不正确，请重新检查文件交付。" = "The generated file location is invalid. Check file delivery again.";
+
+
+"请选择保留当前文件或采用另存版本，并先读取两个版本。" = "Read both versions, then choose to keep the current file or adopt the generated version.";
+
+"这次文件处理的内容或资料夹已变化，请重新核对。" = "This operation or its folder has changed. Review the files again.";
+
+"文件在处理期间发生变化，请重新核对两个版本。" = "A file changed during processing. Review both versions again.";
+
+"文件在预览后发生变化，请重新核对两个版本。" = "A file changed after the preview. Review both versions again.";
+
+"资料夹已变化，请重新核对。" = "The folder has changed. Review the files again.";
+
+"文件包含链接，请在电脑资料夹核对，应用不会替换链接指向的内容。" = "This file contains a link. Review it in the computer folder; the app will not replace the linked content.";
+
+"另存版本已被修改，不能直接采用。请在电脑资料夹核对并保留两个版本。" = "The generated copy was modified and cannot be adopted directly. Review and preserve both versions in the computer folder.";
+
+"节点暂时无法完成操作，原有资料保留。" = "The node could not complete this operation. Existing data is preserved.";
