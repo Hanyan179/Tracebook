@@ -541,3 +541,18 @@ class LocalSourceTests(unittest.TestCase):
         with self.assertRaises(StoreError) as error:source.commit(reread['id'])
         self.assertEqual(error.exception.status,409)
         self.assertEqual(self.store.db.execute('SELECT text FROM local_inputs').fetchone()[0],'First input.')
+
+    def test_removed_source_checkpoint_does_not_reappear_in_coverage_or_retry(self):
+        root,path=self.folder();self.write(path,[self.meta(),self.user()])
+        other=path.with_name('other.jsonl');self.write(other,[self.meta(),self.user('Other input.','other')])
+        preview,_=self.collect('codex',root);rid=preview['sourceID'];source=self.store.local_sources
+        held=path.with_suffix('.held');path.rename(held)
+        report=source.refresh(rid)
+        self.assertEqual(report['summary']['files'],1)
+        self.assertEqual(source.file_coverage(rid,{'attention':'false'})['total'],1)
+        report=source.retry_file(rid,self.file_status(rid,other))
+        self.assertEqual(report['summary']['files'],1);self.assertEqual(report['summary']['inputs'],2)
+        self.assertEqual(len(list((self.store.output/'sources').rglob('*.md'))),2)
+        held.rename(path);report=source.refresh(rid)
+        self.assertEqual(report['summary']['files'],2);self.assertEqual(report['summary']['inputs'],2)
+        self.assertEqual(report['added'],0)

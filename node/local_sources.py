@@ -418,6 +418,7 @@ class LocalSources:
         # at commit, rather than letting an in-place edit race the archive write.
         changed_states = {path: state for path, state in states.items() if old.get(path) != state or path == retry_path}
         return {'sourceID': source_id, 'provider': provider, 'directory': str(root), 'states': changed_states,
+                'removedPaths': sorted(set(old)-set(states)),
                 'events': clean, 'summary': summary, 'added': added, 'updated': updated,
                 'checks': checks, 'baseRevision': base_revision, 'automatic': automatic,
                 'config': self.config_summary(provider, root),
@@ -456,7 +457,7 @@ class LocalSources:
             self.s._atomic(folder/(rid+'.json'), json.dumps(batch, ensure_ascii=False).encode())
             with self.s.lock, self.s.db:
                 self.s.db.execute('INSERT INTO local_source_previews VALUES (?,?,?,?)', (rid, stamp(), 'preview', None))
-            return {'id': rid, 'changedFiles': len(batch['states']), **{k: batch[k] for k in ['sourceID','provider','directory','summary','added','updated','config','samples','automatic']}}
+            return {'id': rid, 'changedFiles': len(batch['states'])+len(batch['removedPaths']), **{k: batch[k] for k in ['sourceID','provider','directory','summary','added','updated','config','samples','automatic']}}
         finally:
             self.lock.release()
 
@@ -527,6 +528,10 @@ class LocalSources:
             with self.s.db:
                 for relative, state in batch['states'].items():
                     self.s.db.execute('INSERT OR REPLACE INTO local_source_files VALUES (?,?,?)', (batch['sourceID'], relative, json.dumps(state)))
+                # Drop obsolete checkpoints only. Archived input files, their original
+                # source paths, and memory evidence survive source-file removal.
+                for relative in batch.get('removedPaths', []):
+                    self.s.db.execute('DELETE FROM local_source_files WHERE source_id=? AND path=?', (batch['sourceID'], relative))
                 self.s.db.execute('UPDATE local_sources SET summary=?,revision=revision+1 WHERE id=?', (json.dumps(batch['summary']), batch['sourceID']))
             index = self.s.export('sources/'+batch['provider']+'/'+batch['sourceID']+'/index.json',
                           json.dumps({'provider': batch['provider'], 'statistics': batch['summary'], 'configuration': batch['config'],
