@@ -42,6 +42,8 @@ struct MemoryVersion: Decodable, Identifiable {
         switch action {
         case "confirmed": "确认"; case "rejected": "忽略"; case "disabled": "停用"
         case "restored": "恢复使用"; case "reopened": "重新审阅"; case "edited": "修订"
+        case "duplicate": "标记重复"; case "supplemented": "确认补充"
+        case "replacement": "确认替代"; case "superseded": "被新记忆替代"
         case "migrated": "保留旧记忆"; default: "提出建议"
         }
     }
@@ -59,6 +61,8 @@ struct MemoryContentView: View {
     @State private var busy = false
     @State private var error: String?
     @State private var source: MemoryEvidence?
+    @State private var comparing = false
+    @State private var related: NodeCandidate?
     private var value: NodeCandidate { current ?? initial }
     var body: some View {
         ScrollView {
@@ -85,12 +89,34 @@ struct MemoryContentView: View {
                     HStack(spacing: 14) { stateActions }
                     VStack(alignment: .leading, spacing: 14) { stateActions }
                 }.disabled(current == nil || busy)
+                if value.state == "pending" {
+                    Button("与已有记忆对照", systemImage: "rectangle.split.2x1") { comparing = true }
+                        .disabled(current == nil || busy)
+                }
                 if busy { ProgressView() }
                 if let error {
                     Text(L(error)).font(.callout).foregroundStyle(.secondary)
                     Button("重新读取") { Task { await load() } }
                 }
                 Divider()
+                if let relations = value.relations, !relations.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("记忆处理记录").font(.headline)
+                        ForEach(relations) { relation in
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(L(relation.title)).font(.subheadline.weight(.medium))
+                                Text(verbatim: relation.otherText).font(.callout).textSelection(.enabled)
+                                Button("打开关联记忆") { openRelated(relation.otherID) }.disabled(busy)
+                            }.frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        Text("这里保留处理时的内容，后续修订不会改写这条记录。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                        if value.relationsTruncated == true {
+                            Text("更早的处理记录保存在记忆修订文件中。").font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                    Divider()
+                }
                 Label("提出时的依据", systemImage: "link").font(.headline)
                 ForEach(value.evidence ?? [], id: \.identity) { evidence in
                     VStack(alignment: .leading, spacing: 12) {
@@ -147,6 +173,12 @@ struct MemoryContentView: View {
             .sheet(item: $editSnapshot) { snapshot in
                 MemoryEditSheet(workspace: workspace, candidate: snapshot) { current = $0; Task { await loadHistory() } }.appLanguage()
             }
+            .sheet(isPresented: $comparing) {
+                MemoryComparisonSheet(workspace: workspace, candidate: value) { updated in
+                    current = updated; Task { await loadHistory() }
+                }.appLanguage()
+            }
+            .sheet(item: $related) { item in MemoryDetail(store: workspace, candidate: item).appLanguage() }
     }
     @ViewBuilder private var stateActions: some View {
         switch value.state {
@@ -179,6 +211,15 @@ struct MemoryContentView: View {
         Task {
             defer { busy = false }
             do { current = try await workspace.updateMemory(value, state: state); await loadHistory() }
+            catch { self.error = error.localizedDescription }
+        }
+    }
+    private func openRelated(_ id: UUID) {
+        guard let client = workspace.client else { return }
+        busy = true
+        Task {
+            defer { busy = false }
+            do { related = try await client.read("v1/candidates/" + id.uuidString, as: NodeCandidate.self) }
             catch { self.error = error.localizedDescription }
         }
     }

@@ -4,6 +4,7 @@ import base64
 import datetime as dt
 import hashlib
 import json
+from contextlib import nullcontext
 import sqlite3
 import unicodedata
 import uuid
@@ -59,12 +60,12 @@ class Catalog:
             self.db.execute('DELETE FROM library_search WHERE entity=?',(key,))
             self.db.execute('INSERT INTO library_search(entity,body) VALUES (?,?)',(key,text))
 
-    def _upsert(self, kind, rid, title, body, date, state, data, mtime):
+    def _upsert(self, kind, rid, title, body, date, state, data, mtime, commit=True):
         day=date.astimezone(ZoneInfo(self.s.setting('timeZone'))).date().isoformat()
         raw=json.dumps(data,ensure_ascii=False,sort_keys=True)
         old=self.db.execute('SELECT data,mtime,day FROM library_items WHERE kind=? AND id=?',(kind,rid)).fetchone()
         if old and (old['data'],old['mtime'],old['day'])==(raw,mtime,day):return
-        with self.db:
+        with self.db if commit else nullcontext():
             self.db.execute('''INSERT INTO library_items(kind,id,title,body,sort_date,day,state,data,mtime) VALUES (?,?,?,?,?,?,?,?,?)
                 ON CONFLICT(kind,id) DO UPDATE SET title=excluded.title,body=excluded.body,sort_date=excluded.sort_date,day=excluded.day,state=excluded.state,data=excluded.data,mtime=excluded.mtime''',
                 (kind,rid,title,body,date.timestamp(),day,state,raw,mtime))
@@ -87,12 +88,12 @@ class Catalog:
                   'textState':'ready' if body.strip() else 'awaitingText'}
             self._upsert('recording',rid,data['title'],body,dt.datetime.fromisoformat(r['startedAt'].replace('Z','+00:00')),data['textState'],data,mtime)
 
-    def index_memory(self, cid):
+    def index_memory(self, cid, commit=True):
         with self.s.lock:
             row=self.db.execute('SELECT * FROM candidates WHERE id=?',(cid,)).fetchone()
             if not row:return
             data=self.s.memories.data(row)
-            self._upsert('memory',cid,'',row['text'],dt.datetime.fromisoformat(row['created_at'].replace('Z','+00:00')),row['state'],data,row['updated_at']+row['state']+row['text'])
+            self._upsert('memory',cid,'',row['text'],dt.datetime.fromisoformat(row['created_at'].replace('Z','+00:00')),row['state'],data,row['updated_at']+row['state']+row['text'],commit=commit)
 
     def index_note(self, rid):
         with self.s.lock:

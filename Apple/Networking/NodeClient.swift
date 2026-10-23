@@ -3,6 +3,7 @@ import Security
 
 struct NodeFailure: Error, LocalizedError {
     let message: String
+    var statusCode: Int? = nil
     var errorDescription: String? { L(message) }
 }
 
@@ -117,7 +118,7 @@ struct NodeClient: Sendable {
     static func validate(_ data: Data, _ response: URLResponse) throws {
         guard let response = response as? HTTPURLResponse, 200..<300 ~= response.statusCode else {
             let message = (try? JSONDecoder().decode(ServerError.self, from: data).error) ?? "节点暂时无法完成操作。"
-            throw NodeFailure(message: message)
+            throw NodeFailure(message: message, statusCode: (response as? HTTPURLResponse)?.statusCode)
         }
     }
     private struct ServerError: Decodable { let error: String }

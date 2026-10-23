@@ -42,6 +42,8 @@ struct NodeCandidate: Codable, Identifiable, Sendable {
     var memoryRevision: Int?
     var evidence: [MemoryEvidence]?
     var proposal: MemoryModelProposal?
+    var relations: [MemoryRelation]?
+    var relationsTruncated: Bool?
     var organization: LibraryOrganization?
     var day: String?
     var sourceCount: Int { evidence?.count ?? sources.count }

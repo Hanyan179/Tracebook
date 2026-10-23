@@ -338,6 +338,8 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts) == 4 and parts[:2] == ['v1', 'candidates'] and parts[3] == 'history' and self.command == 'GET':
             parameters = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             return self.send_json(200, store.memories.history(parts[2], parameters.get('before', [None])[-1]))
+        if len(parts) == 4 and parts[:2] == ['v1', 'candidates'] and parts[3] == 'resolve' and self.command == 'POST':
+            return self.send_json(200, store.memories.resolve(parts[2], self.body_json()))
         if len(parts) == 3 and parts[:2] == ['v1', 'prompts'] and parts[2] in ('daily-summary', 'memory-extraction'):
             relative = 'prompts/' + parts[2] + '.md'
             if self.command == 'GET':

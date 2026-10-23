@@ -18,6 +18,12 @@ class Memories:
             document TEXT NOT NULL, created_at TEXT NOT NULL, PRIMARY KEY(id,revision));
         CREATE TABLE IF NOT EXISTS memory_operations(
             id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, candidate_id TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS memory_relations(
+            id TEXT PRIMARY KEY, candidate_id TEXT NOT NULL, target_id TEXT NOT NULL,
+            kind TEXT NOT NULL, candidate_revision INTEGER NOT NULL,
+            target_revision INTEGER NOT NULL, created_at TEXT NOT NULL);
+        CREATE INDEX IF NOT EXISTS memory_relation_candidate ON memory_relations(candidate_id);
+        CREATE INDEX IF NOT EXISTS memory_relation_target ON memory_relations(target_id);
         ''')
         if 'proposal' not in {r[1] for r in self.db.execute('PRAGMA table_info(memory_details)')}:
             with self.db:self.db.execute('ALTER TABLE memory_details ADD COLUMN proposal TEXT')
@@ -160,6 +166,9 @@ class Memories:
             if not row:
                 self.error(404, '找不到这条记忆。')
             result = self.data(row)
+            links = self.relations(cid, limit=21)
+            result['relations'] = links[:20]
+            result['relationsTruncated'] = len(links) > 20
             for evidence in result['evidence']:
                 try:
                     _, _, version = self.source(evidence['kind'], evidence['id'])
@@ -168,6 +177,65 @@ class Memories:
                 except (StoreError, OSError, UnicodeError):
                     evidence['sourceStatus'] = 'unavailable'
             return result
+
+    def relations(self, cid, limit=None):
+        rows = self.db.execute('''SELECT * FROM memory_relations WHERE candidate_id=? OR target_id=?
+            ORDER BY created_at DESC,id DESC''' + (' LIMIT ?' if limit else ''),
+            [cid, cid] + ([limit] if limit else [])).fetchall()
+        values = []
+        for row in rows:
+            outgoing = row['candidate_id'] == cid
+            other = row['target_id'] if outgoing else row['candidate_id']
+            revision = row['target_revision'] if outgoing else row['candidate_revision']
+            snapshot = self.db.execute('SELECT document FROM memory_versions WHERE id=? AND revision=?', (other, revision)).fetchone()
+            values.append({'id': row['id'], 'kind': row['kind'], 'outgoing': outgoing,
+                           'otherID': other, 'otherRevision': revision,
+                           'otherText': json.loads(snapshot['document'])['text'] if snapshot else '',
+                           'createdAt': row['created_at']})
+        return values
+
+    def resolve(self, cid, values):
+        """An explicit human decision commits both states, history and receipt together."""
+        from store import canonical_id, stamp
+        with self.s.lock:
+            cid, target = canonical_id(cid), canonical_id(values.get('targetID'))
+            kind = values.get('relation')
+            if cid == target or not isinstance(kind, str) or kind not in ('duplicate', 'supplement', 'replace'):
+                self.error(400, '请选择另一条已确认记忆，并核对处理方式。')
+            operation = canonical_id(values.get('requestID'))
+            key, fingerprint, existing = self.operation(operation, ['resolve', cid, values])
+            if not existing:
+                current = []
+                for identifier, field, state in [(cid, 'memoryRevision', 'pending'), (target, 'targetRevision', 'confirmed')]:
+                    row = self.db.execute('SELECT * FROM candidates WHERE id=?', (identifier,)).fetchone()
+                    if not row:self.error(404, '找不到这条记忆。')
+                    value = self.data(row)
+                    revision = values.get(field)
+                    if not isinstance(revision, int) or isinstance(revision, bool) or revision != value['memoryRevision'] or value['state'] != state:
+                        self.error(409, '新旧记忆已被修改，请重新读取并核对后再处理。')
+                    self.s.catalog.index_memory(identifier)
+                    if self.s.catalog.detail('memory', identifier)['organization']['archived']:
+                        self.error(409, '记忆已归档，请重新选择。')
+                    current.append(value)
+                now = stamp()
+                with self.db:
+                    self.db.execute('INSERT INTO memory_relations VALUES (?,?,?,?,?,?,?)',
+                                    (key, cid, target, kind, current[0]['memoryRevision'], current[1]['memoryRevision'], now))
+                    self.db.execute('UPDATE candidates SET state=?,updated_at=? WHERE id=?',
+                                    ('rejected' if kind == 'duplicate' else 'confirmed', now, cid))
+                    self.db.execute('UPDATE memory_details SET revision=revision+1 WHERE id=?', (cid,))
+                    self.record_version(cid, {'duplicate': 'duplicate', 'supplement': 'supplemented', 'replace': 'replacement'}[kind], now)
+                    if kind == 'replace':
+                        self.db.execute("UPDATE candidates SET state='inactive',updated_at=? WHERE id=?", (now, target))
+                        self.db.execute('UPDATE memory_details SET revision=revision+1 WHERE id=?', (target,))
+                        self.record_version(target, 'superseded', now)
+                    self.s.catalog.index_memory(cid, commit=False)
+                    self.s.catalog.index_memory(target, commit=False)
+                    self.save_operation(key, fingerprint, cid)
+            # Retrying after an export/index error replays only these recoverable projections.
+            self.s.catalog.index_memory(cid); self.s.catalog.index_memory(target)
+            exported = self.s.export_memory()
+            return {**self.detail(cid), **exported}
 
     def history(self, cid, before=None):
         from store import canonical_id
@@ -239,6 +307,7 @@ class Memories:
             versions = [dict(r) for r in self.db.execute('SELECT revision,action,document,created_at FROM memory_versions WHERE id=? ORDER BY revision', (row['id'],))]
             for version in versions:
                 version['document'] = json.loads(version['document'])
-            text = json.dumps({'schemaVersion': 1, 'id': row['id'], 'versions': versions}, ensure_ascii=False, indent=2) + '\n'
+            text = json.dumps({'schemaVersion': 1, 'id': row['id'], 'versions': versions,
+                               'relations': self.relations(row['id'])}, ensure_ascii=False, indent=2) + '\n'
             results.append(self.s.export('memories/' + row['id'] + '.json', text, hashlib.sha256(text.encode()).hexdigest()))
         return results
