@@ -27,6 +27,7 @@ struct MacLibraryBrowser: View {
     private var problem: String? { switch kind { case .recording: recordings.problem; case .daily: days.problem; case .memory: memories.problem } }
     private var moreAvailable: Bool { switch kind { case .recording: recordings.nextCursor != nil; case .daily: days.nextCursor != nil; case .memory: memories.nextCursor != nil } }
     private var emptyTitle: String {
+        if kind == .memory { return MemoryEmptyState(scope: scope, filtered: filter.hasSearchFilters).title }
         if filter.hasSearchFilters || scope != "active" { return "没有匹配的资料" }
         switch kind { case .recording: return "还没有原音"; case .daily: return "还没有每日记录"; case .memory: return "还没有已确认的记忆" }
     }
@@ -182,6 +183,13 @@ struct MacLibraryBrowser: View {
             MacDailyReader(store: store, day: item).id(item.id)
         } else if kind == .memory, let item = memories.items.first(where: { $0.id.uuidString == selection }) {
             MacMemoryReader(store: store, item: item, categories: facets.categories).id(item.id)
+        } else if kind == .memory && !loading && problem == nil && total == 0 {
+            ScrollView {
+                MemoryEmptyView(filter: filter, scope: $scope, confirmedValue: "active", pendingCount: store.overview?.pendingMemoryCount)
+                    .frame(maxWidth: .infinity).padding(.vertical, 32)
+            }
+        } else if loading {
+            ProgressView("正在读取资料")
         } else {
             ContentUnavailableView {
                 Label(L(problem != nil ? "暂时无法读取资料" : loading ? "正在读取资料" : total == 0 ? emptyTitle : "选择一条资料"), systemImage: kind == .daily ? "calendar" : "text.book.closed")
@@ -195,9 +203,6 @@ struct MacLibraryBrowser: View {
                             .disabled(importBusy).keyboardShortcut("i", modifiers: [.command, .shift])
                     }
                     if let setupSync { Button("连接手机", action: setupSync) }
-                }
-                if kind == .memory && scope == "active" && (store.overview?.pendingMemoryCount ?? 0) > 0 {
-                    Button("查看待确认记忆") { scope = "pending" }.buttonStyle(FilledButtonStyle())
                 }
             }
         }

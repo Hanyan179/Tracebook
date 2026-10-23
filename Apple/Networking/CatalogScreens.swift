@@ -164,7 +164,11 @@ struct NodeMemoryView: View {
                         }
                     }
                 }
-                LibraryFooter(loader: loader) { Task { await loader.more(client: store.client, kind: "memory", filter: filter) } }
+                if !loader.loading && loader.problem == nil && loader.items.isEmpty {
+                    MemoryEmptyView(filter: filter, scope: $scope, pendingCount: store.overview?.pendingMemoryCount)
+                } else {
+                    LibraryFooter(loader: loader) { Task { await loader.more(client: store.client, kind: "memory", filter: filter) } }
+                }
             }.padding(16).frame(maxWidth: 1100).frame(maxWidth: .infinity)
         }.background(AppPalette.canvas)
             .task(id: store.endpoint + filter.signature + store.libraryRevision.uuidString) { await reload() }

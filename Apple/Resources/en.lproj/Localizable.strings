@@ -1247,3 +1247,15 @@
 "文件扫描状态已变化，请刷新后重试。" = "The scan state changed. Refresh before retrying.";
 "来源文件已移走或不可读取，请恢复文件后再试。" = "The source file was moved or cannot be read. Restore access and try again.";
 "请选择需要重新检查的会话文件。" = "Select a session file to recheck.";
+
+"没有匹配的记忆" = "No matching memories";
+"暂无待确认记忆" = "No memories awaiting review";
+"还没有停用的记忆" = "No inactive memories";
+"还没有忽略的建议" = "No dismissed suggestions";
+"还没有归档的记忆" = "No archived memories";
+"试试其他关键词，或清除当前筛选。" = "Try another search or clear the current filters.";
+"新的建议会出现在这里。已确认的内容保存在已确认记忆中。" = "New suggestions will appear here. Accepted content is saved in Confirmed memories.";
+"停用的记忆会保留来源与历史，需要时可以恢复。" = "Inactive memories keep their sources and history. You can restore them when needed.";
+"已忽略的建议会保留在这里，原文与历史不会删除。" = "Dismissed suggestions remain here. Their source text and history are preserved.";
+"归档的记忆会从日常列表收起，原文与历史仍保留。" = "Archived memories are hidden from everyday lists. Their source text and history are preserved.";
+"查看已确认记忆" = "View confirmed memories";

@@ -96,6 +96,53 @@ struct MemoryScopeControls: View {
     }
 }
 
+struct MemoryEmptyState {
+    let scope: String
+    let filtered: Bool
+    var title: String {
+        if filtered { return "没有匹配的记忆" }
+        switch scope {
+        case "pending": return "暂无待确认记忆"
+        case "inactive": return "还没有停用的记忆"
+        case "rejected": return "还没有忽略的建议"
+        case "archived": return "还没有归档的记忆"
+        default: return "还没有已确认的记忆"
+        }
+    }
+    var hint: String {
+        if filtered { return "试试其他关键词，或清除当前筛选。" }
+        switch scope {
+        case "pending": return "新的建议会出现在这里。已确认的内容保存在已确认记忆中。"
+        case "inactive": return "停用的记忆会保留来源与历史，需要时可以恢复。"
+        case "rejected": return "已忽略的建议会保留在这里，原文与历史不会删除。"
+        case "archived": return "归档的记忆会从日常列表收起，原文与历史仍保留。"
+        default: return "从录音文字、笔记、本地输入或导入资料提出建议，确认后保留为记忆。"
+        }
+    }
+}
+
+/// Search misses keep the existing filter controls; empty queues offer a return path.
+struct MemoryEmptyView: View {
+    let filter: LibraryFilter
+    @Binding var scope: String
+    var confirmedValue = "confirmed"
+    var pendingCount: Int?
+    private var state: MemoryEmptyState { .init(scope: scope, filtered: filter.hasSearchFilters) }
+    var body: some View {
+        ContentUnavailableView {
+            Label(L(state.title), systemImage: filter.hasSearchFilters ? "magnifyingglass" : "text.book.closed")
+        } description: {
+            Text(L(state.hint)).fixedSize(horizontal: false, vertical: true)
+        } actions: {
+            if !filter.hasSearchFilters && scope != confirmedValue {
+                Button("查看已确认记忆") { scope = confirmedValue }.buttonStyle(FilledButtonStyle())
+            } else if !filter.hasSearchFilters && (pendingCount ?? 0) > 0 {
+                Button("查看待确认记忆") { scope = "pending" }.buttonStyle(FilledButtonStyle())
+            }
+        }
+    }
+}
+
 struct LibraryFilters: View {
     @Binding var filter: LibraryFilter
     let facets: LibraryFacets
