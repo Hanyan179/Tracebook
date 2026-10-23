@@ -891,7 +891,7 @@
 "自动归档" = "Automatic archive";
 "已扫描 %d/%d 个会话文件" = "Scanned %d of %d conversation files";
 "还有 %@ 历史数据待扫描，当前统计只覆盖已读取部分。" = "%@ of history remains to scan. Statistics cover only the data read so far.";
-"跳过 %d 条过大或异常记录；%d 个文件暂不可读。" = "Skipped %d oversized or invalid records; %d files are currently unreadable.";
+"跳过 %d 条过大或异常记录；%d 个文件暂不可读。" = "Oversized or invalid records skipped: %d. Unreadable files: %d.";
 "%d 条输入中的常见凭证已隐藏。" = "Inputs with recognized credentials hidden: %d.";
 "会话文件达到本次扫描上限，统计不是全部历史。" = "The file limit was reached. These statistics do not cover the entire history.";
 "预览此目录" = "Preview folder";
@@ -987,7 +987,7 @@
 "请在资料库所在电脑导入资料。" = "Import documents on the computer that hosts this library.";
 "找不到这次资料导入。" = "This document import could not be found.";
 "已排除 %d 段系统或引用上下文。" = "Excluded %d system or reference context blocks.";
-"还有 %d 个会话文件待处理，部分数据大小尚不可知。" = "%d session files remain; some data sizes are not yet known.";
+"还有 %d 个会话文件待处理，部分数据大小尚不可知。" = "Pending session files: %d; some data sizes are not yet known.";
 
 "已停用" = "Inactive";
 "修订内容" = "Edit memory";
@@ -1219,3 +1219,31 @@
 "接收回执与这条原音不一致。现有回执已保留，请在电脑核对。" = "The receipt does not match this recording. It has been preserved. Review it on the computer.";
 "接收回执正在变化，请稍后重新检查。" = "The receipt is changing. Check again shortly.";
 "电脑原音尚未通过校验，不能补写回执。请保留手机原音并在电脑核对。" = "The saved audio could not be verified, so a receipt cannot be restored. Keep the phone original and review the computer copy.";
+
+"等待来源写入完成" = "Waiting for the source to finish writing";
+"查看扫描详情" = "Scan details";
+"%d 个文件的末条记录尚未完整，已保留读取位置。" = "Files with an incomplete final record: %d. Their reading positions are saved.";
+"文件暂不可读" = "File cannot be read yet";
+"末条记录尚未完整" = "Final record is incomplete";
+"尚未读完" = "More to read";
+"读取完成，有记录跳过" = "Reading finished with skipped records";
+"读取完成" = "Reading finished";
+"重新检查只读取所选文件，保留已归档输入和人工修改。" = "Rechecking reads only the selected file and preserves archived inputs and manual edits.";
+"仅显示待处理或有跳过的文件" = "Show only pending files and skipped records";
+"请先暂停历史导入，再单独检查文件。" = "Pause the history import before checking a single file.";
+"当前范围没有待处理或跳过的文件。" = "No pending files or skipped records in this view.";
+"读取完成表示已检查文件；助手回答、工具输出等内容仍按规则排除。" = "Reading finished means the files were checked. Assistant replies, tool output and other excluded content are not archived.";
+"请确认文件已下载完整且可读取，再重新检查。" = "Check that the file is fully downloaded and readable, then try again.";
+"已保留读取位置。来源写完后可继续检查；若长期不变，请检查源文件。" = "The reading position is saved. Recheck when writing finishes. If this persists, inspect the source file.";
+"本次按上限继续读取，未完成部分仍保留为待处理。" = "Each check continues up to the batch limit. Remaining content stays pending.";
+"%d 条记录超过大小上限。" = "Records exceeding the size limit: %d.";
+"%d 条记录格式不完整或无法解析。" = "Incomplete or unparseable records: %d.";
+"%d 条本人输入缺少有效时间，未推测归档日期。" = "Inputs with missing or invalid timestamps: %d. No date was guessed.";
+"%d 条记录未被识别，或旧扫描未区分原因。" = "Unrecognized records or skips without a detailed reason from an earlier scan: %d.";
+"重新检查此文件" = "Recheck this file";
+"扫描详情" = "Scan details";
+"已读取 %@ / %@" = "Read %@ / %@";
+"已读取 %@，总大小未知。" = "Read %@; total size unknown.";
+"文件扫描状态已变化，请刷新后重试。" = "The scan state changed. Refresh before retrying.";
+"来源文件已移走或不可读取，请恢复文件后再试。" = "The source file was moved or cannot be read. Restore access and try again.";
+"请选择需要重新检查的会话文件。" = "Select a session file to recheck.";

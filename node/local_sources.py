@@ -237,6 +237,7 @@ class LocalSources:
             return None
         if len(text) > MAX_INPUT:
             state['skipped'] += 1
+            state['oversized'] = state.get('oversized', 0)+1
             return None
         try:
             parsed = dt.datetime.fromisoformat(moment.replace('Z', '+00:00'))
@@ -262,7 +263,7 @@ class LocalSources:
                 'day': parsed.astimezone(ZoneInfo(self.s.setting('timeZone'))).date().isoformat(),
                 'text': text, 'source_path': relative, 'format': form, 'signature': sha(text), 'redacted': int(hidden)}
 
-    def scan(self, provider, directory):
+    def scan(self, provider, directory, retry_path=None, expected_state=None):
         root = self.validate_root(provider, directory)
         source_id = identifier(provider+'\0'+str(root))
         with self.s.lock:
@@ -272,16 +273,27 @@ class LocalSources:
             base_revision = source['revision'] if source else 0
             automatic = bool(source['automatic']) if source else False
         files, limited = self.files(provider, root)
+        if retry_path is not None:
+            # A retry can only revisit a file already inventoried in this source.
+            # Keep every other file's saved progress, even if it has since changed.
+            if retry_path not in old or sha(json.dumps(old[retry_path], sort_keys=True)) != expected_state:
+                self.error(409, '文件扫描状态已变化，请刷新后重试。')
+            files = [pair for pair in files if pair[0] == retry_path]
+            if not files:
+                self.error(409, '来源文件已移走或不可读取，请恢复文件后再试。')
         # Make small/recent conversations available before a multi-gigabyte tool log.
         files.sort(key=lambda pair: (max(0, old.get(pair[0], {}).get('size', pair[1].st_size)-old.get(pair[0], {}).get('offset', 0)) > SCAN_BYTES,
                                      -pair[1].st_mtime_ns))
         budget = SCAN_BYTES
         visited = 0
         messages = {}
-        states = {}
+        states = dict(old) if retry_path is not None else {}
         checks = {}
         for relative, info in files:
             state = dict(old.get(relative, {}))
+            if retry_path is not None and self.file_complete(state):
+                state = {}
+                self.readers.discard(root/relative)
             compressed = relative.endswith('.jsonl.zst')
             identity = str(info.st_dev)+':'+str(info.st_ino)
             rewritten = False
@@ -321,6 +333,7 @@ class LocalSources:
                 stream, close_stream = self.readers.open(path, info, state['offset'])
                 if stream:
                     state.pop('unreadable', None)
+                    state.pop('awaitingTail', None)
                     read_start = state['offset']
                     digest = hashlib.sha256()
                     while budget > 0:
@@ -342,6 +355,7 @@ class LocalSources:
                         if len(line) > LINE_BYTES:
                             digest.update(line)
                             state['skipped'] += 1
+                            state['oversized'] = state.get('oversized', 0)+1
                             state['offset'] = stream.tell()
                             state['discarding'] = not line.endswith(b'\n')
                             continue
@@ -351,6 +365,7 @@ class LocalSources:
                             if not line.endswith(b'\n') and not compressed:
                                 # A partly written record is retried from its start, never counted twice.
                                 state['offset'] = start
+                                state['awaitingTail'] = True
                                 break
                             if line.strip():
                                 state['malformed'] += 1
@@ -399,7 +414,9 @@ class LocalSources:
         updated = sum(i['id'] in merged and merged[i['id']]['signature'] != i['signature'] for i in clean)
         merged.update({i['id']: i for i in clean})
         summary = self.summarize(list(merged.values()), states, limited)
-        changed_states = {path: state for path, state in states.items() if old.get(path) != state}
+        # A full reread can end at the same checkpoint. Still verify its read bytes
+        # at commit, rather than letting an in-place edit race the archive write.
+        changed_states = {path: state for path, state in states.items() if old.get(path) != state or path == retry_path}
         return {'sourceID': source_id, 'provider': provider, 'directory': str(root), 'states': changed_states,
                 'events': clean, 'summary': summary, 'added': added, 'updated': updated,
                 'checks': checks, 'baseRevision': base_revision, 'automatic': automatic,
@@ -416,6 +433,7 @@ class LocalSources:
                 'pendingFiles': sum(not self.file_complete(s) for s in states.values()),
                 'compressedFiles': sum(bool(s.get('compressed')) for s in states.values()),
                 'unknownSizeFiles': sum(bool(s.get('unknownSize')) for s in states.values()),
+                'waitingFiles': sum(bool(s.get('awaitingTail')) and not s.get('unreadable') for s in states.values()),
                 'compressionAvailable': pyzstd is not None,
                 'pendingBytes': sum(max(0, s['size']-s['offset']) for s in states.values()),
                 'processedBytes': sum(s['offset'] for s in states.values()),
@@ -428,11 +446,11 @@ class LocalSources:
     def file_complete(state):
         return not state.get('unreadable') and (state.get('eof', False) if state.get('compressed') else state['offset'] >= state['size'])
 
-    def preview(self, values):
+    def preview(self, values, retry_path=None, expected_state=None):
         if not self.lock.acquire(blocking=False):
             self.error(409, '正在扫描本地资料，请稍后再试。')
         try:
-            batch = self.scan(values.get('provider'), values.get('directory'))
+            batch = self.scan(values.get('provider'), values.get('directory'), retry_path, expected_state)
             rid = str(uuid.uuid4()).upper()
             folder = self.s.data/'local-previews';folder.mkdir(exist_ok=True, mode=0o700)
             self.s._atomic(folder/(rid+'.json'), json.dumps(batch, ensure_ascii=False).encode())
@@ -552,6 +570,59 @@ class LocalSources:
                 self.error(404, '找不到这个资料来源。')
         return {'saved': True}
 
+    def file_coverage(self, rid, parameters):
+        """Local-only diagnostics contain paths and counts, never raw source contents."""
+        try:
+            limit = min(80, max(1, int(parameters.get('limit', 40))))
+            offset = max(0, int(parameters.get('offset', 0)))
+        except (ValueError, TypeError):
+            self.error(400, '读取位置不正确。')
+        with self.s.lock:
+            source = self.s.db.execute('SELECT summary FROM local_sources WHERE id=?', (rid,)).fetchone()
+            if source is None:self.error(404, '找不到这个资料来源。')
+            items = []
+            for row in self.s.db.execute('SELECT path,state FROM local_source_files WHERE source_id=? ORDER BY path', (rid,)):
+                state = json.loads(row['state'])
+                skipped = state.get('skipped', 0)
+                issues = {'oversized': state.get('oversized', 0), 'malformed': state.get('malformed', 0),
+                          'invalidDates': state.get('invalidDates', 0), 'other': max(0, skipped-state.get('oversized', 0))}
+                status = ('unreadable' if state.get('unreadable') else 'waiting' if state.get('awaitingTail') else
+                          'pending' if not self.file_complete(state) else 'skipped' if any(issues.values()) else 'complete')
+                if parameters.get('attention', 'true') != 'false' and status == 'complete':continue
+                items.append({'path': row['path'], 'stateVersion': sha(json.dumps(state, sort_keys=True)),
+                              'status': status, 'issues': issues, 'processedBytes': state['offset'],
+                              'totalBytes': None if state.get('unknownSize') else state['size']})
+            job = self.job(rid)
+            return {'items': items[offset:offset+limit], 'total': len(items),
+                    'nextOffset': offset+limit if len(items) > offset+limit else None,
+                    'summary': json.loads(source['summary']) or self.summarize([], {}),
+                    'importActive': bool(job and job['state'] in ('queued', 'running', 'pausing'))}
+
+    def retry_file(self, rid, values):
+        path, version = values.get('path'), values.get('stateVersion')
+        if not isinstance(path, str) or not isinstance(version, str):
+            self.error(400, '请选择需要重新检查的会话文件。')
+        with self.s.lock:
+            source = self.s.db.execute('SELECT * FROM local_sources WHERE id=?', (rid,)).fetchone()
+            if source is None:self.error(404, '找不到这个资料来源。')
+            job = self.job(rid)
+            if job and job['state'] in ('queued', 'running', 'pausing'):
+                self.error(409, '请先暂停历史导入，再单独检查文件。')
+            source = dict(source)
+        preview = self.preview(source, retry_path=path, expected_state=version)
+        try:
+            report = self.commit(preview['id'], preview['automatic'])
+            summary = report['summary']
+            if summary['pendingFiles'] == 0 or summary['pendingFiles'] == summary.get('waitingFiles', 0):
+                state = 'complete' if summary['pendingFiles'] == 0 else 'waiting'
+                with self.s.lock, self.s.db:
+                    self.s.db.execute("UPDATE local_source_jobs SET state=?,problem=NULL,updated_at=? WHERE source_id=? AND state NOT IN ('queued','running','pausing','paused')",
+                                      (state, stamp(), rid))
+            return report
+        except Exception:
+            self.cancel(preview['id'])
+            raise
+
     def inputs(self, rid, parameters):
         try:
             limit = min(80, max(1, int(parameters.get('limit', 40))))
@@ -644,6 +715,8 @@ class LocalSources:
                 after = report['summary']
                 if after.get('pendingFiles', 0) == 0:
                     state = 'complete'
+                elif after.get('pendingFiles') == after.get('waitingFiles'):
+                    state = 'waiting'
                 elif all(before.get(k) == after.get(k) for k in ('processedBytes', 'completedFiles', 'inputs')):
                     state, problem = 'blocked', '等待来源写入完成或修复不可读文件，可稍后继续导入。'
             except Exception as error:
@@ -664,8 +737,14 @@ class LocalSources:
                 continue
             try:
                 report = self.refresh(source['id'])
-                if report['summary'].get('pendingFiles', 0) > 0:
+                pending = report['summary'].get('pendingFiles', 0)
+                waiting = report['summary'].get('waitingFiles', 0)
+                if pending > waiting:
                     self.start_import(source['id'])
+                else:
+                    with self.s.lock, self.s.db:
+                        self.s.db.execute("UPDATE local_source_jobs SET state=?,problem=NULL,updated_at=? WHERE source_id=? AND state NOT IN ('queued','running','pausing','paused')",
+                                          ('waiting' if pending else 'complete', stamp(), source['id']))
             except Exception:
                 with self.s.lock, self.s.db:
                     self.s.db.execute('UPDATE local_sources SET problem=? WHERE id=?',

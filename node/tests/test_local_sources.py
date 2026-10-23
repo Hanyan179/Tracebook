@@ -347,6 +347,15 @@ class LocalSourceTests(unittest.TestCase):
             self.assertEqual(recent['items'][0]['provider'],'codex')
             self.assertEqual(recent['items'][0]['id'],page['items'][0]['id'])
             self.assertEqual(request('POST','/v1/local-sources/'+p['sourceID']+'/refresh',{})[1]['added'],0)
+            coverage_path='/v1/local-sources/'+p['sourceID']+'/files?attention=false'
+            self.assertEqual(request('GET',coverage_path,authenticated=False)[0],401)
+            with patch('server.ipaddress.ip_address') as address:
+                address.return_value.is_loopback=False
+                self.assertEqual(request('GET',coverage_path)[0],403)
+            code,coverage=request('GET',coverage_path)
+            self.assertEqual(code,200);self.assertEqual(coverage['total'],1)
+            code,report=request('POST','/v1/local-sources/'+p['sourceID']+'/retry-file',coverage['items'][0])
+            self.assertEqual(code,200);self.assertEqual(report['added'],0)
         finally:
             server.shutdown();server.server_close();thread.join(timeout=2)
 
@@ -411,3 +420,124 @@ class LocalSourceTests(unittest.TestCase):
         second=self.store.local_sources.inputs(None,{'limit':1,'offset':1})
         self.assertEqual(second['items'][0]['provider'],'claude')
         self.assertIsNone(second['nextOffset'])
+
+    def file_status(self, rid, path):
+        return next(item for item in self.store.local_sources.file_coverage(rid, {'attention':'false'})['items']
+                    if item['path'].endswith(path.name))
+
+    def test_file_coverage_has_reasons_pagination_and_no_source_text(self):
+        root,path=self.folder()
+        self.write(path,[self.meta(),self.user('Private fixture prose.'),self.user(time='invalid'),self.user('x'*100,'too-long')])
+        with path.open('a') as stream:stream.write('{invalid}\n')
+        healthy=path.with_name('healthy.jsonl');self.write(healthy,[self.meta(),self.user('Second input.','second')])
+        with patch('local_sources.MAX_INPUT',64):preview,_=self.collect('codex',root)
+        rid=preview['sourceID'];source=self.store.local_sources
+        coverage=source.file_coverage(rid,{})
+        self.assertEqual(coverage['total'],1)
+        item=coverage['items'][0]
+        self.assertEqual(item['status'],'skipped')
+        self.assertEqual(item['issues'],{'oversized':1,'invalidDates':1,'malformed':1,'other':0})
+        self.assertNotIn('Private fixture prose',json.dumps(coverage))
+        first=source.file_coverage(rid,{'attention':'false','limit':1})
+        self.assertEqual(first['total'],2);self.assertEqual(first['nextOffset'],1)
+        second=source.file_coverage(rid,{'attention':'false','limit':1,'offset':1})
+        self.assertEqual(second['items'][0]['status'],'complete');self.assertIsNone(second['nextOffset'])
+        with self.assertRaises(StoreError):source.file_coverage(rid,{'limit':'invalid'})
+
+    def test_selected_file_retry_preserves_other_progress_edits_and_source_bytes(self):
+        root,path=self.folder();self.write(path,[self.meta(),self.user('Original input.')])
+        other=path.with_name('other.jsonl');self.write(other,[self.meta(),self.user('Other input.','other')])
+        preview,_=self.collect('codex',root);rid=preview['sourceID'];source=self.store.local_sources
+        before_other=dict(self.store.db.execute('SELECT * FROM local_source_files WHERE source_id=? AND path LIKE ?', (rid,'%other.jsonl')).fetchone())
+        output=self.store.db.execute("SELECT id FROM local_inputs WHERE text='Original input.'").fetchone()[0]
+        archived=self.store.output/('sources/codex/'+rid+'/inputs/'+output+'.md')
+        archived.write_text('Manual correction stays here.')
+        self.write(path,[self.meta(),self.user('Revised input.'),self.user('Recovered input.','recovered')])
+        self.write(other,[self.user('Not selected this time.','not-selected')],'a')
+        original={p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (path,other)}
+        report=source.retry_file(rid,self.file_status(rid,path))
+        self.assertEqual(report['added'],1);self.assertEqual(report['updated'],1);self.assertEqual(report['conflicts'],1)
+        self.assertEqual(report['summary']['inputs'],3)
+        self.assertEqual(archived.read_text(),'Manual correction stays here.')
+        after_other=dict(self.store.db.execute('SELECT * FROM local_source_files WHERE source_id=? AND path LIKE ?', (rid,'%other.jsonl')).fetchone())
+        self.assertEqual(before_other,after_other)
+        self.assertEqual(original,{p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in (path,other)})
+        again=source.retry_file(rid,self.file_status(rid,path))
+        self.assertEqual(again['added'],0);self.assertEqual(again['updated'],0)
+        self.assertEqual(self.store.db.execute('SELECT count(*) FROM local_inputs').fetchone()[0],3)
+        self.assertEqual(self.store.db.execute('SELECT count(*) FROM candidates').fetchone()[0],0)
+
+    def test_selected_file_retry_rejects_stale_unknown_and_symlink_paths(self):
+        root,path=self.folder();self.write(path,[self.meta(),self.user()])
+        preview,_=self.collect('codex',root);rid=preview['sourceID'];source=self.store.local_sources
+        stale=self.file_status(rid,path)
+        self.write(path,[self.user('Appended input.','append')],'a');source.refresh(rid)
+        with self.assertRaises(StoreError) as error:source.retry_file(rid,stale)
+        self.assertEqual(error.exception.status,409)
+        for bad in ('../outside.jsonl','sessions/not-in-inventory.jsonl',str(path)):
+            with self.assertRaises(StoreError):source.retry_file(rid,{'path':bad,'stateVersion':stale['stateVersion']})
+        latest=self.file_status(rid,path);path.rename(path.with_suffix('.saved'))
+        outside=self.root/'outside.jsonl';self.write(outside,[self.meta(),self.user('Outside input.','outside')])
+        path.symlink_to(outside)
+        with self.assertRaises(StoreError):source.retry_file(rid,latest)
+        self.assertEqual(self.store.db.execute('SELECT count(*) FROM local_inputs').fetchone()[0],2)
+
+    def test_unfinished_tail_is_waiting_and_recovers_after_restart(self):
+        root,path=self.folder();self.write(path,[self.meta(),self.user()])
+        tail=json.dumps(self.user('Completed later.','tail'))+'\n'
+        with path.open('a') as stream:stream.write(tail[:50])
+        preview,report=self.collect('codex',root,True);rid=preview['sourceID']
+        self.assertEqual(report['summary']['waitingFiles'],1)
+        self.assertEqual(self.file_status(rid,path)['status'],'waiting')
+        self.store.local_sources.start_import(rid);self.wait_job(rid,'waiting')
+        self.store.close();self.store=Store(self.root/'node')
+        self.assertEqual(self.file_status(rid,path)['status'],'waiting')
+        with path.open('a') as stream:stream.write(tail[50:])
+        self.store.local_sources.catch_up()
+        summary=self.store.local_sources.listing()[0]['summary']
+        self.assertEqual(summary['inputs'],2);self.assertEqual(summary['waitingFiles'],0)
+        self.assertEqual(summary['skippedRecords'],0);self.assertEqual(summary['pendingFiles'],0)
+        self.assertEqual(self.store.local_sources.job(rid)['state'],'complete')
+
+    def test_selected_large_file_continues_in_bounded_batches(self):
+        root,path=self.folder();self.write(path,[self.meta(),{'type':'tool','content':'x'*5000},self.user()])
+        with patch('local_sources.SCAN_BYTES',600),patch('local_sources.LINE_BYTES',512):
+            preview,report=self.collect('codex',root);rid=preview['sourceID']
+            self.assertGreater(report['summary']['pendingFiles'],0)
+            for _ in range(20):
+                before=self.file_status(rid,path)
+                report=self.store.local_sources.retry_file(rid,before)
+                self.assertGreater(self.file_status(rid,path)['processedBytes'],before['processedBytes'])
+                if report['summary']['pendingFiles']==0:break
+        self.assertEqual(report['summary']['inputs'],1)
+        self.assertEqual(report['summary']['skippedRecords'],1)
+        self.assertEqual(report['summary']['pendingFiles'],0)
+
+    def test_legacy_skip_counters_stay_visible_without_invented_reasons(self):
+        root,path=self.folder();self.write(path,[self.meta(),self.user()])
+        preview,_=self.collect('codex',root);rid=preview['sourceID']
+        row=self.store.db.execute('SELECT * FROM local_source_files WHERE source_id=?',(rid,)).fetchone()
+        state=json.loads(row['state']);state['skipped']=3;state.pop('oversized',None)
+        with self.store.db:self.store.db.execute('UPDATE local_source_files SET state=? WHERE source_id=?',(json.dumps(state),rid))
+        item=self.file_status(rid,path)
+        self.assertEqual(item['status'],'skipped');self.assertEqual(item['issues']['other'],3)
+        self.assertEqual(item['issues']['oversized'],0)
+
+    def test_selected_retry_refuses_active_import(self):
+        root,path=self.folder();self.write(path,[self.meta(),self.user()])
+        preview,_=self.collect('codex',root);rid=preview['sourceID']
+        with patch.object(self.store.local_sources,'resume_jobs'):
+            self.store.local_sources.start_import(rid)
+        with self.assertRaises(StoreError) as error:self.store.local_sources.retry_file(rid,self.file_status(rid,path))
+        self.assertEqual(error.exception.status,409)
+
+    def test_retry_revalidates_read_bytes_even_if_checkpoint_is_unchanged(self):
+        root,path=self.folder();self.write(path,[self.meta(),self.user('First input.')])
+        preview,_=self.collect('codex',root);rid=preview['sourceID'];source=self.store.local_sources
+        item=self.file_status(rid,path)
+        reread=source.preview({'provider':'codex','directory':str(root)},item['path'],item['stateVersion'])
+        self.assertEqual(reread['changedFiles'],1)
+        path.write_text(path.read_text().replace('First input.','Other input.'))
+        with self.assertRaises(StoreError) as error:source.commit(reread['id'])
+        self.assertEqual(error.exception.status,409)
+        self.assertEqual(self.store.db.execute('SELECT text FROM local_inputs').fetchone()[0],'First input.')

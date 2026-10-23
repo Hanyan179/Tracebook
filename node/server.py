@@ -112,6 +112,11 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts)==4 and parts[3]=='inputs' and self.command=='GET':
                 parameters={k:v[-1] for k,v in urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
                 return self.send_json(200,store.local_sources.inputs(parts[2],parameters))
+            if len(parts)==4 and parts[3]=='files' and self.command=='GET':
+                parameters={k:v[-1] for k,v in urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
+                return self.send_json(200,store.local_sources.file_coverage(parts[2],parameters))
+            if len(parts)==4 and parts[3]=='retry-file' and self.command=='POST':
+                return self.send_json(200,store.local_sources.retry_file(parts[2],self.body_json()))
             raise StoreError(404,'找不到这个资料来源操作。')
         if parts[:2] == ['v1','documents']:
             if not ipaddress.ip_address(self.client_address[0]).is_loopback:

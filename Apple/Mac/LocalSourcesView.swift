@@ -11,6 +11,7 @@ private struct LocalSourceSummary: Decodable, Sendable {
     let pendingFiles: Int?
     let compressedFiles: Int?
     let unknownSizeFiles: Int?
+    let waitingFiles: Int?
     let compressionAvailable: Bool?
     let excludedContextBlocks: Int?
     let pendingBytes: Int64
@@ -56,6 +57,7 @@ private struct LocalSourceJob: Decodable, Sendable {
         case "pausing": "正在完成当前批次并暂停"
         case "paused": "历史导入已暂停"
         case "complete": "历史扫描已完成"
+        case "waiting": "等待来源写入完成"
         default: "历史导入需要处理"
         }
     }
@@ -109,6 +111,7 @@ struct LocalSourcesView: View {
     @State private var listing: LocalSourceListing?
     @State private var preview: LocalSourcePreview?
     @State private var selected: LocalSource?
+    @State private var coverageSource: LocalSource?
     @State private var inspectingInput: KnowledgeSource?
     @State private var recentInputs: [LocalRecentInput] = []
     @State private var showingDocuments = false
@@ -204,6 +207,9 @@ struct LocalSourcesView: View {
                 .interactiveDismissDisabled().appLanguage()
         }
         .sheet(item: $selected) { source in LocalSourceInputsView(workspace: workspace, source: source).appLanguage() }
+        .sheet(item: $coverageSource, onDismiss: { Task { await load() } }) { source in
+            LocalSourceCoverageView(workspace: workspace, source: source).appLanguage()
+        }
         .sheet(item: $inspectingInput) { item in KnowledgeSourceReader(workspace: workspace, source: item).appLanguage() }
         .sheet(isPresented: $showingDocuments, onDismiss: { Task { await load() } }) { DocumentLibraryView(workspace: workspace).appLanguage() }
     }
@@ -371,6 +377,7 @@ struct LocalSourcesView: View {
                     metric("活跃天数", source.summary.activeDays);metric("输入字符", source.summary.characters)
                 }
                 coverage(source.summary)
+                Button("查看扫描详情", systemImage: "list.bullet.rectangle") { coverageSource = source }
                 if let job = source.job {
                     HStack(spacing: 8) {
                         if job.active { ProgressView().controlSize(.small) }
@@ -462,6 +469,10 @@ struct LocalSourcesView: View {
             Text(LF("跳过 %d 条过大或异常记录；%d 个文件暂不可读。", summary.skippedRecords, summary.unreadableFiles))
                 .font(.caption).foregroundStyle(.secondary)
         }
+        if let waiting = summary.waitingFiles, waiting > 0 {
+            Text(LF("%d 个文件的末条记录尚未完整，已保留读取位置。", waiting))
+                .font(.caption).foregroundStyle(.secondary)
+        }
         if summary.redactedInputs > 0 { Text(LF("%d 条输入中的常见凭证已隐藏。", summary.redactedInputs)).font(.caption).foregroundStyle(.secondary) }
         if let count = summary.excludedContextBlocks, count > 0 { Text(LF("已排除 %d 段系统或引用上下文。", count)).font(.caption).foregroundStyle(.secondary) }
         if summary.fileLimitReached { Text("会话文件达到本次扫描上限，统计不是全部历史。").font(.caption).foregroundStyle(.secondary) }
@@ -536,6 +547,165 @@ struct LocalSourcesView: View {
         guard !busy, let client = workspace.client else { return }
         busy = true;problem = nil;result = nil
         Task { defer { busy = false };do { try await action(client);await load() } catch { problem = error.localizedDescription } }
+    }
+}
+
+private struct LocalSourceFile: Decodable, Identifiable, Sendable {
+    let path: String
+    let stateVersion: String
+    let status: String
+    let issues: Issues
+    let processedBytes: Int64
+    let totalBytes: Int64?
+    var id: String { path }
+    struct Issues: Decodable, Sendable {
+        let oversized: Int
+        let malformed: Int
+        let invalidDates: Int
+        let other: Int
+    }
+    var title: String {
+        switch status {
+        case "unreadable": "文件暂不可读"
+        case "waiting": "末条记录尚未完整"
+        case "pending": "尚未读完"
+        case "skipped": "读取完成，有记录跳过"
+        default: "读取完成"
+        }
+    }
+    var symbol: String {
+        switch status {
+        case "unreadable", "skipped": "exclamationmark.circle"
+        case "waiting", "pending": "clock"
+        default: "checkmark.circle"
+        }
+    }
+}
+
+private struct LocalSourceCoverageView: View {
+    @ObservedObject var workspace: NodeWorkspaceStore
+    let source: LocalSource
+    @Environment(\.dismiss) private var dismiss
+    @State private var page: Page?
+    @State private var items: [LocalSourceFile] = []
+    @State private var attentionOnly = true
+    @State private var loading = false
+    @State private var retrying: String?
+    @State private var problem: String?
+    @State private var result: String?
+    private var path: String { "v1/local-sources/" + source.id }
+    private struct Page: Decodable, Sendable {
+        let items: [LocalSourceFile]
+        let total: Int
+        let nextOffset: Int?
+        let summary: LocalSourceSummary
+        let importActive: Bool
+    }
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text(verbatim: source.name).font(.headline)
+                    Text("重新检查只读取所选文件，保留已归档输入和人工修改。")
+                        .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    Toggle("仅显示待处理或有跳过的文件", isOn: $attentionOnly)
+                        .disabled(loading || retrying != nil)
+                    if let page {
+                        Text(LF("已扫描 %d/%d 个会话文件", page.summary.completedFiles, page.summary.files))
+                            .font(.callout).foregroundStyle(.secondary)
+                        if page.importActive {
+                            Text("请先暂停历史导入，再单独检查文件。")
+                                .foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                    if let problem { Label(L(problem), systemImage: "exclamationmark.circle").foregroundStyle(.secondary) }
+                    if let result { Text(verbatim: result).foregroundStyle(.secondary).textSelection(.enabled) }
+                }
+                if items.isEmpty, !loading, page != nil {
+                    Section {
+                        Label("当前范围没有待处理或跳过的文件。", systemImage: "checkmark.circle")
+                        Text("读取完成表示已检查文件；助手回答、工具输出等内容仍按规则排除。")
+                            .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                ForEach(items) { file in
+                    Section {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(verbatim: file.path).font(.callout.monospaced()).textSelection(.enabled)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Label(L(file.title), systemImage: file.symbol).font(.headline)
+                            if file.status == "unreadable" {
+                                Text("请确认文件已下载完整且可读取，再重新检查。")
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } else if file.status == "waiting" {
+                                Text("已保留读取位置。来源写完后可继续检查；若长期不变，请检查源文件。")
+                                    .fixedSize(horizontal: false, vertical: true)
+                            } else if file.status == "pending" {
+                                Text("本次按上限继续读取，未完成部分仍保留为待处理。")
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            if file.issues.oversized > 0 { Text(LF("%d 条记录超过大小上限。", file.issues.oversized)) }
+                            if file.issues.malformed > 0 { Text(LF("%d 条记录格式不完整或无法解析。", file.issues.malformed)) }
+                            if file.issues.invalidDates > 0 { Text(LF("%d 条本人输入缺少有效时间，未推测归档日期。", file.issues.invalidDates)) }
+                            if file.issues.other > 0 { Text(LF("%d 条记录未被识别，或旧扫描未区分原因。", file.issues.other)) }
+                            Text(byteProgress(file)).font(.caption).foregroundStyle(.secondary)
+                            HStack(spacing: 10) {
+                                Button("重新检查此文件") { retry(file) }
+                                    .disabled(loading || retrying != nil || page?.importActive == true)
+                                    .accessibilityLabel(L("重新检查此文件") + " · " + file.path)
+                                if retrying == file.path { ProgressView().controlSize(.small) }
+                            }
+                        }.frame(maxWidth: .infinity, alignment: .leading).padding(.vertical, 4)
+                    }
+                }
+                if loading { Section { ProgressView("正在读取") } }
+                if let next = page?.nextOffset {
+                    Section { Button("加载更多") { Task { await load(offset: next) } }.disabled(loading || retrying != nil) }
+                }
+            }.formStyle(.grouped)
+                .navigationTitle(L("扫描详情"))
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() }.disabled(retrying != nil) }
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("刷新") { Task { await load() } }.disabled(loading || retrying != nil)
+                    }
+                }
+        }.frame(minWidth: 520, idealWidth: 640, minHeight: 480, idealHeight: 700)
+            .task(id: attentionOnly) { await load() }
+            .interactiveDismissDisabled(retrying != nil)
+    }
+    private func byteProgress(_ file: LocalSourceFile) -> String {
+        let format = ByteCountFormatStyle(style: .file, spellsOutZero: false).locale(AppLanguage.current.locale)
+        let read = file.processedBytes.formatted(format)
+        if let total = file.totalBytes {
+            return LF("已读取 %@ / %@", read, total.formatted(format))
+        }
+        return LF("已读取 %@，总大小未知。", read)
+    }
+    private func load(offset: Int = 0) async {
+        guard let client = workspace.client else { problem = "请先连接资料库。"; return }
+        loading = true
+        defer { loading = false }
+        do {
+            let value = try await client.read(path + "/files", query: ["offset": String(offset), "attention": String(attentionOnly)], as: Page.self)
+            items = offset == 0 ? value.items : items + value.items.filter { new in !items.contains { $0.id == new.id } }
+            page = value; problem = nil
+        } catch { problem = error.localizedDescription }
+    }
+    private func retry(_ file: LocalSourceFile) {
+        guard let client = workspace.client, retrying == nil else { return }
+        retrying = file.path; problem = nil; result = nil
+        Task {
+            defer { retrying = nil }
+            do {
+                let body = try JSONSerialization.data(withJSONObject: ["path": file.path, "stateVersion": file.stateVersion])
+                let data = try await client.sendData(path + "/retry-file", method: "POST", body: body)
+                let report = try JSONDecoder().decode(LocalSourceReport.self, from: data)
+                result = LF("新增 %d 条，更新 %d 条，%d 份人工修改需核对。", report.added, report.updated, report.conflicts)
+                await workspace.libraryChanged()
+                await load()
+            } catch { problem = error.localizedDescription }
+        }
     }
 }
 
