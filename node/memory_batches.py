@@ -90,7 +90,11 @@ class MemoryBatches:
                     task_id,_=self.s.memory_extraction.identity(ref['kind'],ref['id'],version)
                     old=self.db.execute('SELECT result FROM memory_extractions WHERE id=?',(task_id,)).fetchone()
                     item['reusable']=bool(old and old['result'] is not None)
-                except (StoreError,OSError,UnicodeError):item['problem']='这份资料不可读取或已归档，请返回选择其他资料。'
+                except (StoreError,OSError,UnicodeError):
+                    # Keep the known label so an unavailable selection can be identified and removed.
+                    known=self.db.execute('SELECT title,day FROM library_items WHERE kind=? AND id=?',(ref['kind'],ref['id'])).fetchone()
+                    if known:item.update(title=known['title'],date=known['day'])
+                    item['problem']='这份资料不可读取或已归档，请返回选择其他资料。'
                 items.append(item)
             plan={'items':items,'model':config.get('model',''),'endpoint':config.get('endpoint',''),
                   'rulesVersion':hashlib.sha256(rules.encode()).hexdigest()}

@@ -48,6 +48,16 @@ class MemoryBatchTests(unittest.TestCase):
         self.assertEqual(self.store.candidates(),[])
         self.assertEqual(self.store.memory_batches.listing()['items'],[])
 
+    def test_unavailable_preview_keeps_known_title_without_exposing_archived_text(self):
+        note=self.note('Archived private text must not become a sendable preview.')
+        self.store.catalog.update('note',note['id'],{'revision':0,'archived':True})
+        plan=self.store.memory_batches.preview([{'kind':'note','id':note['id']}])
+        item=plan['items'][0]
+        self.assertEqual(item['title'],note['title'])
+        self.assertTrue(item['problem']);self.assertEqual(item['characters'],0)
+        self.assertEqual(item['contentVersion'],'');self.assertEqual(plan['newRequests'],0)
+        self.assertNotIn('Archived private text',json.dumps(plan))
+
     def test_all_four_source_kinds_use_the_same_explicit_batch(self):
         rid,_,_=self.receive();self.store.save_transcript(rid,'Synthetic transcript: I prefer weekly reviews.',self.text_etag(rid))
         preview=self.store.documents.preview({'files':[{'name':'synthetic.txt','text':'Synthetic author text: I prefer tea.'}]})
@@ -155,6 +165,19 @@ class MemoryBatchTests(unittest.TestCase):
             self.assertEqual(call.call_count,1)
         self.assertEqual(result['status'],'partial');self.assertEqual(result['candidateCount'],1)
         self.assertIn('原文已变化',result['items'][1]['problem'])
+        # A new explicit preview can authorize the changed source without resending completed items.
+        unfinished=[{'kind':i['kind'],'id':i['id']} for i in result['items'] if i['status']!='ready']
+        preview=self.store.memory_batches.preview(unfinished)
+        self.assertEqual(len(preview['items']),1)
+        self.assertNotEqual(preview['items'][0]['contentVersion'],result['items'][1]['contentVersion'])
+        with patch.object(self.store.analysis,'request_json',side_effect=self.response) as call:
+            fresh=self.store.memory_batches.start(self.request(unfinished),background=False)
+            self.assertEqual(call.call_count,1)
+            self.assertEqual(call.call_args.args[2]['id'],refs[1]['id'])
+            self.assertEqual(call.call_args.args[2]['text'],'Unapproved new content')
+        self.assertEqual(fresh['status'],'ready');self.assertNotEqual(fresh['id'],result['id'])
+        self.assertEqual(self.store.memory_batches.status(result['id'])['status'],'partial')
+        self.assertEqual(len(self.store.candidates()),2)
 
     def test_restart_never_auto_sends_and_saved_results_resume_without_key(self):
         self.configure()

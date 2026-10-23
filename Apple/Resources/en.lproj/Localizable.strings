@@ -1603,3 +1603,15 @@
 "收起全部记忆" = "Hide all memories";
 
 "浏览全部已确认记忆" = "Browse all confirmed memories";
+
+"核对已选资料" = "Review selected sources";
+
+"移除所选资料：%@" = "Remove selected source: %@";
+
+"点按条目可移出本次选择，原资料不会删除。" = "Tap an item to remove it from this selection. The source itself is kept.";
+
+"重新选择并预览" = "Reselect and preview";
+
+"资料或服务变化时，可带回未完成项重新核对。发送后会新建任务，原任务与已完成结果保留。" = "If sources or the service changed, review unfinished items again. Sending starts a new batch; the original task and completed results are kept.";
+
+"返回" = "Back";

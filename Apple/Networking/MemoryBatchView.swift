@@ -113,6 +113,16 @@ private struct MemoryBatchSelectionView: View {
     @State private var plan: BatchPlan?
     @State private var showingPreview = false
     @State private var generation = UUID()
+    @State private var selectionExpanded = false
+    init(store: NodeWorkspaceStore, initialItems: [BatchItem] = []) {
+        self.store = store
+        _kind = State(initialValue: initialItems.first?.kind ?? "note")
+        let sources = initialItems.map {
+            BatchSource(id: $0.id, kind: $0.kind, title: $0.title, date: $0.date, textAvailable: $0.characters > 0)
+        }
+        _selected = State(initialValue: Dictionary(uniqueKeysWithValues: sources.map { ($0.identity, $0) }))
+        _selectionExpanded = State(initialValue: !initialItems.isEmpty)
+    }
     var body: some View {
         Form {
             Section {
@@ -122,7 +132,20 @@ private struct MemoryBatchSelectionView: View {
                 }
                 TextField("搜索资料", text: $query)
                 Text(LF("已选择 %d / 20 份资料", selected.count)).font(.callout)
-                if !selected.isEmpty { Button("清除选择") { selected.removeAll() } }
+                if !selected.isEmpty {
+                    DisclosureGroup("核对已选资料", isExpanded: $selectionExpanded) {
+                        ForEach(selected.values.sorted { $0.identity < $1.identity }, id: \.identity) { source in
+                            Button { selected.removeValue(forKey: source.identity) } label: {
+                                Label { Text(verbatim: source.title).fixedSize(horizontal: false, vertical: true) }
+                                    icon: { Image(systemName: "minus.circle") }
+                                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            }.buttonStyle(.plain).accessibilityLabel(LF("移除所选资料：%@", source.title))
+                        }
+                        Text("点按条目可移出本次选择，原资料不会删除。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Button("清除选择") { selected.removeAll() }
+                }
             }
             Section {
                 ForEach(items, id: \.identity) { source in
@@ -253,9 +276,19 @@ private struct MemoryBatchPlanSheet: View {
                             Button("重新预览范围") { refreshPlan() }.disabled(busy)
                             if busy { ProgressView("正在处理") }
                         }
-                    }.formStyle(.grouped).batchTitle("核对发送范围")
+                    }.formStyle(.grouped).batchTitle("发送范围")
                 }
-            }.toolbar { ToolbarItem(placement: .cancellationAction) { Button(taskID == nil ? "返回选择" : "完成") { dismiss() }.disabled(busy) } }
+            }.toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button { dismiss() } label: {
+                        #if os(iOS)
+                        Text(L(taskID == nil ? "返回" : "完成"))
+                        #else
+                        Text(L(taskID == nil ? "返回选择" : "完成"))
+                        #endif
+                    }.disabled(busy).accessibilityLabel(L(taskID == nil ? "返回选择" : "完成"))
+                }
+            }
         }
         #if os(macOS)
         .frame(minWidth: 580, idealWidth: 720, minHeight: 600)
@@ -326,6 +359,11 @@ private struct MemoryBatchProgressView: View {
                             #endif
                         }
                         Button("继续未完成项") { update("resume") }.disabled(busy || (!state.configured && state.remainingRequests > 0))
+                        NavigationLink("重新选择并预览") {
+                            MemoryBatchSelectionView(store: store, initialItems: state.items.filter { $0.status != "ready" })
+                        }.disabled(busy)
+                        Text("资料或服务变化时，可带回未完成项重新核对。发送后会新建任务，原任务与已完成结果保留。")
+                            .font(.footnote).foregroundStyle(.secondary)
                     }
                     if let problem { Text(L(problem)).font(.callout).foregroundStyle(.secondary) }
                     Text("模型建议仍需核对，不会自动成为已确认记忆。").font(.footnote).foregroundStyle(.secondary)
