@@ -129,3 +129,101 @@ private func transferFixture(_ url: URL) throws {
     #expect(throws: RecordingIngress.IngressError.self) { try FolderExchange(root: selected).packageIDs() }
     #expect(try FileManager.default.contentsOfDirectory(atPath: outside.path).isEmpty)
 }
+
+private func folderRecoveryFixture(_ root: URL) throws -> (RecordingLibrary, Recording, RecordingExport, FolderExchange) {
+    let library = RecordingLibrary(root: root.appendingPathComponent("source"))
+    var record = Recording(trigger: "synthetic-folder-recovery")
+    record.status = .saved; record.duration = 1
+    try library.save(record); try transferFixture(library.audioURL(for: record))
+    record.byteCount = Int64(try Data(contentsOf: library.audioURL(for: record)).count)
+    try library.save(record)
+    let output = try RecordingExport.prepare(id: record.id, from: library, to: root.appendingPathComponent("export"))
+    return (library, record, output, FolderExchange(root: root.appendingPathComponent("shared")))
+}
+
+@Test func pendingFolderSendRepublishesRemovedPackageWithoutDuplicatingTheRecording() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (source, record, output, exchange) = try folderRecoveryFixture(root)
+    let hash = try exchange.publish(output)
+    let original = try Data(contentsOf: source.audioURL(for: record))
+    var job = TransferJob(recordingID: record.id, target: "folder:synthetic")
+    job.audioSHA256 = hash; job.state = .awaitingReceipt
+    let journal = TransferJournal(root: root.appendingPathComponent("journal"))
+    try journal.save(job)
+    try FileManager.default.removeItem(at: exchange.package(record.id))
+    let restoredJob = try #require(TransferJournal(root: journal.root).load().first)
+    #expect(restoredJob.audioSHA256 == hash)
+    #expect(try exchange.hasPublication(record.id, audioSHA256: hash) == false)
+    #expect(try exchange.publish(output) == hash)
+    #expect(try exchange.hasPublication(record.id, audioSHA256: hash))
+    #expect(try exchange.publish(output) == hash)
+    #expect(try exchange.packageIDs() == [record.id])
+    #expect(try exchange.receipt(record.id) == nil)
+    #expect(try Data(contentsOf: source.audioURL(for: record)) == original)
+}
+
+@Test func folderRepairRestoresOnlyMissingFilesAndPreservesExistingManifestEdits() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (_, record, output, exchange) = try folderRecoveryFixture(root)
+    let hash = try exchange.publish(output)
+    let package = try exchange.package(record.id)
+    let manifest = package.appendingPathComponent("manifest.json")
+    let audio = package.appendingPathComponent(record.audioFilename)
+    var object = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: manifest)) as? [String: Any])
+    var metadata = try #require(object["recording"] as? [String: Any])
+    metadata["title"] = "A title changed after publication"; object["recording"] = metadata
+    let edited = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    try edited.write(to: manifest)
+    try FileManager.default.removeItem(at: audio)
+    #expect(try exchange.hasPublication(record.id, audioSHA256: hash) == false)
+    _ = try exchange.publish(output)
+    #expect(try Data(contentsOf: manifest) == edited)
+    #expect(try AudioDigest.sha256(audio) == hash)
+    let audioBefore = try Data(contentsOf: audio)
+    try FileManager.default.removeItem(at: manifest)
+    #expect(try exchange.hasPublication(record.id, audioSHA256: hash) == false)
+    _ = try exchange.publish(output)
+    #expect(try Data(contentsOf: audio) == audioBefore)
+    #expect(try exchange.hasPublication(record.id, audioSHA256: hash))
+}
+
+@Test func folderRetryDoesNotReplaceCorruptOrConflictingFilesWithAFalseSuccess() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (_, record, output, exchange) = try folderRecoveryFixture(root)
+    let hash = try exchange.publish(output)
+    let package = try exchange.package(record.id)
+    let manifest = package.appendingPathComponent("manifest.json")
+    let audio = package.appendingPathComponent(record.audioFilename)
+    let goodManifest = try Data(contentsOf: manifest)
+    let goodAudio = try Data(contentsOf: audio)
+    var damaged = goodAudio; damaged[damaged.count - 1] ^= 0xff
+    try damaged.write(to: audio)
+    #expect(throws: RecordingIngress.IngressError.self) { try exchange.publish(output) }
+    #expect(try Data(contentsOf: audio) == damaged)
+    try goodAudio.write(to: audio)
+    try Data("partial manifest".utf8).write(to: manifest)
+    #expect(throws: RecordingIngress.IngressError.self) { try exchange.hasPublication(record.id, audioSHA256: hash) }
+    #expect(throws: RecordingIngress.IngressError.self) { try exchange.publish(output) }
+    #expect(try Data(contentsOf: manifest) == Data("partial manifest".utf8))
+    try goodManifest.write(to: manifest)
+    #expect(throws: RecordingIngress.IngressError.self) { try exchange.hasPublication(record.id, audioSHA256: String(repeating: "f", count: 64)) }
+    #expect(try exchange.receipt(record.id) == nil)
+}
+
+@Test func folderRepairRejectsNestedSymlinksBeforeReadingOrWritingOutsideTheSelection() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let (_, record, output, exchange) = try folderRecoveryFixture(root)
+    let hash = try exchange.publish(output)
+    let audio = try exchange.package(record.id).appendingPathComponent(record.audioFilename)
+    let outside = root.appendingPathComponent("outside.caf")
+    try FileManager.default.moveItem(at: audio, to: outside)
+    let original = try Data(contentsOf: outside)
+    try FileManager.default.createSymbolicLink(at: audio, withDestinationURL: outside)
+    #expect(throws: RecordingIngress.IngressError.self) { try exchange.hasPublication(record.id, audioSHA256: hash) }
+    #expect(throws: RecordingIngress.IngressError.self) { try exchange.publish(output) }
+    #expect(try Data(contentsOf: outside) == original)
+}

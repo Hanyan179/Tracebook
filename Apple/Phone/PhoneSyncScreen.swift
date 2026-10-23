@@ -15,12 +15,8 @@ struct PhoneSyncScreen: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("让记录，\n一路随行。").font(.system(.largeTitle, weight: .semibold)).tracking(-1)
-                    Text("手机负责保存与同步，电脑负责阅读与整理。")
-                        .font(.subheadline).foregroundStyle(AppPalette.muted)
-                }.padding(.top, 18)
-                if route != SyncRoute.local.rawValue {
+                if (route == SyncRoute.folder.rawValue && !folder.configured)
+                    || (route == SyncRoute.direct.rawValue && !workspace.configured) {
                     SyncJourney(route: SyncRoute(rawValue: route) ?? .local)
                 }
                 VStack(alignment: .leading, spacing: 16) {
@@ -83,7 +79,7 @@ struct PhoneSyncScreen: View {
                 }
                 Button("人在外面、电脑关机时会怎样？") { help = true }
                     .font(.footnote).foregroundStyle(AppPalette.muted)
-            }.padding(.horizontal, 26).padding(.bottom, 40)
+            }.padding(.horizontal, 26).padding(.top, 18).padding(.bottom, 40)
         }.background(AppPalette.canvas).navigationTitle(L("同步")).navigationBarTitleDisplayMode(.inline)
             .sheet(isPresented: $help) { ProductTour() }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: route)

@@ -1181,3 +1181,13 @@
 "保存建议" = "Save";
 "配置已保存。可生成每日分析或所选资料的记忆建议。" = "Configuration saved. You can generate daily analysis or memory suggestions from a selected source.";
 "建议" = "Suggestion";
+
+"%d 条原音已接收" = "%d recordings received";
+"%d 条等待接收" = "%d awaiting receipt";
+"当前资料夹的传输记录；已接收不代表已经转写。" = "Transfer history for this folder. Received audio may still await transcription.";
+
+"资料夹授权暂时无法读取，请重新选择资料夹。原音仍保留。" = "Folder access could not be restored. Select the folder again. Original audio is preserved.";
+"资料夹同步队列无法读取，现有记录与原音均已保留。" = "The folder sync queue could not be read. Existing records and original audio are preserved.";
+"相同编号对应不同音频，原有录音没有被覆盖。" = "The same recording ID has different audio. Existing recordings were not overwritten.";
+"收到的录音信息不完整，原音仍保留在发送设备。" = "The recording details are incomplete. Original audio is still on the sending device.";
+"音频校验未通过，等待重新传输。" = "Audio verification failed. Waiting for a new transfer.";

@@ -27,7 +27,7 @@ func L(_ key: String) -> String {
 }
 
 func LF(_ key: String, _ values: CVarArg...) -> String {
-    let singular = ["找到 %d 条相关来源": "Found %d relevant source", "%d 条资料": "%d item", "%d 条来源": "%d source", "%d 条记忆": "%d memory", "%d 段原音": "%d recording"]
+    let singular = ["%d 条原音已接收": "%d recording received", "找到 %d 条相关来源": "Found %d relevant source", "%d 条资料": "%d item", "%d 条来源": "%d source", "%d 条记忆": "%d memory", "%d 段原音": "%d recording"]
     let format = AppLanguage.current.identifier == "en" && (values.first as? Int) == 1
         ? (singular[key] ?? L(key)) : L(key)
     return String(format: format, locale: AppLanguage.current.locale, arguments: values)

@@ -35,20 +35,24 @@ struct FolderSetupCard: View {
                 if folder.configured {
                     let layout = typeSize.isAccessibilitySize
                         ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
-                        : AnyLayout(HStackLayout(alignment: .top, spacing: 12))
+                        : AnyLayout(HStackLayout(alignment: .center, spacing: 12))
                     layout {
-                        Label("\(folder.delivered) 已接收", systemImage: "checkmark")
-                        if folder.waiting > 0 { Label("\(folder.waiting) 等待中", systemImage: "clock") }
+                        Label(LF("%d 条原音已接收", folder.delivered), systemImage: "checkmark")
+                        if folder.waiting > 0 { Label(LF("%d 条等待接收", folder.waiting), systemImage: "clock") }
                         if !typeSize.isAccessibilitySize { Spacer() }
-                        Button { Task { await folder.refresh() } } label: { Image(systemName: "arrow.clockwise") }
+                        Button { Task { await folder.refresh() } } label: {
+                            Image(systemName: "arrow.clockwise").frame(minWidth: 44, minHeight: 44)
+                        }
                             .disabled(folder.busy).accessibilityLabel("检查资料夹同步")
                     }.font(.caption).foregroundStyle(AppPalette.muted)
+                    Text("当前资料夹的传输记录；已接收不代表已经转写。")
+                        .font(.caption).foregroundStyle(AppPalette.muted)
                     if let date = folder.lastChecked {
                         Text("上次检查 \(date.formatted(.dateTime.hour().minute()))").font(.caption2).foregroundStyle(.tertiary)
                     }
                 }
                 if let problem = folder.problem {
-                    Label(problem, systemImage: "exclamationmark.circle")
+                    Label(L(problem), systemImage: "exclamationmark.circle")
                         .font(.footnote).foregroundStyle(.secondary).textSelection(.enabled)
                 }
                 DisclosureGroup("连接指南", isExpanded: $details) {

@@ -65,6 +65,8 @@ DerivedData/Mac/Build/Products/Debug/VoiceMemoryMac.app/Contents/MacOS/VoiceMemo
 
 独立节点占用该端口时，桌面会尝试连接它；关闭桌面不会终止独立启动的进程。节点默认文字输出目录可在应用中选择；连接口令留在数据目录，不要写进命令、问题报告或截图。
 
+调试版指定 `VOICE_MEMORY_CLIENT_DATA` 时，资料夹书签保存到该目录的 `folder-selection.json`，发送与接收历史保存到 `FolderTransfers/`，不会借用普通运行环境的资料夹授权或历史队列。每端使用不同客户端目录；共享的仅是两端选择的交换资料夹。`VOICE_MEMORY_QA_FOLDER` 可在隔离验收时指定此交换资料夹，重新启动仍保留同目录任务身份；不要指向真实个人目录。未设置隔离目录的正常运行继续使用已有系统偏好与队列，不做隐式迁移。
+
 ## 持续检查与发布范围
 
 `.github/workflows/ci.yml` 检查公开文件范围、文档链接、节点测试、工程可重复生成和无个人签名的三端构建。仅使用合成数据，不配置真实模型、云盘或个人账号。
