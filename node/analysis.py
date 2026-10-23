@@ -144,10 +144,14 @@ class DailyAnalysis:
             if owns_lock:self.run_lock.release()
             raise
     def complete(self,config,snapshot):
+        return self.request_json(config, SYSTEM_RULES+'\n\nUser writing rules:\n'+snapshot['rules'],
+                                 {'day':snapshot['day'],'coverage':snapshot['coverage'],'sources':snapshot['sources']})
+    def request_json(self,config,rules,payload):
+        """Shared bounded transport. Callers validate their own output schema."""
         host=urllib.parse.urlsplit(config['endpoint']).hostname
         body={'model':config['model'],'stream':False,'response_format':{'type':'json_object'},'messages':[
-            {'role':'system','content':SYSTEM_RULES+'\n\nUser writing rules:\n'+snapshot['rules']},
-            {'role':'user','content':json.dumps({'day':snapshot['day'],'coverage':snapshot['coverage'],'sources':snapshot['sources']},ensure_ascii=False)}]}
+            {'role':'system','content':rules},
+            {'role':'user','content':json.dumps(payload,ensure_ascii=False)}]}
         body['max_completion_tokens' if host=='api.openai.com' else 'max_tokens']=4000
         if host=='api.deepseek.com':body['thinking']={'type':'disabled'}
         request=urllib.request.Request(config['endpoint']+'/chat/completions',data=json.dumps(body).encode(),
@@ -166,7 +170,7 @@ class DailyAnalysis:
             if error.code==429:self.error(502,'模型额度或频率受限，请稍后重试。')
             self.error(502,'模型请求失败，请检查服务地址和模型名称。')
         except (OSError,urllib.error.URLError):self.error(502,'模型连接超时或不可用，原有资料保留。')
-        except (ValueError,KeyError,IndexError,TypeError):self.error(502,'模型返回格式不正确，未写入分析。')
+        except (ValueError,KeyError,IndexError,TypeError):self.error(502,'模型返回格式不正确，未保存结果。')
     def validate(self,result,sources):
         if not isinstance(result,dict) or set(result)!={key for key,_ in SECTIONS}:self.error(502,'模型返回格式不正确，未写入分析。')
         allowed={s['id'] for s in sources};clean={}

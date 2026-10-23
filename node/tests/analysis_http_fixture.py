@@ -53,12 +53,19 @@ class LocalModelFixture:
                 mode = control.get('mode')
                 code = {'unauthorized': 401, 'rate_limit': 429, 'unavailable': 503,
                         'redirect': 307}.get(mode, 200)
-                sources = json.loads(body['messages'][1]['content'])['sources']
-                source = next((s for s in sources if s['id'].startswith('note/')), sources[0])
-                result = {key: [] for key in ['overview', 'decisions', 'todos', 'questions', 'memoryCandidates']}
-                result['overview'] = [{'text': control.get('text', '合成协议响应。'),
-                                       'sources': [source['id'] if mode != 'bad_citation' else 'note/not-supplied']}]
-                result['memoryCandidates'] = [{'text': '合成待核对建议，不是已确认事实。', 'sources': [source['id']]}]
+                content = json.loads(body['messages'][1]['content'])
+                if 'sources' in content:
+                    sources = content['sources']
+                    source = next((s for s in sources if s['id'].startswith('note/')), sources[0])
+                    result = {key: [] for key in ['overview', 'decisions', 'todos', 'questions', 'memoryCandidates']}
+                    result['overview'] = [{'text': control.get('text', '合成协议响应。'),
+                                           'sources': [source['id'] if mode != 'bad_citation' else 'note/not-supplied']}]
+                    result['memoryCandidates'] = [{'text': '合成待核对建议，不是已确认事实。', 'sources': [source['id']]}]
+                else:
+                    result = {'candidates': [] if mode == 'empty' else [{
+                        'text': control.get('text', '合成待核对建议。'),
+                        'quote': content['text'] if mode != 'bad_citation' else 'not-supplied',
+                        'subject': 'user', 'basis': 'explicit'}]}
                 payload = {'choices': [{'finish_reason': 'length' if mode == 'incomplete' else 'stop',
                                         'message': {'content': json.dumps(result, ensure_ascii=False)}}]}
                 raw = b'not-json' if mode == 'malformed' else json.dumps(payload, ensure_ascii=False).encode()

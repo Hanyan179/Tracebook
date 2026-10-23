@@ -48,6 +48,8 @@ def main():
                         return json.load(response)
                 note = request('/v1/notes', {'title': 'Synthetic package check', 'text': 'Synthetic source text.'})
                 source = request('/v1/sources/note/' + note['id'])
+                extraction = request('/v1/memory-extractions/note/' + note['id'] + '?version=' + source['contentVersion'])
+                assert extraction['status'] == 'idle' and not extraction['configured']
                 created = request('/v1/candidates', {'text': 'Synthetic proposal.', 'evidence': [{
                     'kind': 'note', 'id': note['id'], 'contentVersion': source['contentVersion'], 'quote': source['text']}]})
                 cid = created['id']

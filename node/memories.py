@@ -19,6 +19,8 @@ class Memories:
         CREATE TABLE IF NOT EXISTS memory_operations(
             id TEXT PRIMARY KEY, fingerprint TEXT NOT NULL, candidate_id TEXT NOT NULL);
         ''')
+        if 'proposal' not in {r[1] for r in self.db.execute('PRAGMA table_info(memory_details)')}:
+            with self.db:self.db.execute('ALTER TABLE memory_details ADD COLUMN proposal TEXT')
 
     def error(self, status, message):
         from store import StoreError
@@ -28,6 +30,7 @@ class Memories:
         detail = self.db.execute('SELECT * FROM memory_details WHERE id=?', (row['id'],)).fetchone()
         return {**dict(row), 'sources': json.loads(row['sources']),
                 'memoryRevision': detail['revision'] if detail else 0,
+                'proposal': json.loads(detail['proposal']) if detail and detail['proposal'] else None,
                 'evidence': json.loads(detail['evidence']) if detail else []}
 
     def migrate(self):
@@ -40,7 +43,7 @@ class Memories:
                              'date': '', 'contentVersion': '', 'quote': '', 'quoteStart': 0,
                              'capturedAt': '', 'snapshotState': 'legacy', 'path': 'transcripts/' + rid + '.md'}
                             for rid in json.loads(row['sources'])]
-                self.db.execute('INSERT INTO memory_details VALUES (?,1,?)',
+                self.db.execute('INSERT INTO memory_details(id,revision,evidence) VALUES (?,1,?)',
                                 (row['id'], json.dumps(evidence, ensure_ascii=False)))
                 self.record_version(row['id'], 'migrated', row['updated_at'])
         for row in rows:
@@ -126,18 +129,22 @@ class Memories:
                 self.s.export_memory()
                 return {'id': existing, 'reused': True}
             captured = self.capture(evidence, sources)
-            recording_ids = sorted({e['id'] for e in captured if e['kind'] == 'recording'})
             cid, now = str(uuid.uuid4()).upper(), stamp()
             with self.db:
-                self.db.execute('INSERT INTO candidates VALUES (?,?,?,?,?,?)',
-                                (cid, text.strip(), json.dumps(recording_ids), 'pending', now, now))
-                self.db.execute('INSERT INTO memory_details VALUES (?,1,?)',
-                                (cid, json.dumps(captured, ensure_ascii=False)))
-                self.record_version(cid, 'created', now)
+                self.insert(cid, text, captured, now)
                 self.save_operation(key, fingerprint, cid)
             self.s.catalog.index_memory(cid)
             self.s.export_memory()
             return {'id': cid, 'reused': False}
+
+    def insert(self, cid, text, captured, now, proposal=None):
+        """Caller holds the store lock and owns the transaction; evidence is validated first."""
+        recording_ids = sorted({e['id'] for e in captured if e['kind'] == 'recording'})
+        self.db.execute('INSERT INTO candidates VALUES (?,?,?,?,?,?)',
+                        (cid, text.strip(), json.dumps(recording_ids), 'pending', now, now))
+        self.db.execute('INSERT INTO memory_details(id,revision,evidence,proposal) VALUES (?,1,?,?)',
+                        (cid, json.dumps(captured, ensure_ascii=False), json.dumps(proposal) if proposal else None))
+        self.record_version(cid, 'created', now)
 
     def record_version(self, cid, action, now):
         row = self.db.execute('SELECT * FROM candidates WHERE id=?', (cid,)).fetchone()

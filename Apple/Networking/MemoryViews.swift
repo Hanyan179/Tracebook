@@ -1,5 +1,13 @@
 import SwiftUI
 
+struct MemoryModelProposal: Codable, Sendable {
+    let origin: String
+    let model: String
+    let endpoint: String
+    let taskID: String
+    let createdAt: String
+}
+
 struct MemoryEvidence: Codable, Sendable {
     let kind: String
     let id: String
@@ -62,6 +70,10 @@ struct MemoryContentView: View {
                     Button("修订内容") { editSnapshot = value }.disabled(current == nil || busy)
                 }
                 Text(verbatim: value.text).font(.title3).lineSpacing(7).textSelection(.enabled)
+                if let proposal = value.proposal {
+                    Label(LF("由模型提出：%@", proposal.model), systemImage: "sparkles")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if value.state == "pending" {
                     Text("确认内容与归属后再保存。待确认建议不会因超时自动成为记忆。")
                         .font(.callout).foregroundStyle(.secondary)
@@ -240,12 +252,14 @@ struct MemoryProposalSheet: View {
     let sourceText: String
     var saved: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var text = ""
     @State private var quote = ""
     @State private var requestID = UUID()
     @State private var busy = false
     @State private var error: String?
     @State private var discard = false
+    @State private var mode = "manual"
     private var valid: Bool {
         !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.count <= 10000 &&
         !quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && quote.count <= 4000 && sourceText.contains(quote)
@@ -253,29 +267,53 @@ struct MemoryProposalSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("希望长期记住什么") { TextEditor(text: $text).frame(minHeight: 100).disabled(busy) }
-                Section("原文依据") {
-                    Label(source.title, systemImage: source.symbol)
-                    TextEditor(text: $quote).frame(minHeight: 120).disabled(busy)
-                    Text("保留一段连续原文，最多 4000 个字符；请核对内容与说话人。")
-                        .font(.footnote).foregroundStyle(.secondary)
+                if typeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("整理方式").font(.headline)
+                        Menu {
+                            Button("手动填写") { mode = "manual" }
+                            Button("模型整理") { mode = "model" }
+                        } label: {
+                            HStack(alignment: .top, spacing: 12) {
+                                Text(L(mode == "model" ? "模型整理" : "手动填写"))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
+                                Image(systemName: "chevron.down").font(.caption)
+                            }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).padding(.vertical, 8)
+                        }.buttonStyle(.plain).disabled(busy)
+                    }.padding(.vertical, 8)
+                } else {
+                    modePicker.pickerStyle(.segmented).disabled(busy)
                 }
-                Text("保存后进入待确认，确认后才成为长期记忆。")
-                    .font(.footnote).foregroundStyle(.secondary)
-                if let error { Text(L(error)).foregroundStyle(.secondary) }
+                if mode == "model" {
+                    MemoryExtractionSection(workspace: workspace, source: source, saved: saved)
+                } else {
+                    Section("希望长期记住什么") { TextEditor(text: $text).frame(minHeight: 100).disabled(busy) }
+                    Section("原文依据") {
+                        Label(source.title, systemImage: source.symbol)
+                        TextEditor(text: $quote).frame(minHeight: 120).disabled(busy)
+                        Text("保留一段连续原文，最多 4000 个字符；请核对内容与说话人。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Text("保存后进入待确认，确认后才成为长期记忆。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                    if let error { Text(L(error)).foregroundStyle(.secondary) }
+                }
             }.formStyle(.grouped)
                 #if os(iOS)
-                .navigationTitle(L("记忆建议"))
+                .navigationTitle(L(typeSize.isAccessibilitySize ? "建议" : "记忆建议"))
                 .navigationBarTitleDisplayMode(.inline)
                 #else
                 .toolbar { ToolbarItem(placement: .principal) { Text("记忆建议").font(.headline) } }
                 #endif
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("取消") { if text.isEmpty { dismiss() } else { discard = true } }.disabled(busy)
+                        Button(mode == "model" ? "完成" : "取消") { if text.isEmpty { dismiss() } else { discard = true } }.disabled(busy)
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("加入待确认") { submit() }.disabled(!valid || busy)
+                        if mode == "manual" {
+                            Button("保存建议") { submit() }.accessibilityLabel("加入待确认").disabled(!valid || busy)
+                        }
                     }
                 }
                 .confirmationDialog("放弃未保存的修改？", isPresented: $discard, titleVisibility: .visible) {
@@ -287,6 +325,12 @@ struct MemoryProposalSheet: View {
         #if os(macOS)
         .frame(minWidth: 580, idealWidth: 720, minHeight: 540)
         #endif
+    }
+    private var modePicker: some View {
+        Picker("整理方式", selection: $mode) {
+            Text("手动填写").tag("manual")
+            Text("模型整理").tag("model")
+        }
     }
     private func submit() {
         guard let client = workspace.client else { error = "请先连接资料库。"; return }

@@ -33,7 +33,7 @@
 | 原生客户端源码 | 电脑、手机、手表源码公开；不是已发布安装包 | `Apple/`、`Config/`、构建流程 |
 | 资料导入 | 文字文件与两种已适配工具会话格式可用 | `node/documents.py`、`node/local_sources.py` |
 | 检索与来源阅读 | 可用；目前对话返回检索结果 | `node/knowledge.py`、`Apple/Networking/ConversationView.swift` |
-| 长期记忆 | 四类文字来源可手动提出候选，支持确认、修订、停用、恢复、依据和历史；自动模型记忆整理未完成 | `node/memories.py`、`ROADMAP.md` |
+| 长期记忆 | 四类文字来源支持手动建议或明确发送单份资料生成模型建议，保留原文版本、引用、模型标记和历史；可确认、修订、停用、恢复。真实质量、后台批量整理和矛盾关系仍待验收 | `node/memories.py`、`node/memory_extraction.py`、`ROADMAP.md` |
 | 真实自动转写 | 适配器与持久队列已实现，真实服务识别质量未验收；默认关闭自动发送 | `Apple/Mac/ModelRuntime.swift`、`ROADMAP.md` |
 | 每日文字分析 | 适配器和合成测试已有，真实模型质量未验收 | `node/analysis.py` |
 | 同步 | 队列、校验、回执、资料夹交换已有；真实异地与后台未完成验收 | `Apple/Networking/`、`Sources/VoiceMemoryCore/` |

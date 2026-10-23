@@ -168,7 +168,7 @@ private struct ModelProfileEditor: View {
                             .accessibilityIdentifier(role.rawValue + ".key")
                     }
                 }
-                Text(L(role == .summary ? "用于每日分析。生成时会把所选日期的文字发送到这个服务；密钥只交给本机处理进程，不写入资料文件。" : "用于录音转写。保存后可在原音页面选择一条录音发送；自动转写需要另行开启。"))
+                Text(L(role == .summary ? "用于每日分析与所选资料的记忆建议。仅在明确生成时发送对应文字；密钥只交给本机处理进程，不写入资料文件。" : "用于录音转写。保存后可在原音页面选择一条录音发送；自动转写需要另行开启。"))
                     .font(.caption).foregroundStyle(.secondary)
             }
             if role == .transcription {
@@ -208,7 +208,7 @@ private struct ModelProfileEditor: View {
                             try await ModelRuntime.activate(workspace: workspace)
                             await loadSpeech()
                             result = role == .summary
-                                ? (workspace.status?.analysisConfigured == true ? "配置已保存。可在每日记录中生成分析。" : "参数已保存，仍需配置可用的服务与密钥。")
+                                ? (workspace.status?.analysisConfigured == true ? "配置已保存。可生成每日分析或所选资料的记忆建议。" : "参数已保存，仍需配置可用的服务与密钥。")
                                 : (workspace.status?.transcriptionConfigured == true ? "语音配置已保存，尚未进行真实服务验证。可在原音页面转写。" : "参数已保存，仍需配置可用的服务与密钥。")
                         } catch { result = error.localizedDescription }
                     }
