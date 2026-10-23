@@ -165,6 +165,20 @@ class Handler(BaseHTTPRequestHandler):
             if not ipaddress.ip_address(self.client_address[0]).is_loopback:raise StoreError(403,'请在资料库所在电脑配置模型。')
             if self.command=='POST':return self.send_json(200,store.analysis.configure(self.body_json()))
             if self.command=='GET':return self.send_json(200,store.analysis.state())
+        if parts==['v1','memory-batches']:
+            if self.command=='GET':return self.send_json(200,store.memory_batches.listing())
+            if self.command=='POST':return self.send_json(202,store.memory_batches.start(self.body_json()))
+        if parts==['v1','memory-batches','sources'] and self.command=='GET':
+            parameters={k:v[-1] for k,v in urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
+            return self.send_json(200,store.memory_batches.sources(parameters))
+        if parts==['v1','memory-batches','preview'] and self.command=='POST':
+            return self.send_json(200,store.memory_batches.preview(self.body_json().get('sources')))
+        if len(parts)==3 and parts[:2]==['v1','memory-batches'] and self.command=='GET':
+            return self.send_json(200,store.memory_batches.status(parts[2]))
+        if len(parts)==4 and parts[:2]==['v1','memory-batches'] and self.command=='POST':
+            values=self.body_json()
+            if parts[3]=='pause':return self.send_json(200,store.memory_batches.pause(parts[2]))
+            if parts[3]=='resume':return self.send_json(202,store.memory_batches.resume(parts[2],values))
         if len(parts)==4 and parts[:2]==['v1','memory-extractions']:
             if self.command=='GET':
                 parameters=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)

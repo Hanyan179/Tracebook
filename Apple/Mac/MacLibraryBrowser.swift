@@ -20,6 +20,7 @@ struct MacLibraryBrowser: View {
     @State private var selection: String?
     @State private var scope = "active"
     @State private var managing = false
+    @State private var batching = false
     @FocusState private var searching: Bool
     private var facets: LibraryFacets { switch kind { case .recording: recordings.facets; case .daily: days.facets; case .memory: memories.facets } }
     private var total: Int { switch kind { case .recording: recordings.total; case .daily: days.total; case .memory: memories.total } }
@@ -48,6 +49,10 @@ struct MacLibraryBrowser: View {
                         Text(LocalizedStringKey(kind.title)).font(.title3.weight(.semibold))
                         Text(total, format: .number).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                         Spacer()
+                        if kind == .memory {
+                            Button("整理资料", systemImage: "sparkles") { batching = true }
+                                .buttonStyle(.plain).font(.caption).help("批量整理资料").accessibilityLabel("批量整理资料")
+                        }
                         if loading { ProgressView().controlSize(.small) }
                         Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }
                             .buttonStyle(.plain).help("刷新资料").accessibilityLabel("刷新资料")
@@ -152,6 +157,7 @@ struct MacLibraryBrowser: View {
             filter.state = kind == .memory ? (value == "active" ? "confirmed" : value == "archived" ? "" : value) : ""
         }
         .sheet(isPresented: $managing) { CategoryManager(store: store, kind: kind.rawValue) }
+        .sheet(isPresented: $batching) { MemoryBatchView(store: store).appLanguage() }
         .toolbar {
             if kind == .recording, !showsEmptyRecordingActions, let importAudio {
                 ToolbarItem {

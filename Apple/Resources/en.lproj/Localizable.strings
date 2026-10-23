@@ -1433,3 +1433,149 @@
 "另存版本已被修改，不能直接采用。请在电脑资料夹核对并保留两个版本。" = "The generated copy was modified and cannot be adopted directly. Review and preserve both versions in the computer folder.";
 
 "节点暂时无法完成操作，原有资料保留。" = "The node could not complete this operation. Existing data is preserved.";
+
+"%d 个字符" = "Characters: %d";
+
+"%d 份资料，共 %d 个字符" = "Sources: %d · Characters: %d";
+
+"发送所选资料并整理" = "Send selected sources";
+
+"发送范围" = "Sending scope";
+
+"只发送下方选中的文字。模型可能收费；生成内容均为待确认建议。" = "Only the selected text below is sent. Model usage may incur charges. All generated proposals require review.";
+
+"可以关闭窗口，稍后从批量整理查看结果。" = "You can close this window and return to Batch organize to view results.";
+
+"复用已有结果" = "Reuse saved results";
+
+"完成当前资料后暂停" = "Pausing after the current source";
+
+"尚无文字" = "No text yet";
+
+"已保存 %d 条建议" = "Saved proposals: %d";
+
+"已处理 %d / %d 份资料" = "Processed: %d / %d";
+
+"已完成" = "Completed";
+
+"已显示 %d / %d 份资料" = "Showing: %d / %d";
+
+"已有结果可以复用，无需再次发送资料。" = "Saved results can be reused without sending sources again.";
+
+"已选择" = "Selected";
+
+"已选择 %d / 20 份资料" = "Selected: %d / 20";
+
+"当前资料完成后暂停，不再发送下一份。" = "The current source will finish; no further sources will be sent.";
+
+"打开建议核对原文、说话人与内容，再决定是否确认。" = "Open a proposal to review the source, speaker and content before confirming it.";
+
+"批量整理" = "Batch organize";
+
+"批量整理资料" = "Organize multiple sources";
+
+"整理进度" = "Progress";
+
+"暂停后续资料" = "Pause remaining sources";
+
+"最多新增 %d 次模型请求，已有结果会复用。" = "New model requests: up to %d. Saved results are reused.";
+
+"最近的批量整理" = "Recent batches";
+
+"未选择" = "Not selected";
+
+"查看 %d 条建议" = "View proposals (%d)";
+
+"核对发送范围" = "Review sending scope";
+
+"模型建议仍需核对，不会自动成为已确认记忆。" = "Model proposals still need review. They are never confirmed automatically.";
+
+"模型服务" = "Model service";
+
+"正在处理" = "Processing";
+
+"正在读取" = "Loading";
+
+"每次最多选择 20 份资料。先核对发送范围，再逐份生成待确认建议。" = "Choose up to 20 sources. Review what will be sent, then generate proposals one source at a time.";
+
+"清除选择" = "Clear selection";
+
+"等待处理" = "Queued";
+
+"继续时只处理未完成项。已保存的建议会复用，来源版本变化的资料会跳过并提示。" = "Continuing processes only unfinished items. Saved proposals are reused; changed source versions are skipped with an explanation.";
+
+"继续未完成项" = "Continue unfinished items";
+
+"请返回选择，移除未就绪的资料后再预览。" = "Return to selection and remove sources that are not ready before previewing again.";
+
+"读取已有结果" = "Load saved results";
+
+"资料类型" = "Source type";
+
+"返回选择" = "Back to selection";
+
+"还没有批量整理任务。" = "No batch tasks yet.";
+
+"这次选择的服务" = "Service selected for this batch";
+
+"这里显示最近 20 次任务。" = "The 20 most recent batches are shown here.";
+
+"选择资料" = "Choose sources";
+
+"选择资料并整理" = "Choose sources to organize";
+
+"选择资料：%@" = "Select source: %@";
+
+"逐份进度" = "Progress by source";
+
+"部分资料需要重试" = "Some sources need attention";
+
+"重新预览范围" = "Preview scope again";
+
+"上次批量整理已中断，请核对范围后继续。" = "The previous batch was interrupted. Review its scope before continuing.";
+
+"分页位置已失效，请重新读取。" = "This page position is invalid. Reload the list.";
+
+"原文已变化，未发送这个新版本，请重新选择资料并预览。" = "The source changed. The new version was not sent. Select it again and review the scope.";
+
+"发送目标与这次批量整理不一致，请重新选择资料并预览。" = "The sending destination does not match this batch. Select the sources and preview again.";
+
+"另一项记忆整理正在进行，请完成或暂停后再开始。" = "Another memory task is running. Finish or pause it before starting a new one.";
+
+"同一份资料不能重复选择。" = "A source cannot be selected twice.";
+
+"所选资料有未就绪项，请返回选择并移除后再试。" = "Some selected sources are not ready. Return to selection and remove them before retrying.";
+
+"批量整理已暂停，已有结果保留。请重新读取后继续。" = "Batch processing paused. Saved results are preserved. Reload before continuing.";
+
+"找不到这次批量整理。" = "This batch could not be found.";
+
+"模型服务已变化或未配置，请恢复原服务，或重新选择资料并预览。" = "The model service changed or is not configured. Restore it, or select the sources and preview again.";
+
+"每批请选择 1 至 20 份资料。" = "Choose between 1 and 20 sources per batch.";
+
+"记忆整理规则已变化，请重新选择资料并预览。" = "Memory extraction rules changed. Select the sources and preview again.";
+
+"请先预览批量整理范围。" = "Preview the batch scope first.";
+
+"请核对范围并明确选择发送所选资料。" = "Review the scope and explicitly choose to send the selected sources.";
+
+"资料或模型服务在预览后发生变化，请重新预览发送范围。" = "Sources or the model service changed after preview. Review the sending scope again.";
+
+"资料筛选条件不正确。" = "Source filters are invalid.";
+
+"资料类型不正确。" = "The source type is invalid.";
+
+"这份资料不可读取或已归档，请返回选择其他资料。" = "This source cannot be read or is archived. Return to selection and choose another.";
+
+"这份资料整理未完成，原文与已有结果保留。" = "This source could not be processed. The original and saved results are preserved.";
+
+"这次批量整理的范围已变化，请重新预览。" = "This batch scope changed. Preview it again.";
+
+"批量记忆整理正在进行，请完成或暂停后再开始。" = "A memory batch is running. Finish or pause it before starting another task.";
+
+"服务未返回结果的请求，重试可能再次计费。" = "Retrying a request with no returned result may incur another charge.";
+
+"本次所选资料" = "Selected sources";
+
+"整理资料" = "Organize";

@@ -64,7 +64,7 @@ class MemoryExtraction:
                     'candidateIDs': json.loads(old['candidate_ids']) if old else [],
                     'problem': old['problem'] if old else None}
 
-    def start(self, kind, rid, values, background=True):
+    def start(self, kind, rid, values, background=True, batch_id=None):
         from store import stamp
         version = values.get('contentVersion')
         task_id, rid = self.identity(kind, rid, version)
@@ -74,6 +74,8 @@ class MemoryExtraction:
             old = self.s.db.execute('SELECT * FROM memory_extractions WHERE id=?', (task_id,)).fetchone()
             if old and old['status'] in ('ready', 'running'):
                 return self.status(kind, rid, version)
+            if self.s.memory_batches.active_id is not None and batch_id != self.s.memory_batches.active_id:
+                self.error(409, '批量记忆整理正在进行，请完成或暂停后再开始。')
             if self.stopping.is_set() or not self.run_lock.acquire(blocking=False):
                 self.error(409, '另一份资料正在整理，请稍后重试。')
             owns_lock = True
@@ -104,12 +106,14 @@ class MemoryExtraction:
                 if background:
                     self.worker = threading.Thread(target=self.run, args=(task_id, config), daemon=True)
                     self.worker.start()
-                else:
-                    self.run(task_id, config)
+                    owns_lock = False
+                    return self.status(kind, rid, version)
                 owns_lock = False
-                return self.status(kind, rid, version)
             finally:
                 if owns_lock:self.run_lock.release()
+        # Batch workers use the synchronous path, but network requests must not hold the store lock.
+        self.run(task_id, config)
+        return self.status(kind, rid, version)
 
     def validate(self, value, snapshot):
         if not isinstance(value, dict) or set(value) != {'candidates'}:

@@ -22,6 +22,7 @@ from documents import DocumentImports
 from memories import Memories
 from memory_files import MemoryFiles
 from memory_extraction import MemoryExtraction
+from memory_batches import MemoryBatches
 from transcription import Transcription
 
 MAX_AUDIO = 2 * 1024 * 1024 * 1024
@@ -133,6 +134,7 @@ class Store:
         self.exchange = DataExchange(self)
         self.analysis = DailyAnalysis(self)
         self.memory_extraction = MemoryExtraction(self)
+        self.memory_batches = MemoryBatches(self)
         self.transcription = Transcription(self)
 
     def _ensure_transcript(self, rid):
@@ -146,10 +148,11 @@ class Store:
             pass
 
     def close(self):
+        batches_closed = self.memory_batches.close()
         sources_closed = self.local_sources.close()
         speech_closed = self.transcription.close()
         memories_closed = self.memory_extraction.close()
-        if sources_closed and speech_closed and memories_closed:
+        if sources_closed and speech_closed and memories_closed and batches_closed:
             self.db.close()
 
     def setting(self, key):

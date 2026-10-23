@@ -125,6 +125,7 @@ struct NodeMemoryView: View {
     @State private var editing: NodeCandidate?
     @State private var selected: NodeCandidate?
     @State private var deciding: UUID?
+    @State private var batching = false
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
@@ -177,11 +178,21 @@ struct NodeMemoryView: View {
             .sheet(isPresented: $managing) { CategoryManager(store: store, kind: "memory") }
             .sheet(item: $editing) { value in OrganizationEditor(store: store, kind: "memory", id: value.id, initial: value.organization ?? .init()) }
             .sheet(item: $selected) { value in MemoryDetail(store: store, candidate: value) }
+            .sheet(isPresented: $batching) { MemoryBatchView(store: store).appLanguage() }
     }
     private var scopePicker: some View {
         MemoryScopeControls(selection: $scope, pendingCount: store.overview?.pendingMemoryCount)
     }
     private var actions: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 14) { batchAction; secondaryActions }.fixedSize(horizontal: true, vertical: false)
+            VStack(alignment: .leading, spacing: 14) { batchAction; secondaryActions }
+        }
+    }
+    private var batchAction: some View {
+        Button("批量整理", systemImage: "sparkles") { batching = true }.buttonStyle(.bordered)
+    }
+    private var secondaryActions: some View {
         let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14)) : AnyLayout(HStackLayout(spacing: 14))
         return layout {
             Button("分类管理") { managing = true }.buttonStyle(.bordered)
