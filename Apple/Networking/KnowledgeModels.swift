@@ -30,6 +30,7 @@ struct KnowledgeSource: Codable, Identifiable, Sendable {
     var excerpt: String?
     var excerptTruncated: Bool?
     var text: String?
+    var offset: Int?
     var nextOffset: Int?
     var totalCharacters: Int?
     var evidenceType: String?

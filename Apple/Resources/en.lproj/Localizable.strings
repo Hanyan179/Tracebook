@@ -1259,3 +1259,15 @@
 "已忽略的建议会保留在这里，原文与历史不会删除。" = "Dismissed suggestions remain here. Their source text and history are preserved.";
 "归档的记忆会从日常列表收起，原文与历史仍保留。" = "Archived memories are hidden from everyday lists. Their source text and history are preserved.";
 "查看已确认记忆" = "View confirmed memories";
+
+"核对引用上下文" = "Review quote in context";
+"引用上下文" = "Quote in context";
+"已定位到提出时的引用位置" = "Located the original quoted passage";
+"前文已省略" = "Earlier text omitted";
+"后文已省略" = "Later text omitted";
+"提出时的引用" = "Original quote";
+"正在核对原文…" = "Checking source text…";
+"查看当前完整原文" = "Read full current source";
+"未保存可核对的引用位置，请查看完整原文。" = "No verifiable quote location was saved. Read the full source to review it.";
+"原文已变化，无法还原当时的前后文。下方保留原引用。" = "The source has changed, so its original context cannot be restored. The saved quote is preserved below.";
+"未能核对引用位置，请查看完整原文。" = "The quote location could not be verified. Read the full source to review it.";

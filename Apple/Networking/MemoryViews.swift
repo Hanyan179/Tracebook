@@ -8,7 +8,7 @@ struct MemoryModelProposal: Codable, Sendable {
     let createdAt: String
 }
 
-struct MemoryEvidence: Codable, Sendable {
+struct MemoryEvidence: Codable, Identifiable, Sendable {
     let kind: String
     let id: String
     let title: String
@@ -58,7 +58,7 @@ struct MemoryContentView: View {
     @State private var editSnapshot: NodeCandidate?
     @State private var busy = false
     @State private var error: String?
-    @State private var source: KnowledgeSource?
+    @State private var source: MemoryEvidence?
     private var value: NodeCandidate { current ?? initial }
     var body: some View {
         ScrollView {
@@ -114,7 +114,7 @@ struct MemoryContentView: View {
                             Label("当前来源不可读取，已保存的依据仍保留。", systemImage: "exclamationmark.circle")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
-                        Button("查看当前原文") { source = evidence.source }
+                        Button(evidence.quote.isEmpty ? "查看当前原文" : "核对引用上下文") { source = evidence }
                     }.padding(18).frame(maxWidth: .infinity, alignment: .leading)
                         .background(AppPalette.surface, in: RoundedRectangle(cornerRadius: 14))
                 }
@@ -137,7 +137,13 @@ struct MemoryContentView: View {
             }.padding(24).frame(maxWidth: 900, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
         }.background(AppPalette.canvas)
             .task(id: workspace.endpoint + initial.id.uuidString + workspace.libraryRevision.uuidString) { await load() }
-            .sheet(item: $source) { item in KnowledgeSourceReader(workspace: workspace, source: item).appLanguage() }
+            .sheet(item: $source) { item in
+                if item.quote.isEmpty {
+                    KnowledgeSourceReader(workspace: workspace, source: item.source).appLanguage()
+                } else {
+                    MemoryEvidenceReader(workspace: workspace, evidence: item).appLanguage()
+                }
+            }
             .sheet(item: $editSnapshot) { snapshot in
                 MemoryEditSheet(workspace: workspace, candidate: snapshot) { current = $0; Task { await loadHistory() } }.appLanguage()
             }
