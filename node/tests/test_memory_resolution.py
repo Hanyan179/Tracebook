@@ -97,13 +97,16 @@ class MemoryResolutionTests(unittest.TestCase):
     def test_index_failure_rolls_back_both_states_and_projections(self):
         new, old = self.pair(); values = self.values(new, old); index = self.store.catalog.index_memory
         def fail_after_commit(cid, **options):
-            if self.store.db.execute('SELECT count(*) FROM memory_relations').fetchone()[0]: raise OSError('Synthetic index failure')
+            if cid == old and self.store.db.execute('SELECT count(*) FROM memory_relations').fetchone()[0]:
+                self.assertEqual(self.store.catalog.detail('memory', new)['state'], 'confirmed')
+                raise OSError('Synthetic second-index failure')
             return index(cid, **options)
         with patch.object(self.store.catalog, 'index_memory', side_effect=fail_after_commit):
             with self.assertRaises(OSError): self.store.memories.resolve(new, values)
         self.assertEqual(self.store.memories.detail(new)['state'], 'pending')
         self.assertEqual(self.store.memories.detail(old)['state'], 'confirmed')
         self.assertEqual(self.store.catalog.detail('memory', old)['state'], 'confirmed')
+        self.assertEqual(self.store.catalog.detail('memory', new)['state'], 'pending')
         self.assertEqual(self.store.db.execute('SELECT count(*) FROM memory_relations').fetchone()[0], 0)
         self.store.memories.resolve(new, values)
         self.assertEqual(self.store.catalog.detail('memory', old)['state'], 'inactive')
