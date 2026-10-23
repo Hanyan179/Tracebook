@@ -70,11 +70,13 @@ struct FilledButtonStyle: ButtonStyle {
 }
 
 struct SurfaceCard<Content: View>: View {
+    var inset: CGFloat = 24
+    var cornerRadius: CGFloat = 24
     @ViewBuilder var content: Content
     var body: some View {
-        content.padding(24).frame(maxWidth: .infinity, alignment: .leading)
-            .background(AppPalette.surface, in: RoundedRectangle(cornerRadius: 24))
-            .overlay { RoundedRectangle(cornerRadius: 24).strokeBorder(AppPalette.line, lineWidth: 0.7) }
+        content.padding(inset).frame(maxWidth: .infinity, alignment: .leading)
+            .background(AppPalette.surface, in: RoundedRectangle(cornerRadius: cornerRadius))
+            .overlay { RoundedRectangle(cornerRadius: cornerRadius).strokeBorder(AppPalette.line, lineWidth: 0.7) }
     }
 }
 

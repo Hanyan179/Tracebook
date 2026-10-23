@@ -25,8 +25,8 @@ struct WorkspaceHomeView: View {
                     Button("连接处理节点") { settings = true }.buttonStyle(FilledButtonStyle())
                 }
             }
-        }.navigationTitle("资料")
-            .toolbar { ToolbarItem { Button { settings = true } label: { Image(systemName: "slider.horizontal.3") } } }
+        }.navigationTitle("电脑资料库")
+            .toolbar { ToolbarItem { Button { settings = true } label: { Image(systemName: "network") }.accessibilityLabel("电脑连接设置") } }
             .sheet(isPresented: $settings) {
                 NavigationStack {
                     NodeConnectionView(store: store)
@@ -72,12 +72,11 @@ struct NodeRecordView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
                 HStack {
-                    BrandMark(size: 44)
-                    Text("声记 · 原音").font(.caption).foregroundStyle(AppPalette.muted)
-                    Spacer()
-                    Button("整理分类", systemImage: "folder") { organizing = true }.buttonStyle(.bordered)
+                    Text(currentRecord.title).font(.title2.weight(.semibold)).frame(maxWidth: .infinity, alignment: .leading)
+                    Menu { Button("整理分类", systemImage: "folder") { organizing = true } } label: {
+                        Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44)
+                    }.accessibilityLabel("录音操作")
                 }
-                Text(currentRecord.title).font(.largeTitle.weight(.semibold))
                 Text(currentRecord.date, format: .dateTime.year().month().day().hour().minute()).foregroundStyle(.secondary)
                 OrganizationBadges(organization: currentRecord.organization ?? .init(), categories: categories)
                 NodeAudioControls(store: store, record: currentRecord, playback: store.playback)
@@ -100,7 +99,7 @@ struct NodeRecordView: View {
                 Text(L(currentRecord.textState == "ready" ? "建议保留原文依据，确认后才成为记忆。" : "添加文字后，可以从原文提出记忆建议。"))
                     .font(.footnote).foregroundStyle(.secondary)
                 if proposalSaved { Text("已加入待确认记忆。").font(.caption).foregroundStyle(.secondary) }
-            }.padding(28).frame(maxWidth: 760, alignment: .leading).frame(maxWidth: .infinity)
+            }.padding(20).frame(maxWidth: 760, alignment: .leading).frame(maxWidth: .infinity)
         }.background(AppPalette.canvas).navigationTitle(L("录音资料")).appLanguage()
             .sheet(isPresented: $organizing) {
                 OrganizationEditor(store: store, kind: "recording", id: record.id, initial: currentRecord.organization ?? .init())

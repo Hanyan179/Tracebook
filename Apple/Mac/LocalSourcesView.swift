@@ -146,8 +146,8 @@ struct LocalSourcesView: View {
                 }
                 .frame(maxWidth: hasSources ? 1320 : 1040)
                 .padding(32)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: geometry.size.height, alignment: hasSources ? .top : .center)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(minHeight: geometry.size.height, alignment: .topLeading)
                 .id("source-page-start")
                 }
             }
@@ -220,16 +220,16 @@ struct LocalSourcesView: View {
         if let result { Text(verbatim: result).font(.callout).foregroundStyle(.secondary) }
     }
     private func emptyState(_ listing: LocalSourceListing, width: CGFloat) -> some View {
-        VStack(spacing: 28) {
-            VStack(spacing: 14) {
-                Image(systemName: "tray.and.arrow.down").font(.system(size: 32, weight: .light)).foregroundStyle(.secondary)
-                Text("汇集自己的资料").font(.system(size: 28, weight: .semibold))
-                Text("导入已有文档，或连接工具中的本人输入，统一留在自己的资料夹。")
-                    .font(.body).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }.multilineTextAlignment(.center).frame(maxWidth: 680)
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("添加第一份资料").font(.title2.weight(.semibold))
+                Text("导入文档，或连接工具中的本人输入。原文与来源一起保留。")
+                    .font(.callout).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
             operationStatus
-            discoveryGrid(listing, width: width)
             documentsCard
+            Text("连接工具输入").font(.headline).padding(.top, 4)
+            discoveryGrid(listing, width: width)
             destination
             privacyNote
         }
@@ -247,7 +247,6 @@ struct LocalSourcesView: View {
                 reloadButton
             }
             operationStatus
-            destination
             documentsCard
             let columns = width >= 1100 && listing.sources.count > 1 ? 2 : 1
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 20, alignment: .topLeading), count: columns), spacing: 20) {
@@ -259,11 +258,12 @@ struct LocalSourcesView: View {
             DisclosureGroup("添加资料来源") {
                 discoveryGrid(listing, width: width).padding(.top, 16)
             }.font(.headline)
+            destination
             privacyNote
         }
     }
     private var documentsCard: some View {
-        SurfaceCard {
+        SurfaceCard(inset: 18, cornerRadius: 14) {
             HStack(spacing: 16) {
                 Image(systemName: "doc.text").font(.title2).foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 6) {
@@ -273,7 +273,7 @@ struct LocalSourcesView: View {
                 }
                 Spacer()
                 Button(L(documentCount > 0 ? "查看与导入" : "导入文字资料")) { showingDocuments = true }
-                    .buttonStyle(.bordered).disabled(busy)
+                    .buttonStyle(FilledButtonStyle()).disabled(busy)
             }
         }
     }
@@ -300,7 +300,7 @@ struct LocalSourcesView: View {
                                  count: width >= 760 ? 2 : 1), spacing: 20) {
             ForEach(listing.discovered) { candidate in
                 let connected = listing.sources.contains(where: { $0.directory == candidate.directory })
-                SurfaceCard {
+                SurfaceCard(inset: 18, cornerRadius: 14) {
                     VStack(alignment: .leading, spacing: 14) {
                         Label(candidate.name, systemImage: "terminal").font(.title3.weight(.semibold))
                         Text(L(connected ? "此目录已连接" : candidate.available ? "已找到目录，尚未归档" : "选择目录后即可预览"))
@@ -318,14 +318,14 @@ struct LocalSourcesView: View {
     }
     @ViewBuilder private func discoveryActions(_ candidate: LocalDiscovery, connected: Bool) -> some View {
         if candidate.available && !connected {
-            Button("预览并连接") { scan(candidate.provider, candidate.directory) }.buttonStyle(FilledButtonStyle())
+            Button("预览并连接") { scan(candidate.provider, candidate.directory) }.buttonStyle(.bordered)
             Button("选择其他目录") { choose(candidate) }.buttonStyle(.borderless)
         } else {
             Button(L(connected ? "选择其他目录" : "选择目录")) { choose(candidate) }.buttonStyle(.bordered)
         }
     }
     private var recentInputList: some View {
-        SurfaceCard {
+        SurfaceCard(inset: 18, cornerRadius: 14) {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Text("最近的本人输入").font(.headline)
@@ -359,7 +359,7 @@ struct LocalSourcesView: View {
         }
     }
     private func sourceCard(_ source: LocalSource, width: CGFloat) -> some View {
-        SurfaceCard {
+        SurfaceCard(inset: 18, cornerRadius: 14) {
             VStack(alignment: .leading, spacing: 18) {
                 ViewThatFits(in: .horizontal) {
                     HStack { Text(source.name).font(.headline); Spacer(); automaticToggle(source) }

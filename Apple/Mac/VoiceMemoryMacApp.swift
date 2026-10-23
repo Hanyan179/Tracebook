@@ -20,6 +20,7 @@ final class MacAppDelegate: NSObject, NSApplicationDelegate {
 private enum WorkspaceSection: String, CaseIterable, Identifiable {
     case overview = "对话", notes = "笔记", recordings = "原音", daily = "每日记录", memory = "长期记忆", sync = "设备与同步", sources = "资料来源"
     var id: String { rawValue }
+    var title: String { self == .recordings ? "录音与文字" : rawValue }
     var symbol: String {
         switch self { case .overview: "bubble.left.and.bubble.right"; case .notes: "note.text"; case .recordings: "waveform"; case .daily: "calendar"; case .memory: "bookmark"; case .sync: "arrow.triangle.2.circlepath"; case .sources: "tray.and.arrow.down" }
     }
@@ -30,7 +31,7 @@ struct MacWorkspaceView: View {
     @StateObject private var local = LocalNodeController.shared
     @StateObject private var sync = NodeSyncController.shared
     @StateObject private var folder = FolderSyncController.shared
-    @State private var section: WorkspaceSection? = .overview
+    @State private var section: WorkspaceSection? = .recordings
     @State private var selectedNote: UUID?
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var sidebarTransitionTask: Task<Void, Never>?
@@ -53,17 +54,10 @@ struct MacWorkspaceView: View {
                     Text("声记").font(.system(size: 14, weight: .semibold))
                     Spacer(minLength: 4)
                 }.padding(.horizontal, 24).padding(.top, 10).padding(.bottom, 18)
-                VStack(spacing: 4) {
-                    ForEach(Array(WorkspaceSection.allCases.enumerated()), id: \.element.id) { index, item in
-                        Button { navigationPath = NavigationPath(); section = item } label: {
-                            Label(LocalizedStringKey(item.rawValue), systemImage: item.symbol)
-                                .font(.subheadline.weight(section == item ? .semibold : .regular))
-                                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 14).padding(.vertical, 11)
-                                .foregroundStyle(.primary)
-                                .background(section == item ? AppPalette.line : .clear, in: RoundedRectangle(cornerRadius: 9))
-                        }.buttonStyle(QuietPressStyle())
-                            .keyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
-                    }
+                VStack(alignment: .leading, spacing: 16) {
+                    sidebarGroup("资料", items: [.recordings, .notes, .sources])
+                    sidebarGroup("整理与回顾", items: [.daily, .memory, .overview])
+                    sidebarGroup("连接", items: [.sync])
                 }.padding(.horizontal, 10)
                 Spacer()
                 VStack(alignment: .leading, spacing: 18) {
@@ -88,16 +82,17 @@ struct MacWorkspaceView: View {
         } detail: {
             NavigationStack(path: $navigationPath) {
                 Group {
-                    switch section ?? .overview {
+                    switch section ?? .recordings {
                     case .overview: MacOverview(workspace: workspace, showNotes: { selectedNote = $0; section = .notes }, showMemory: { section = .memory }, showDaily: { section = .daily })
                     case .notes: NotesLibrary(workspace: workspace, initialSelection: selectedNote)
                     case .sync: syncPage
                     case .sources: LocalSourcesView(workspace: workspace)
-                    case .recordings: MacLibraryBrowser(store: workspace, kind: .recording)
+                    case .recordings: MacLibraryBrowser(store: workspace, kind: .recording,
+                        importAudio: { importing = true }, setupSync: { section = .sync })
                     case .daily: MacLibraryBrowser(store: workspace, kind: .daily)
                     case .memory: MacLibraryBrowser(store: workspace, kind: .memory)
                     }
-                }.navigationTitle(L((section ?? .overview).rawValue))
+                }.navigationTitle(L((section ?? .recordings).title))
                     .libraryDestinations(store: workspace)
                     .background(AppPalette.canvas)
                     .toolbar {
@@ -142,6 +137,27 @@ struct MacWorkspaceView: View {
             .onReceive(sync.$jobs.debounce(for: .milliseconds(600), scheduler: RunLoop.main)) { _ in
                 Task { await workspace.refresh() }
             }
+    }
+    private func sidebarGroup(_ title: String, items: [WorkspaceSection]) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(L(title)).font(.caption.weight(.medium)).foregroundStyle(.secondary).padding(.horizontal, 14)
+            ForEach(items) { item in
+                Button { navigationPath = NavigationPath(); section = item } label: {
+                    HStack(spacing: 8) {
+                        Label(LocalizedStringKey(item.title), systemImage: item.symbol)
+                        Spacer(minLength: 0)
+                        if item == .memory, let pending = workspace.overview?.pendingMemoryCount, pending > 0 {
+                            Text(pending, format: .number).font(.caption.monospacedDigit())
+                                .padding(.horizontal, 6).padding(.vertical, 2).background(AppPalette.line, in: Capsule())
+                                .accessibilityLabel(LF("%d 条待确认", pending))
+                        }
+                    }.font(.subheadline.weight(section == item ? .semibold : .regular))
+                        .padding(.horizontal, 14).padding(.vertical, 9).foregroundStyle(.primary)
+                        .background(section == item ? AppPalette.line : .clear, in: RoundedRectangle(cornerRadius: 8))
+                }.buttonStyle(QuietPressStyle())
+                    .keyboardShortcut(KeyEquivalent(Character(String((WorkspaceSection.allCases.firstIndex(of: item) ?? 0) + 1))), modifiers: .command)
+            }
+        }
     }
     @ToolbarContentBuilder
     private var sidebarToolbar: some ToolbarContent {

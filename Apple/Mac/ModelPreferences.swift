@@ -91,16 +91,25 @@ private enum ModelCredential {
 struct ModelSettingsView: View {
     @ObservedObject var workspace: NodeWorkspaceStore
     @StateObject private var preferences = ModelPreferences()
+    @AppStorage("model.focusRole") private var focusRole = ""
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                SettingsPageTitle(title: "模型", subtitle: "语音识别与文字整理分别配置。")
-                if let problem = preferences.problem { Text(problem).font(.callout).foregroundStyle(.secondary) }
-                ModelProfileEditor(workspace: workspace, preferences: preferences, role: .summary)
-                ModelProfileEditor(workspace: workspace, preferences: preferences, role: .transcription)
-                Label("密钥只保存在这台电脑的钥匙串，不进入提示词、记忆或导出文件。", systemImage: "lock")
-                    .font(.caption).foregroundStyle(.secondary).lineSpacing(4)
-            }.padding(28).frame(maxWidth: 860, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+        ScrollViewReader { scroller in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    SettingsPageTitle(title: "模型", subtitle: "语音识别与文字整理分别配置。")
+                    if let problem = preferences.problem { Text(problem).font(.callout).foregroundStyle(.secondary) }
+                    ModelProfileEditor(workspace: workspace, preferences: preferences, role: .summary).id(ModelRole.summary.rawValue)
+                    ModelProfileEditor(workspace: workspace, preferences: preferences, role: .transcription).id(ModelRole.transcription.rawValue)
+                    Label("密钥只保存在这台电脑的钥匙串，不进入提示词、记忆或导出文件。", systemImage: "lock")
+                        .font(.caption).foregroundStyle(.secondary).lineSpacing(4)
+                }.padding(28).frame(maxWidth: 860, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .task(id: focusRole) {
+                guard ModelRole(rawValue: focusRole) != nil else { return }
+                await Task.yield()
+                scroller.scrollTo(focusRole, anchor: .top)
+                focusRole = ""
+            }
         }
     }
 }

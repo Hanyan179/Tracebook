@@ -50,47 +50,126 @@ struct LibraryPageHeader: View {
     }
 }
 
+struct MemoryScopeControls: View {
+    @Binding var selection: String
+    var confirmedValue = "confirmed"
+    var pendingCount: Int?
+    @Environment(\.dynamicTypeSize) private var typeSize
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            if !typeSize.isAccessibilitySize { HStack(spacing: 6) { primaryOptions; otherStates } }
+            VStack(alignment: .leading, spacing: 8) {
+                if typeSize.isAccessibilitySize { primaryOptions }
+                else { HStack(spacing: 6) { primaryOptions } }
+                otherStates
+            }
+        }
+    }
+    @ViewBuilder private var primaryOptions: some View {
+        option("已确认", value: confirmedValue)
+        option((pendingCount ?? 0) > 0 ? LF("待确认 %d", pendingCount ?? 0) : L("待确认"), value: "pending", localized: true)
+    }
+    private var otherStates: some View {
+        Menu {
+            Button("已停用") { selection = "inactive" }
+            Button("已归档") { selection = "archived" }
+            Button("已忽略") { selection = "rejected" }
+        } label: {
+            Label(L(["inactive": "已停用", "archived": "已归档", "rejected": "已忽略"][selection] ?? "更多状态"), systemImage: "ellipsis")
+                .font(.caption).padding(.vertical, 8)
+                #if os(iOS)
+                .frame(minWidth: 44, minHeight: 44)
+                #endif
+        }.fixedSize()
+    }
+    private func option(_ title: String, value: String, localized: Bool = false) -> some View {
+        Button { selection = value } label: {
+            Text(localized ? title : L(title)).font(.subheadline.weight(selection == value ? .semibold : .regular))
+                .padding(.horizontal, 10).padding(.vertical, 9)
+                #if os(iOS)
+                .frame(minHeight: 44)
+                #else
+                .frame(minHeight: 36)
+                #endif
+                .background(selection == value ? AppPalette.line : .clear, in: RoundedRectangle(cornerRadius: 8))
+        }.buttonStyle(.plain).accessibilityAddTraits(selection == value ? .isSelected : [])
+    }
+}
+
 struct LibraryFilters: View {
     @Binding var filter: LibraryFilter
     let facets: LibraryFacets
     var categorized = true
+    var recording = false
+    @State private var showing = false
+    private var filterCount: Int {
+        [!filter.category.isEmpty, !filter.month.isEmpty, !filter.tag.isEmpty,
+         recording && !filter.state.isEmpty, recording && filter.archived].filter { $0 }.count
+    }
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 12) {
-                Image(systemName: "magnifyingglass").foregroundStyle(AppPalette.muted)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
                 TextField(categorized ? "搜索标题、文字或标签" : "搜索日期或每日内容", text: $filter.query)
                     .textFieldStyle(.plain).accessibilityLabel("搜索资料")
                 if !filter.query.isEmpty {
-                    Button { filter.query = "" } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain).foregroundStyle(AppPalette.muted).accessibilityLabel("清除搜索")
+                    Button { filter.query = "" } label: { Image(systemName: "xmark.circle.fill").frame(minWidth: 44, minHeight: 44) }
+                        .buttonStyle(.plain).foregroundStyle(.secondary).accessibilityLabel("清除搜索")
                 }
-            }.padding(16).background(AppPalette.surface, in: RoundedRectangle(cornerRadius: 16))
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
+            }.padding(.horizontal, 12).frame(minHeight: 44)
+                .background(AppPalette.surface, in: RoundedRectangle(cornerRadius: 10))
+            HStack {
+                Button { showing = true } label: {
+                    Label(filterCount == 0 ? L("筛选") : filterCount == 1 ? L("1 项筛选") : LF("%d 项筛选", filterCount), systemImage: "line.3.horizontal.decrease")
+                        .frame(minHeight: 44)
+                }.buttonStyle(.plain)
+                if filterCount > 0 {
+                    Button("清除筛选") { clear() }.buttonStyle(.plain).foregroundStyle(.secondary).frame(minHeight: 44)
+                }
+                Spacer()
+            }.font(.subheadline)
+        }
+        .sheet(isPresented: $showing) {
+            NavigationStack {
+                Form {
                     if categorized {
                         Picker("主题", selection: $filter.category) {
-                            Text("全部分类").tag("")
-                            Text("未分类").tag("uncategorized")
+                            Text("全部分类").tag(""); Text("未分类").tag("uncategorized")
                             ForEach(facets.categories) { Text($0.displayName).tag($0.id) }
-                        }.pickerStyle(.menu).fixedSize()
+                        }
                     }
                     Picker("日期", selection: $filter.month) {
                         Text("全部月份").tag("")
-                        ForEach(facets.months, id: \.self) { Text($0).tag($0) }
-                    }.pickerStyle(.menu).fixedSize()
+                        ForEach(facets.months, id: \.self) { Text(verbatim: $0).tag($0) }
+                    }
                     if categorized && !facets.tags.isEmpty {
                         Picker("标签", selection: $filter.tag) {
                             Text("全部标签").tag("")
-                            ForEach(facets.tags, id: \.self) { Text($0).tag($0) }
-                        }.pickerStyle(.menu).fixedSize()
+                            ForEach(facets.tags, id: \.self) { Text(verbatim: $0).tag($0) }
+                        }
                     }
-                    if !filter.query.isEmpty || !filter.category.isEmpty || !filter.month.isEmpty || !filter.tag.isEmpty {
-                        Button("清除筛选") { filter.query = ""; filter.category = ""; filter.month = ""; filter.tag = "" }
-                            .font(.caption).buttonStyle(.plain).foregroundStyle(AppPalette.muted)
+                    if recording {
+                        Picker("文字", selection: $filter.state) {
+                            Text("全部文字状态").tag(""); Text("已有文字").tag("ready"); Text("等待文字").tag("awaitingText")
+                        }
+                        Toggle("显示已归档录音", isOn: $filter.archived)
                     }
-                }.font(.subheadline)
+                    if filterCount > 0 { Button("清除筛选") { clear() } }
+                }.formStyle(.grouped).navigationTitle(L("筛选"))
+                    #if os(iOS)
+                    .navigationBarTitleDisplayMode(.inline)
+                    #endif
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { showing = false } } }
             }
+            #if os(macOS)
+            .frame(minWidth: 420, minHeight: 360)
+            #endif
+            .appLanguage()
         }
+    }
+    private func clear() {
+        filter.category = ""; filter.month = ""; filter.tag = ""
+        if recording { filter.state = ""; filter.archived = false }
     }
 }
 

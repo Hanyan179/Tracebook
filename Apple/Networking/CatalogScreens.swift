@@ -9,28 +9,17 @@ struct NodeRecordsView: View {
     private var groups: [String] { Array(Set(loader.items.map { $0.day ?? "日期未知" })).sorted(by: >) }
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                LibraryPageHeader(title: "留住的每一段声音。", subtitle: "按主题整理，用标签找到关联。")
+            VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Picker("范围", selection: $filter.archived) {
-                        Text("资料库").tag(false); Text("已归档").tag(true)
-                    }.pickerStyle(.segmented).frame(maxWidth: 220)
+                    Text(loader.total == 1 ? L("1 条录音") : LF("%lld 条录音", loader.total)).font(.subheadline.weight(.medium))
                     Spacer()
-                    Button("分类管理") { managing = true }.buttonStyle(.bordered)
-                    Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }
-                        .disabled(loader.loading).accessibilityLabel("刷新原音列表")
+                    Menu {
+                        Button("分类管理") { managing = true }
+                        Button("刷新原音列表") { Task { await reload() } }
+                    } label: { Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44) }.accessibilityLabel("录音列表操作")
                 }
-                LibraryFilters(filter: $filter, facets: loader.facets)
-                HStack {
-                    Text(loader.total == 1 ? L("1 条录音") : LF("%lld 条录音", loader.total)).font(.caption).foregroundStyle(AppPalette.muted)
-                    Spacer()
-                    Picker("文字", selection: $filter.state) {
-                        Text("全部文字状态").tag("")
-                        Text("已有文字").tag("ready")
-                        Text("待添加文字").tag("awaitingText")
-                    }.pickerStyle(.menu).fixedSize().font(.caption)
-                }
-                LazyVStack(alignment: .leading, spacing: 26) {
+                LibraryFilters(filter: $filter, facets: loader.facets, recording: true)
+                LazyVStack(alignment: .leading, spacing: 18) {
                     ForEach(groups, id: \.self) { day in
                         VStack(alignment: .leading, spacing: 12) {
                             SectionHeading(title: day)
@@ -43,7 +32,7 @@ struct NodeRecordsView: View {
                     }
                 }
                 LibraryFooter(loader: loader) { Task { await loader.more(client: store.client, kind: "recording", filter: filter) } }
-            }.padding(28).frame(maxWidth: 1000).frame(maxWidth: .infinity)
+            }.padding(16).frame(maxWidth: 1000).frame(maxWidth: .infinity)
         }.background(AppPalette.canvas)
             .task(id: store.endpoint + filter.signature + store.libraryRevision.uuidString) { await reload() }
             .sheet(isPresented: $managing) { CategoryManager(store: store, kind: "recording") }
@@ -65,9 +54,9 @@ struct NodeRecordsView: View {
                 OrganizationBadges(organization: record.organization ?? .init(), categories: loader.facets.categories)
             }
             Spacer(minLength: 0)
-            Image(systemName: "arrow.up.right").font(.caption).foregroundStyle(AppPalette.muted).padding(.top, 4)
-        }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
-            .background(AppPalette.surface, in: RoundedRectangle(cornerRadius: 21))
+            Image(systemName: "chevron.right").font(.caption).foregroundStyle(AppPalette.muted).padding(.top, 4)
+        }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+            .background(AppPalette.surface, in: RoundedRectangle(cornerRadius: 12))
     }
 }
 
@@ -80,7 +69,6 @@ struct NodeDailyView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                LibraryPageHeader(title: "每天，都有迹可循。", subtitle: "按月份回看，也可以搜索当天的内容。")
                 HStack {
                     Text("\(loader.total) 天记录").font(.caption).foregroundStyle(AppPalette.muted)
                     Spacer()
@@ -101,7 +89,7 @@ struct NodeDailyView: View {
                                 HStack(spacing: 20) {
                                     Text(String(day.id.suffix(2))).font(.system(size: 28, weight: .light)).monospacedDigit()
                                         .frame(width: 48)
-                                    NavigationLink(value: LibraryRoute.document(path: "v1/daily/\(day.id)", title: day.id, hint: "按来源整理的每日草稿，可以修订。")) {
+                                    NavigationLink { NodeDocumentEditor(store: store, path: "v1/daily/\(day.id)", title: day.id, hint: "按来源整理的每日草稿，可以修订。") } label: {
                                         VStack(alignment: .leading, spacing: 8) {
                                             Text(day.id).font(.headline)
                                             Text(L("\(day.recordingCount ?? 0) 段原音 · " + state(day)))
@@ -117,7 +105,7 @@ struct NodeDailyView: View {
                     }
                 }
                 LibraryFooter(loader: loader) { Task { await loader.more(client: store.client, kind: "daily", filter: filter) } }
-            }.padding(28).frame(maxWidth: 1000).frame(maxWidth: .infinity)
+            }.padding(16).frame(maxWidth: 1000).frame(maxWidth: .infinity)
         }.background(AppPalette.canvas)
             .task(id: store.endpoint + filter.signature + store.libraryRevision.uuidString) { await reload() }
     }
@@ -140,7 +128,6 @@ struct NodeMemoryView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
-                LibraryPageHeader(title: "重要的，慢慢留下。", subtitle: "分类与来源始终保留，由你决定哪些值得记住。")
                 ViewThatFits(in: .horizontal) {
                     HStack { scopePicker; Spacer(); actions }
                     VStack(alignment: .leading, spacing: 14) { scopePicker; actions }
@@ -168,8 +155,8 @@ struct NodeMemoryView: View {
                                     Button("整理分类") { editing = candidate }.buttonStyle(.plain)
                                 }.font(.caption).foregroundStyle(AppPalette.muted)
                                 if scope == "pending" {
-                                    HStack {
-                                        Button("确认记忆") { decide(candidate, true) }.buttonStyle(FilledButtonStyle())
+                                    (typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12)) : AnyLayout(HStackLayout())) {
+                                        Button("核对并确认") { selected = candidate }.buttonStyle(FilledButtonStyle())
                                         Button("忽略") { decide(candidate, false) }.buttonStyle(.bordered)
                                     }.disabled(deciding != nil)
                                 }
@@ -178,7 +165,7 @@ struct NodeMemoryView: View {
                     }
                 }
                 LibraryFooter(loader: loader) { Task { await loader.more(client: store.client, kind: "memory", filter: filter) } }
-            }.padding(28).frame(maxWidth: 1100).frame(maxWidth: .infinity)
+            }.padding(16).frame(maxWidth: 1100).frame(maxWidth: .infinity)
         }.background(AppPalette.canvas)
             .task(id: store.endpoint + filter.signature + store.libraryRevision.uuidString) { await reload() }
             .onChange(of: scope) { _, value in filter.archived = value == "archived"; filter.state = value == "archived" ? "" : value }
@@ -187,17 +174,13 @@ struct NodeMemoryView: View {
             .sheet(item: $selected) { value in MemoryDetail(store: store, candidate: value) }
     }
     private var scopePicker: some View {
-        Picker("记忆状态", selection: $scope) {
-            Text("已确认").tag("confirmed"); Text("待确认").tag("pending")
-            Text("已停用").tag("inactive")
-            Text("已归档").tag("archived"); Text("已忽略").tag("rejected")
-        }.pickerStyle(.menu)
+        MemoryScopeControls(selection: $scope, pendingCount: store.overview?.pendingMemoryCount)
     }
     private var actions: some View {
         let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14)) : AnyLayout(HStackLayout(spacing: 14))
         return layout {
             Button("分类管理") { managing = true }.buttonStyle(.bordered)
-            NavigationLink("记忆文件", value: LibraryRoute.document(path: "v1/memory", title: "记忆文件", hint: "人工编辑会保留独立版本，分类列表来自确认条目。")).font(.caption)
+            NavigationLink { NodeDocumentEditor(store: store, path: "v1/memory", title: "记忆文件", hint: "人工编辑会保留独立版本，分类列表来自确认条目。") } label: { Text("记忆文件") }.font(.caption)
             Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("刷新记忆列表")
         }
     }

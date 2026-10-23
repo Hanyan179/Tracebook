@@ -10,6 +10,8 @@ enum DesktopLibraryKind: String {
 struct MacLibraryBrowser: View {
     @ObservedObject var store: NodeWorkspaceStore
     let kind: DesktopLibraryKind
+    var importAudio: (() -> Void)?
+    var setupSync: (() -> Void)?
     @StateObject private var recordings = LibraryLoader<NodeRecord>()
     @StateObject private var days = LibraryLoader<NodeDaily>()
     @StateObject private var memories = LibraryLoader<NodeCandidate>()
@@ -50,30 +52,18 @@ struct MacLibraryBrowser: View {
                     }
                     TextField("搜索资料", text: $filter.query)
                         .textFieldStyle(.roundedBorder).focused($searching)
-                    if kind != .daily {
+                    if kind == .memory {
+                        MemoryScopeControls(selection: $scope, confirmedValue: "active", pendingCount: store.overview?.pendingMemoryCount)
+                        if let notice = store.memoryNotice { Text(L(notice)).font(.caption).foregroundStyle(.secondary) }
+                    } else if kind == .recording {
                         Picker("范围", selection: $scope) {
-                            Text(L(kind == .memory ? "已确认" : "资料库")).tag("active")
-                            if kind == .memory { Text("待确认").tag("pending") }
-                            if kind == .memory { Text("已停用").tag("inactive") }
+                            Text("资料库").tag("active")
                             Text("已归档").tag("archived")
-                            if kind == .memory { Text("已忽略").tag("rejected") }
                         }.labelsHidden().pickerStyle(.menu)
-                        if kind == .memory, let notice = store.memoryNotice {
-                            Text(L(notice)).font(.caption).foregroundStyle(.secondary)
-                        }
                     }
-                    HStack(spacing: 8) {
-                        if kind != .daily {
-                            Picker("分类", selection: $filter.category) {
-                                Text("全部分类").tag("")
-                                Text("未分类").tag("uncategorized")
-                                ForEach(facets.categories) { Text($0.displayName).tag($0.id) }
-                            }.labelsHidden()
-                        }
-                        Picker("月份", selection: $filter.month) {
-                            Text("全部月份").tag("")
-                            ForEach(facets.months, id: \.self) { Text(verbatim: $0).tag($0) }
-                        }.labelsHidden()
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) { facetPickers }.fixedSize(horizontal: true, vertical: false)
+                        VStack(alignment: .leading, spacing: 8) { facetPickers }
                     }.controlSize(.small)
                     if !facets.tags.isEmpty {
                         HStack {
@@ -93,12 +83,14 @@ struct MacLibraryBrowser: View {
                     if kind == .recording {
                         ForEach(recordings.items) { item in
                             VStack(alignment: .leading, spacing: 8) {
-                                Text(verbatim: item.title).font(.headline).lineLimit(2)
+                                Text(verbatim: item.title).font(.body.weight(.medium)).lineLimit(2)
                                 HStack {
                                     Text(item.date, format: .dateTime.month().day().hour().minute())
                                     Spacer()
                                     Text(Duration.seconds(item.duration).formatted(.time(pattern: .minuteSecond)))
                                 }.font(.caption).foregroundStyle(.secondary)
+                                Label(L(item.textState == "ready" ? "已有文字" : "等待文字"), systemImage: item.textState == "ready" ? "text.alignleft" : "waveform")
+                                    .font(.caption).foregroundStyle(.secondary)
                                 OrganizationBadges(organization: item.organization ?? .init(), categories: facets.categories)
                             }.padding(.vertical, 9).tag(item.id.uuidString)
                         }
@@ -144,7 +136,7 @@ struct MacLibraryBrowser: View {
                         }.buttonStyle(.plain).font(.caption).disabled(!store.connected)
                     }
                 }.padding(16)
-            }.frame(minWidth: 290, idealWidth: 330, maxWidth: 410).background(AppPalette.surface.opacity(0.55))
+            }.frame(minWidth: 240, idealWidth: 280, maxWidth: 320).background(AppPalette.surface.opacity(0.55))
             GeometryReader { bounds in
                 detail.frame(width: bounds.size.width, height: bounds.size.height)
             }.frame(minWidth: 380).background(AppPalette.canvas)
@@ -161,6 +153,19 @@ struct MacLibraryBrowser: View {
             Button("") { searching = true }.keyboardShortcut("f", modifiers: .command).hidden()
         }
     }
+    @ViewBuilder private var facetPickers: some View {
+        if kind != .daily {
+            Picker("分类", selection: $filter.category) {
+                Text("全部分类").tag("")
+                Text("未分类").tag("uncategorized")
+                ForEach(facets.categories) { Text($0.displayName).tag($0.id) }
+            }.labelsHidden()
+        }
+        Picker("月份", selection: $filter.month) {
+            Text("全部月份").tag("")
+            ForEach(facets.months, id: \.self) { Text(verbatim: $0).tag($0) }
+        }.labelsHidden()
+    }
     @ViewBuilder private var detail: some View {
         if kind == .recording, let item = recordings.items.first(where: { $0.id.uuidString == selection }) {
             MacRecordingReader(store: store, record: item, categories: facets.categories).id(item.id)
@@ -175,6 +180,13 @@ struct MacLibraryBrowser: View {
                 Text(L(problem ?? (total == 0 ? emptyHint : "在左侧选择，内容会在这里展开。")))
             } actions: {
                 if problem != nil { Button("重新读取") { Task { await reload() } } }
+                if kind == .recording && total == 0 && !filter.hasSearchFilters && scope == "active" {
+                    if let importAudio { Button("导入音频", action: importAudio).buttonStyle(FilledButtonStyle()) }
+                    if let setupSync { Button("连接手机", action: setupSync) }
+                }
+                if kind == .memory && scope == "active" && (store.overview?.pendingMemoryCount ?? 0) > 0 {
+                    Button("查看待确认记忆") { scope = "pending" }.buttonStyle(FilledButtonStyle())
+                }
             }
         }
     }
@@ -220,6 +232,7 @@ struct MacDocumentReader: View {
     var subtitle = ""
     var day: NodeDaily?
     var editable = true
+    var showsTitle = true
     @State private var document: NodeDocument?
     @State private var problem: String?
     @State private var editing = false
@@ -237,7 +250,8 @@ struct MacDocumentReader: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 7) {
-                    Text(verbatim: title).font(.title2.weight(.semibold))
+                    if showsTitle { Text(verbatim: title).font(.title2.weight(.semibold)) }
+                    else { Text("文字记录").font(.headline) }
                     if !subtitle.isEmpty { Text(verbatim: subtitle).font(.caption).foregroundStyle(.secondary) }
                 }
                 Spacer()
@@ -248,7 +262,7 @@ struct MacDocumentReader: View {
                     }.disabled(organizing || !store.connected)
                 }
                 if editable { Button("编辑", systemImage: "square.and.pencil") { editing = true }.disabled(document == nil) }
-            }.padding(.horizontal, 30).padding(.vertical, 24)
+            }.padding(.horizontal, 24).padding(.vertical, showsTitle ? 20 : 12)
             Divider()
             GeometryReader { proxy in
                 HStack(alignment: .top, spacing: 0) {
@@ -260,11 +274,11 @@ struct MacDocumentReader: View {
                             } else if document != nil {
                                 ContentUnavailableView("还没有文字", systemImage: "text.alignleft",
                                     description: Text(path.hasSuffix("/transcript")
-                                        ? L("尚未生成文字。可在原音页面启动转写，也可以手动补充。")
+                                        ? L("配置语音服务后可以转写，也可以直接编辑文字。")
                                         : L("可以先添加文字。")))
                             } else if problem == nil { ProgressView().frame(maxWidth: .infinity) }
                             else { Button("重新读取") { Task { await load() } } }
-                        }.padding(30).frame(maxWidth: 1100, alignment: .leading).frame(maxWidth: .infinity)
+                        }.padding(24).frame(maxWidth: 900, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
                     }
                     if day != nil && proxy.size.width > 900 {
                         Divider()
@@ -378,18 +392,33 @@ private struct MacRecordingReader: View {
     let record: NodeRecord
     let categories: [LibraryCategory]
     @State private var organizing = false
-    @State private var details = false
+    @State private var suggestionSource: KnowledgeSource?
+    @State private var proposalSaved = false
     init(store: NodeWorkspaceStore, record: NodeRecord, categories: [LibraryCategory]) {
         self.store = store; self.record = record; self.categories = categories; self.playback = store.playback
     }
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 18) {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top, spacing: 12) {
+                    Text(verbatim: record.title).font(.title2.weight(.semibold)).textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Menu { Button("整理分类", systemImage: "folder") { organizing = true } } label: {
+                        Image(systemName: "ellipsis").frame(width: 24, height: 24)
+                    }.menuStyle(.borderlessButton).fixedSize().accessibilityLabel("录音操作")
+                }
+                Text(record.date, format: .dateTime.year().month().day().hour().minute()).font(.caption).foregroundStyle(.secondary)
                 OrganizationBadges(organization: record.organization ?? .init(), categories: categories)
-                Spacer()
-                Button("整理分类", systemImage: "folder") { organizing = true }
-                Button("录音详情", systemImage: "info.circle") { details = true }
-            }.padding(24)
+                if record.textState == "ready" {
+                    Button("提出记忆建议", systemImage: "brain") {
+                        Task {
+                            do { suggestionSource = try await store.client?.read("v1/sources/recording/" + record.id.uuidString, as: KnowledgeSource.self) }
+                            catch { store.problem = error.localizedDescription }
+                        }
+                    }.controlSize(.small)
+                }
+                if proposalSaved { Text("已加入待确认记忆。").font(.caption).foregroundStyle(.secondary) }
+            }.padding(24).frame(maxWidth: .infinity, alignment: .leading)
             HStack {
                 Button { Task { await store.play(record) } } label: {
                     Label(L(playback.isPlaying && playback.recordingID == record.id ? "暂停" : "播放原音"), systemImage: playback.isPlaying && playback.recordingID == record.id ? "pause.fill" : "play.fill")
@@ -400,23 +429,25 @@ private struct MacRecordingReader: View {
                     .frame(maxWidth: 360)
                 Text(Duration.seconds(record.duration).formatted(.time(pattern: .minuteSecond))).font(.caption.monospacedDigit())
                 Spacer()
-                Text(record.date, format: .dateTime.year().month().day().hour().minute()).font(.caption).foregroundStyle(.secondary)
             }.padding(.horizontal, 24).padding(.bottom, 20)
             if let problem = playback.problem ?? store.problem {
                 Text(L(problem)).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 24).padding(.bottom, 12)
             }
             Divider()
-            TranscriptionView(store: store, recordingID: record.id).padding(.horizontal, 24).padding(.vertical, 12)
+            if record.textState == "ready" {
+                DisclosureGroup("转写原音") {
+                    TranscriptionView(store: store, recordingID: record.id).padding(.top, 10)
+                }.font(.subheadline).padding(.horizontal, 24).padding(.vertical, 12)
+            } else {
+                TranscriptionView(store: store, recordingID: record.id).padding(.horizontal, 24).padding(.vertical, 12)
+            }
             Divider()
-            MacDocumentReader(store: store, path: "v1/recordings/\(record.id.uuidString)/transcript", title: record.title)
+            MacDocumentReader(store: store, path: "v1/recordings/\(record.id.uuidString)/transcript", title: record.title, showsTitle: false)
         }
         .onDisappear { store.playback.stop() }
         .sheet(isPresented: $organizing) { OrganizationEditor(store: store, kind: "recording", id: record.id, initial: record.organization ?? .init()) }
-        .sheet(isPresented: $details) {
-            NavigationStack {
-                NodeRecordView(store: store, record: record).libraryDestinations(store: store)
-                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { details = false } } }
-            }.frame(minWidth: 640, minHeight: 580).appLanguage()
+        .sheet(item: $suggestionSource) { source in
+            MemoryProposalSheet(workspace: store, source: source, sourceText: source.text ?? "") { proposalSaved = true }.appLanguage()
         }
     }
 }

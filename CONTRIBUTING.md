@@ -1,6 +1,6 @@
 # 参与开发
 
-先读 [README（项目说明）](README.md)、[架构](docs/architecture.md)与[持续迭代清单](ROADMAP.md)。围绕用户自己的资料与记忆做小而完整的改动，说明具体问题、最终行为、验证和剩余边界。
+先读 [README（项目说明）](README.md)、[架构](docs/architecture.md)、[持续迭代清单](ROADMAP.md)与[智能体协作规范](docs/agent-guide.md)。围绕用户自己的资料与记忆做小而完整的改动，说明具体问题、最终行为、验证和剩余边界。
 
 ## 开发流程
 

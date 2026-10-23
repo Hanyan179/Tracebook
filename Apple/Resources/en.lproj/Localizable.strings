@@ -1113,3 +1113,30 @@
 "服务已更换，继续将使用当前配置。" = "The service has changed. Resume to use the current configuration.";
 
 "1 条录音" = "1 recording";
+
+"录音与文字" = "Audio & text";
+"整理与回顾" = "Review";
+"连接" = "Connections";
+"%d 条待确认" = "%d pending review";
+"待确认 %d" = "Pending %d";
+"更多状态" = "More states";
+"筛选" = "Filters";
+"%d 项筛选" = "%d filters";
+"显示已归档录音" = "Show archived recordings";
+"录音列表操作" = "Recording list actions";
+"核对并确认" = "Review & confirm";
+"等待文字" = "Awaiting text";
+"查看待确认记忆" = "Review pending memories";
+"配置语音服务后可以转写，也可以直接编辑文字。" = "Configure a speech service to transcribe, or add text with Edit.";
+"转写原音" = "Transcribe audio";
+"设置语音服务" = "Set up speech service";
+"添加第一份资料" = "Add your first source";
+"导入文档，或连接工具中的本人输入。原文与来源一起保留。" = "Import a document or connect your own tool inputs. Originals and sources stay together.";
+"连接工具输入" = "Connect tool inputs";
+"电脑连接设置" = "Computer connection settings";
+"连接手机" = "Connect phone";
+
+"作者尚未确认，请核对资料中陈述的归属。" = "The author is unverified. Check who each statement refers to.";
+"资料信息" = "Source information";
+
+"1 项筛选" = "1 filter";

@@ -174,6 +174,13 @@ struct KnowledgeSourceReader: View {
     @State private var proposing = false
     @State private var proposalSaved = false
     @State private var memory: NodeCandidate?
+    private var documentParts: (header: String?, body: String) {
+        guard source.kind == "document", text.hasPrefix("# "),
+              let divider = text.range(of: "\n\n---\n\n") else { return (nil, text) }
+        let header = String(text[..<divider.lowerBound])
+        guard header.contains("\n来源：导入资料\n"), header.contains("\n作者：未确认。") else { return (nil, text) }
+        return (header, String(text[divider.upperBound...]))
+    }
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -187,7 +194,13 @@ struct KnowledgeSourceReader: View {
                         Label(L(notice), systemImage: "info.circle").font(.callout).foregroundStyle(.secondary)
                     }
                     if loaded && text.isEmpty { Text("这条记录还没有文字。").foregroundStyle(.secondary) }
-                    MarkdownReader(text: text)
+                    if let metadata = documentParts.header {
+                        Text("作者尚未确认，请核对资料中陈述的归属。").font(.caption).foregroundStyle(.secondary)
+                        MarkdownReader(text: documentParts.body)
+                        DisclosureGroup("资料信息") { Text(verbatim: metadata).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
+                    } else {
+                        MarkdownReader(text: text)
+                    }
                     if let error { Text(L(error)).font(.caption).foregroundStyle(.secondary); Button("重新读取") { Task { await read(reset: true) } } }
                     if loading { ProgressView() }
                     if nextOffset != nil { Button("继续读取") { Task { await read(reset: false) } }.disabled(loading) }
@@ -206,8 +219,11 @@ struct KnowledgeSourceReader: View {
                             }
                         }
                     }
-                }.padding(28).frame(maxWidth: 850, alignment: .leading).frame(maxWidth: .infinity)
+                }.padding(24).frame(maxWidth: 850, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
             }.background(AppPalette.canvas).navigationTitle(L("查看来源"))
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
                 .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
         }.task { await read(reset: true) }.sourceLinks(workspace: workspace)
             .sheet(isPresented: $proposing) {

@@ -35,6 +35,9 @@ struct TranscriptionView: View {
     @State private var confirmSend = false
     @State private var generated: NodeDocument?
     @State private var showGenerated = false
+    #if os(macOS)
+    @Environment(\.openSettings) private var openSettings
+    #endif
     private var path: String { "v1/transcriptions/" + recordingID.uuidString }
 
     var body: some View {
@@ -60,6 +63,13 @@ struct TranscriptionView: View {
                 if !state.configured && !["ready", "conflict"].contains(state.status) {
                     Text("请先在电脑设置中配置语音服务和密钥。原音继续保留。")
                         .font(.caption).foregroundStyle(.secondary)
+                    #if os(macOS)
+                    Button("设置语音服务") {
+                        UserDefaults.standard.set("模型", forKey: "settings.section")
+                        UserDefaults.standard.set("transcription", forKey: "model.focusRole")
+                        openSettings()
+                    }
+                    #endif
                 }
                 if state.status == "ready" {
                     Text("机器转写可能有误，请结合原音校对；不会自动成为已确认记忆。")
@@ -70,7 +80,7 @@ struct TranscriptionView: View {
                 }
                 if state.active && state.serviceChanged != true {
                     Button("暂停转写") { Task { await action("/pause") } }.disabled(busy)
-                } else if !["ready", "conflict"].contains(state.status) {
+                } else if state.configured && !["ready", "conflict"].contains(state.status) {
                     Button(L(state.status == "idle" ? "转写这条录音" : "继续转写")) { confirmSend = true }
                         .disabled(busy || !state.configured || (state.serviceChanged == true && state.completed > 0))
                 }

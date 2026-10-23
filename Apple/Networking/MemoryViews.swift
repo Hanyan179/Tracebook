@@ -263,9 +263,12 @@ struct MemoryProposalSheet: View {
                 Text("保存后进入待确认，确认后才成为长期记忆。")
                     .font(.footnote).foregroundStyle(.secondary)
                 if let error { Text(L(error)).foregroundStyle(.secondary) }
-            }.formStyle(.grouped).navigationTitle(L("记忆建议"))
+            }.formStyle(.grouped)
                 #if os(iOS)
+                .navigationTitle(L("记忆建议"))
                 .navigationBarTitleDisplayMode(.inline)
+                #else
+                .toolbar { ToolbarItem(placement: .principal) { Text("记忆建议").font(.headline) } }
                 #endif
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
