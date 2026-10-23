@@ -1271,3 +1271,11 @@
 "未保存可核对的引用位置，请查看完整原文。" = "No verifiable quote location was saved. Read the full source to review it.";
 "原文已变化，无法还原当时的前后文。下方保留原引用。" = "The source has changed, so its original context cannot be restored. The saved quote is preserved below.";
 "未能核对引用位置，请查看完整原文。" = "The quote location could not be verified. Read the full source to review it.";
+
+/* Manual memory quote selection */
+"引用超过 4000 个字符，请缩短后再保存。" = "The quote exceeds 4,000 characters. Shorten it before saving.";
+"当前已读原文中没有这段文字，请保留原文的字词与标点。" = "This passage does not match the text you have loaded. Keep the original words and punctuation.";
+"选择引用位置" = "Choose the quoted passage";
+"当前已读原文中有多处相同片段。请核对上下文，选择对应的说话人或内容。" = "This passage appears more than once in the text you have loaded. Check the context and choose the intended speaker or passage.";
+"第 %d 处" = "Occurrence %d";
+"相同片段较多，仅显示前 20 处。请补充前后文以缩小范围。" = "Only the first 20 occurrences are shown. Include more surrounding text to narrow the matches.";

@@ -266,9 +266,14 @@ struct MemoryProposalSheet: View {
     @State private var error: String?
     @State private var discard = false
     @State private var mode = "manual"
+    @State private var matches = SourceQuoteMatches(text: "", quote: "")
+    @State private var quoteStart: Int?
+    private var dirty: Bool {
+        !text.isEmpty || !quote.unicodeScalars.elementsEqual(SourceQuoteMatches.initialQuote(in: sourceText).unicodeScalars)
+    }
     private var valid: Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.count <= 10000 &&
-        !quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && quote.count <= 4000 && sourceText.contains(quote)
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && text.unicodeScalars.count <= 10000 &&
+        quoteStart != nil && matches.items.contains { $0.start == quoteStart }
     }
     var body: some View {
         NavigationStack {
@@ -300,6 +305,38 @@ struct MemoryProposalSheet: View {
                         TextEditor(text: $quote).frame(minHeight: 120).disabled(busy)
                         Text("保留一段连续原文，最多 4000 个字符；请核对内容与说话人。")
                             .font(.footnote).foregroundStyle(.secondary)
+                        if quote.unicodeScalars.count > 4000 {
+                            Text("引用超过 4000 个字符，请缩短后再保存。").font(.callout).foregroundStyle(.secondary)
+                        } else if !quote.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && matches.items.isEmpty {
+                            Text("当前已读原文中没有这段文字，请保留原文的字词与标点。").font(.callout).foregroundStyle(.secondary)
+                        }
+                    }
+                    if matches.items.count > 1 {
+                        Section("选择引用位置") {
+                            Text("当前已读原文中有多处相同片段。请核对上下文，选择对应的说话人或内容。")
+                                .font(.callout).foregroundStyle(.secondary)
+                            ForEach(Array(matches.items.enumerated()), id: \.element.id) { index, match in
+                                Button {
+                                    quoteStart = match.start; requestID = UUID()
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Label(LF("第 %d 处", index + 1), systemImage: quoteStart == match.start ? "checkmark.circle.fill" : "circle")
+                                            .font(.headline)
+                                        Text(verbatim: match.before).foregroundStyle(.secondary)
+                                        Text(verbatim: quote.count > 160 ? String(quote.prefix(120)) + "…" + String(quote.suffix(40)) : quote)
+                                            .fontWeight(.medium)
+                                        Text(verbatim: match.after).foregroundStyle(.secondary)
+                                    }.font(.callout).fixedSize(horizontal: false, vertical: true)
+                                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).padding(.vertical, 8)
+                                        .contentShape(Rectangle())
+                                }.buttonStyle(.plain).disabled(busy)
+                                    .accessibilityAddTraits(quoteStart == match.start ? .isSelected : [])
+                            }
+                            if matches.hasMore {
+                                Text("相同片段较多，仅显示前 20 处。请补充前后文以缩小范围。")
+                                    .font(.footnote).foregroundStyle(.secondary)
+                            }
+                        }
                     }
                     Text("保存后进入待确认，确认后才成为长期记忆。")
                         .font(.footnote).foregroundStyle(.secondary)
@@ -307,14 +344,14 @@ struct MemoryProposalSheet: View {
                 }
             }.formStyle(.grouped)
                 #if os(iOS)
-                .navigationTitle(L(typeSize.isAccessibilitySize ? "建议" : "记忆建议"))
+                .navigationTitle(L("建议"))
                 .navigationBarTitleDisplayMode(.inline)
                 #else
                 .toolbar { ToolbarItem(placement: .principal) { Text("记忆建议").font(.headline) } }
                 #endif
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button(mode == "model" ? "完成" : "取消") { if text.isEmpty { dismiss() } else { discard = true } }.disabled(busy)
+                        Button(mode == "model" ? "完成" : "取消") { if dirty { discard = true } else { dismiss() } }.disabled(busy)
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         if mode == "manual" {
@@ -325,9 +362,10 @@ struct MemoryProposalSheet: View {
                 .confirmationDialog("放弃未保存的修改？", isPresented: $discard, titleVisibility: .visible) {
                     Button("放弃修改", role: .destructive) { dismiss() }
                 }
-        }.onAppear { quote = String(sourceText.prefix(4000)) }
-            .onChange(of: text) { _, _ in requestID = UUID() }.onChange(of: quote) { _, _ in requestID = UUID() }
-            .interactiveDismissDisabled(!text.isEmpty || busy)
+        }.onAppear { quote = SourceQuoteMatches.initialQuote(in: sourceText); updateMatches() }
+            .onChange(of: Array(text.unicodeScalars)) { _, _ in requestID = UUID() }
+            .onChange(of: Array(quote.unicodeScalars)) { _, _ in requestID = UUID(); updateMatches() }
+            .interactiveDismissDisabled(dirty || busy)
         #if os(macOS)
         .frame(minWidth: 580, idealWidth: 720, minHeight: 540)
         #endif
@@ -338,15 +376,20 @@ struct MemoryProposalSheet: View {
             Text("模型整理").tag("model")
         }
     }
+    private func updateMatches() {
+        matches = SourceQuoteMatches(text: sourceText, quote: quote)
+        quoteStart = matches.items.count == 1 ? matches.items.first?.start : nil
+    }
     private func submit() {
         guard let client = workspace.client else { error = "请先连接资料库。"; return }
+        guard valid, let quoteStart else { return }
         busy = true; error = nil
-        struct Reference: Encodable { let kind: String; let id: String; let contentVersion: String; let quote: String }
+        struct Reference: Encodable { let kind: String; let id: String; let contentVersion: String; let quote: String; let quoteStart: Int }
         struct Body: Encodable { let text: String; let evidence: [Reference]; let requestID: UUID }
         Task {
             defer { busy = false }
             do {
-                let body = Body(text: text, evidence: [.init(kind: source.kind, id: source.id, contentVersion: source.contentVersion, quote: quote)], requestID: requestID)
+                let body = Body(text: text, evidence: [.init(kind: source.kind, id: source.id, contentVersion: source.contentVersion, quote: quote, quoteStart: quoteStart)], requestID: requestID)
                 try await client.sendData("v1/candidates", method: "POST", body: JSONEncoder().encode(body))
                 workspace.memoryNotice = "已加入待确认记忆。"
                 await workspace.libraryChanged(); saved(); dismiss()

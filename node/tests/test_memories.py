@@ -85,6 +85,23 @@ class MemoryTests(unittest.TestCase):
         self.store.close(); self.store = Store(self.root / 'node')
         self.assertEqual(self.store.memories.detail(cid)['evidence'][0]['quote'], saved['quote'])
 
+    def test_explicit_repeated_quote_position_survives_confirmation_and_restart(self):
+        quote = '我每周五回顾工作。'
+        prefix = '同事说：' + quote + '\n本人 👩🏽‍💻 cafe\u0301：'
+        note = self.note(prefix + quote)
+        ref = {**self.reference('note', note['id'], quote), 'quoteStart': len(prefix)}
+        cid = self.store.add_candidate('Synthetic personal decision', evidence=[ref])['id']
+        self.update(cid, state='confirmed')
+        with self.assertRaises(StoreError):
+            self.store.add_candidate('Wrong UTF-16 position', evidence=[{**ref, 'quoteStart': len(prefix.encode('utf-16-le')) // 2}])
+        self.store.close(); self.store = Store(self.root / 'node')
+        value = self.store.memories.detail(cid)
+        self.assertEqual(value['state'], 'confirmed')
+        self.assertEqual(value['evidence'][0]['quoteStart'], len(prefix))
+        self.assertEqual(value['evidence'][0]['quote'], quote)
+        self.assertEqual(value['evidence'][0]['contentVersion'], ref['contentVersion'])
+        self.assertEqual(len(self.store.candidates()), 1)
+
     def test_confirm_edit_disable_restore_and_history_control_new_retrieval(self):
         cid = self.propose()
         def matches(): return self.store.knowledge.query({'query': 'orchard'}, ['confirmedMemory'])['sources']
