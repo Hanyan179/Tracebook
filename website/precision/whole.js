@@ -38,7 +38,8 @@ if(typeof module!=='undefined')module.exports=ContinuationDemo;
     const enabled=desktop.matches&&!reduced.matches;
     scene.classList.toggle('is-pinned',enabled);
     const travel=innerHeight*.65, p=enabled?clamp(-scene.getBoundingClientRect().top/travel):0, transition=smooth((p-.22)/.33);
-    scene.style.setProperty('--material-progress',transition);
+    scene.style.setProperty('--material-progress',transition);scene.style.setProperty('--material-background',1-smooth(transition/.75));const supporting=enabled?smooth((transition-.65)/.25):1;scene.style.setProperty('--material-supports',supporting);
+    for(const handle of handles.filter(h=>['input','document'].includes(h.dataset.materialSelect))){const on=!enabled||supporting>.02;if(!on&&handle===document.activeElement)details.find(d=>!d.hidden).focus({preventScroll:true});handle.toggleAttribute('inert',!on);handle.setAttribute('aria-hidden',String(!on));}
     const noteHandle=scene.querySelector('.note-handle');const showNote=!enabled||transition>.02;
     if(!showNote&&noteHandle===document.activeElement)details.find(d=>!d.hidden).focus({preventScroll:true});noteHandle.toggleAttribute('inert',!showNote);noteHandle.setAttribute('aria-hidden',String(!showNote));
     const forward=scene.querySelector('.material-progress'),showForward=!enabled||transition>.02;forward.toggleAttribute('inert',!showForward);forward.setAttribute('aria-hidden',String(!showForward));
@@ -64,7 +65,7 @@ if(typeof module!=='undefined')module.exports=ContinuationDemo;
     document.querySelectorAll('[data-memory-badge]').forEach(b=>{b.textContent=b.dataset[state];b.dataset.memoryState=state;});
     document.querySelector('[data-export-status]').textContent=status.dataset[state];document.querySelector('[data-export-memory]').textContent=chosen?data.memory['text_'+lang]:(lang==='zh'?'仅保留完整原文，尚未选择记忆。':'Full original only. No memory selected.');
   }
-  choice.addEventListener('click',()=>{if(memoryState==='unselected')memory('candidate');});
+  choice.addEventListener('click',()=>{if(memoryState==='unselected'){memory('candidate');requestAnimationFrame(()=>{decision.scrollIntoView({behavior:reduced.matches?'instant':'smooth',block:'center'});status.focus({preventScroll:true});});}});
   action.addEventListener('click',()=>{if(memoryState==='unselected')return;memory(memoryState==='candidate'?'confirmed':memoryState==='confirmed'?'inactive':'confirmed');});
   reset.addEventListener('click',()=>{memory('unselected');choice.focus({preventScroll:true});});
   document.querySelector('.memory-route').addEventListener('click',e=>{e.preventDefault();history.pushState(null,'','#memory');memorySection.scrollIntoView({behavior:reduced.matches?'instant':'smooth',block:'start'});choice.focus({preventScroll:true});});
