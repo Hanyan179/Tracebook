@@ -4,10 +4,10 @@ const PrecisionMotion = (() => {
   const smooth = (p, a, b) => { const x=clamp((p-a)/(b-a)); return x*x*(3-2*x); };
   function frameAt(value) {
     const p=clamp(value), reveal=smooth(p,.24,.36), dock=smooth(p,.52,.76);
-    return {p,reveal,dock, intro:1-smooth(p,.12,.23), audioCopy:smooth(p,.20,.32)*(1-smooth(p,.50,.60)), review:smooth(p,.52,.72),
-      photoOpacity:1-.94*smooth(p,.17,.36), photoScale:1+.08*smooth(p,0,.18)-.30*smooth(p,.18,.36),
-      photoX:180*smooth(p,.18,.36), photoY:200*smooth(p,.18,.36), photoBlur:3*smooth(p,.18,.36),
-      audioOpacity:smooth(p,.24,.34),audioX:64+2*reveal+6*dock,audioY:38+24*reveal-22*dock,audioWidth:10+57*reveal-31*dock,
+    return {p,reveal,dock, intro:1-smooth(p,.12,.23), audioCopy:smooth(p,.20,.32)*(1-smooth(p,.50,.60)), review:smooth(p,.52,.72),noteOpacity:smooth(p,.74,.82),
+      photoOpacity:1-smooth(p,.17,.36), photoScale:1+.08*smooth(p,0,.18),
+      photoX:0, photoY:0, photoBlur:0,
+      audioOpacity:smooth(p,.24,.34),audioX:64-4.5*reveal+14*dock,audioY:38+30*reveal-32.7*dock,audioWidth:10+57*reveal-31*dock,
       waveHeight:30+120*reveal-108*dock,waveAngle:-12*reveal+12*dock,
       ringOpacity:p>=.1&&p<=.30?1:0,ringScale:.5+1.1*smooth(p,.10,.28),ringOne:Math.sin(Math.PI*clamp((p-.10)/.08)),ringTwo:Math.sin(Math.PI*clamp((p-.21)/.08)),ringOneScale:.6+1.1*clamp((p-.10)/.08),ringTwoScale:.6+1.1*clamp((p-.21)/.08)};
   }
@@ -34,14 +34,14 @@ if(typeof module!=='undefined')module.exports=PrecisionMotion;
     const set=(name,value)=>story.style.setProperty('--'+name,String(value));
     set('photo-opacity',f.photoOpacity);set('photo-scale',f.photoScale);set('photo-x',f.photoX+'px');set('photo-y',f.photoY+'px');set('photo-blur',f.photoBlur+'px');set('silver-opacity',f.reveal);
     set('intro-opacity',f.intro);set('intro-y',(-30*(1-f.intro))+'px');set('audio-copy-opacity',f.audioCopy);set('audio-copy-y',(18*(1-f.reveal))+'px');
-    set('audio-opacity',f.audioOpacity);set('audio-x',f.audioX+'%');set('audio-y',f.audioY+'%');set('audio-width',f.audioWidth+'%');set('wave-height',f.waveHeight+'px');set('wave-angle',f.waveAngle+'deg');set('wave-shadow',(24*(1-f.dock))+'px');
+    set('audio-translate-y',(-50+50*f.dock)+'%');set('audio-opacity',f.audioOpacity);set('audio-x',f.audioX+'%');set('audio-y',f.audioY+'%');set('audio-width',f.audioWidth+'%');set('wave-height',f.waveHeight+'px');set('wave-angle',f.waveAngle+'deg');set('wave-shadow',(24*(1-f.dock))+'px');
     set('duration-size',(24-6*f.dock)+'px');set('meta-top',(20-12*f.dock)+'px');set('meta-gap',(24-10*f.dock)+'px');set('audio-title-size','18px');
-    set('review-opacity',f.review);set('review-y',(22*(1-f.review))+'px');set('ring-opacity',f.ringOpacity);set('ring-scale',f.ringScale);set('ring-one',f.ringOne);set('ring-two',f.ringTwo);set('ring-one-scale',f.ringOneScale);set('ring-two-scale',f.ringTwoScale);set('progress',(p*100)+'%');
+    set('note-opacity',f.noteOpacity);set('review-opacity',f.review);set('review-y',(22*(1-f.review))+'px');set('ring-opacity',f.ringOpacity);set('ring-scale',f.ringScale);set('ring-one',f.ringOne);set('ring-two',f.ringTwo);set('ring-one-scale',f.ringOneScale);set('ring-two-scale',f.ringTwoScale);set('progress',(p*100)+'%');
     const rect=viewport.getBoundingClientRect(),point=PrecisionMotion.contactPoint(rect.width||innerWidth,rect.height||innerHeight);set('contact-x',point.x+'px');set('contact-y',point.y+'px');
     reset.hidden=manualOffset<=.001;
     story.dataset.frame=p<.12?'moment':p<.32?'gesture':p<.52?'source':p<.76?'gather':'review';
     for(const panel of story.querySelectorAll('[data-panel]')){const role=panel.dataset.panel;accessible(panel,!pin||(role==='intro'?f.intro>.02:role==='audio'?f.audioCopy>.02:f.review>.02));}
-    accessible(source,!pin||f.audioOpacity>.02);accessible(story.querySelector('.review-surface'),(!pin||f.review>.02)&&!note.classList.contains('is-selected'));
+    accessible(noteChoice,(!pin||f.noteOpacity>.02)&&!note.classList.contains('is-selected'));accessible(source,!pin||f.audioOpacity>.02);accessible(story.querySelector('.review-surface'),(!pin||f.review>.02)&&!note.classList.contains('is-selected'));
     queued=false;
   };
   const cancel=()=>{if(animation){cancelAnimationFrame(animation);animation=0;action.disabled=false;}};
