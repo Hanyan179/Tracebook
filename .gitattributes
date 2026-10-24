@@ -1,0 +1,2 @@
+# Preserve upstream license notices byte-for-byte, including their final blank lines.
+vendor/python-licenses/** whitespace=-blank-at-eof

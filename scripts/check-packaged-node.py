@@ -4,7 +4,9 @@ import argparse
 import base64
 import hashlib
 import json
+import os
 from pathlib import Path
+import platform
 import socket
 import sqlite3
 import subprocess
@@ -35,15 +37,41 @@ def main():
     parser.add_argument('bundle', type=Path)
     args = parser.parse_args()
     script = args.bundle.resolve() / 'Contents/Resources/server.py'
+    runtime = script.parent / 'PythonRuntime/interpreters' / ('macos-' + platform.machine())
+    runtime_info = json.loads((script.parent/'PythonRuntime/runtime.json').read_text())
+    assert runtime_info['version'] == '3.12.15' and platform.machine() in runtime_info['architectures']
+    executable = runtime / 'bin/python3.12'
+    assert executable.is_file() and os.access(executable, os.X_OK), 'Missing app-bundled interpreter'
+    python = [str(executable), '-E', '-s', '-B', '-X', 'utf8']
     artifacts = Path(__file__).resolve().parents[1] / 'artifacts'
     artifacts.mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(prefix='packaged-node-', dir=artifacts) as temporary:
         root = Path(temporary)
+        # A developer's Python setup must not change the installed application's runtime.
+        poison = root / 'foreign-python'
+        poison.mkdir()
+        (poison/'sitecustomize.py').write_text('raise RuntimeError("Foreign Python startup was loaded")\n')
+        child_environment = os.environ.copy()
+        child_environment.update(PYTHONHOME=str(poison), PYTHONPATH=str(poison), PYTHONUSERBASE=str(poison))
+        probe = subprocess.run(python + ['-c',
+            'import sys,ssl,json;sys.path.insert(0,sys.argv[1]);import compressed_io;'
+            'assert compressed_io.pyzstd;data=b"synthetic packaged decoder";'
+            'assert compressed_io.pyzstd.decompress(compressed_io.pyzstd.compress(data))==data;'
+            'assert ssl.create_default_context().check_hostname;'
+            'assert ssl.create_default_context().verify_mode==ssl.CERT_REQUIRED;'
+            'assert sys.flags.ignore_environment and sys.flags.no_user_site and sys.flags.dont_write_bytecode;'
+            'print(json.dumps({"prefix":sys.prefix,"version":list(sys.version_info[:3])}))', str(script.parent)],
+            env=child_environment, capture_output=True, text=True, timeout=15)
+        assert probe.returncode == 0, 'Bundled interpreter isolation check failed: ' + probe.stderr[:1000]
+        details = json.loads(probe.stdout)
+        assert Path(details['prefix']).resolve() == runtime.resolve()
+        assert '.'.join(map(str, details['version'])) == runtime_info['version']
+        print('Bundled interpreter, isolated imports, compressed reading and TLS validation defaults passed.')
         with socket.socket() as reserved:
             reserved.bind(('127.0.0.1', 0)); port = reserved.getsockname()[1]
         with (root / 'runtime.log').open('wb') as log:
-            process = subprocess.Popen([sys.executable, '-B', str(script), '--data', str(root / 'node'), '--port', str(port)],
-                                       stdout=log, stderr=log)
+            process = subprocess.Popen(python + [str(script), '--data', str(root / 'node'), '--port', str(port)],
+                                       stdout=log, stderr=log, env=child_environment)
             try:
                 deadline = time.monotonic() + 15
                 token = None
@@ -113,8 +141,8 @@ def main():
                     process.kill(); process.wait(timeout=5)
         backup_cli=script.with_name('backup_cli.py')
         def backup_command(*arguments):
-            result=subprocess.run([sys.executable,'-B',str(backup_cli),*map(str,arguments)],
-                                  capture_output=True,text=True,timeout=30)
+            result=subprocess.run(python + [str(backup_cli),*map(str,arguments)],
+                                  capture_output=True,text=True,timeout=30,env=child_environment)
             assert result.returncode==0, 'Packaged backup command failed: '+result.stdout[:1000]
             reply=json.loads(result.stdout);assert reply['ok'];return reply
         bundle_file=root/'library-backup.zip'
@@ -134,8 +162,8 @@ def main():
         print('Packaged backup create, inspect and independent restore passed; credentials excluded and automatic work paused.')
         location_cli=script.with_name('library_location_cli.py')
         def location_command(*arguments):
-            result=subprocess.run([sys.executable,'-B',str(location_cli),*map(str,arguments)],
-                                  capture_output=True,text=True,timeout=30)
+            result=subprocess.run(python + [str(location_cli),*map(str,arguments)],
+                                  capture_output=True,text=True,timeout=30,env=child_environment)
             assert result.returncode==0, 'Packaged library selection failed: '+result.stdout[:1000]
             reply=json.loads(result.stdout);assert reply['ok'];return reply
         def text_hashes():

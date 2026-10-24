@@ -141,10 +141,8 @@ final class LocalNodeController: ObservableObject {
                 try await ModelRuntime.activate(workspace: workspace)
                 return
             }
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-            process.environment = ProcessInfo.processInfo.environment.merging(["PYTHONDONTWRITEBYTECODE": "1"]) { _, new in new }
-            process.arguments = [script.path, "--data", dataDirectory.path, "--host", allowLAN && !receivingPaused ? "0.0.0.0" : "127.0.0.1", "--port", String(port)]
+            let process = try BundledNodeRuntime.process(script: script, arguments: ["--data", dataDirectory.path,
+                "--host", allowLAN && !receivingPaused ? "0.0.0.0" : "127.0.0.1", "--port", String(port)])
             let log = dataDirectory.appendingPathComponent("node.log")
             if !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil, attributes: [.posixPermissions: 0o600]) }
             let handle = try FileHandle(forWritingTo: log); try handle.seekToEnd()
@@ -156,7 +154,7 @@ final class LocalNodeController: ObservableObject {
             try? handle.close()
             for _ in 0..<30 {
                 try await Task.sleep(for: .milliseconds(250))
-                guard process.isRunning else { throw NodeFailure(message: "节点未能启动，请检查本机 Python 3 和端口是否可用。") }
+                guard process.isRunning else { throw NodeFailure(message: "资料库未能启动，请检查应用是否完整及连接端口是否被占用。") }
                 if let token = try? String(contentsOf: tokenURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
                    let url = URL(string: localEndpoint),
                    (try? await NodeClient(endpoint: url, token: token).read("v1/status", as: NodeStatus.self)) != nil {

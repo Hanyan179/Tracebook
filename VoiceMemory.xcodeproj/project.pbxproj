@@ -98,6 +98,12 @@
 			"path" = "Apple/Design/MarkdownReader.swift";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"FBFA102189E43CC95D01F6CE" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Apple/Mac/BundledNodeRuntime.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"1373C418D93710C67777DC17" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -1317,6 +1323,10 @@
 			"path" = "VoiceMemoryMac.app";
 			"sourceTree" = "BUILT_PRODUCTS_DIR";
 		};
+		"F0A2BA90660681071E2B568D" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "FBFA102189E43CC95D01F6CE";
+		};
 		"C5DF8C275F88CD5AA4CD52DB" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "1373C418D93710C67777DC17";
@@ -1653,6 +1663,7 @@
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
 			"files" = (
+				"F0A2BA90660681071E2B568D",
 				"C5DF8C275F88CD5AA4CD52DB",
 				"DB96BB8FF577E3586CA47398",
 				"6BCEB200113FB82470EC83A6",
@@ -2068,6 +2079,7 @@
 				"F37D03F30ADD8BEE281C5886",
 				"F96EA3F77652D32C12371A24",
 				"FA131A6380B6279245B6A25B",
+				"FBFA102189E43CC95D01F6CE",
 				"FEF55EF766DDAEA3AA564E14",
 				"FF9031C5A8F72BF8CC01E44F",
 				"2AE9C54CC6783384DFB68CFD",

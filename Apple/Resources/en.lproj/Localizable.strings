@@ -2033,3 +2033,9 @@
 "文字资料夹位于资料库目录之外，请选择并授权已显示的位置。" = "The text folder is outside the library folder. Select the displayed location to allow access.";
 
 "未授权所选资料库的文字位置，当前资料库保持不变。" = "Access to the selected library’s text folder was not granted. The current library is unchanged.";
+
+"这个版本不支持当前电脑架构，请使用适配的应用版本。" = "This version does not support this Mac architecture. Use a compatible app build.";
+
+"应用运行环境不完整，请重新安装完整版本；已有资料仍保留。" = "The app runtime is incomplete. Reinstall the complete app. Your existing data is retained.";
+
+"资料库未能启动，请检查应用是否完整及连接端口是否被占用。" = "The library could not start. Check that the app is complete and its connection port is available.";

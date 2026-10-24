@@ -18,10 +18,7 @@ final class LocalNodeCommand {
             throw NodeFailure(message: "本机资料工具暂不可用，请使用完整版本并稍后重试。")
         }
         guard !cancelled else { throw NodeFailure(message: "操作已取消，当前资料库保持不变。") }
-        let child = Process(), output = Pipe()
-        child.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-        child.arguments = [script.path] + arguments
-        child.environment = ProcessInfo.processInfo.environment.merging(["PYTHONDONTWRITEBYTECODE": "1"]) { _, new in new }
+        let child = try BundledNodeRuntime.process(script: script, arguments: arguments), output = Pipe()
         child.standardOutput = output; child.standardError = FileHandle.nullDevice
         try child.run(); process = child; activity(true)
         defer { process = nil; activity(false) }

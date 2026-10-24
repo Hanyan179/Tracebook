@@ -5,11 +5,13 @@ from pathlib import Path
 import platform
 import sys
 
-if sys.platform == 'darwin' and sys.version_info[:2] == (3, 9):
-    location = 'macos-cp39-' + platform.machine()
+if sys.platform == 'darwin':
+    location = 'macos-cp%d%d-' % sys.version_info[:2] + platform.machine()
     roots = [Path(__file__).parent / 'PythonRuntime', Path(__file__).resolve().parents[1] / 'DerivedData' / 'PythonRuntime']
     for root in roots:
         if (root / location).is_dir():
+            if (root / 'common').is_dir():
+                sys.path.insert(0, str(root / 'common'))
             sys.path.insert(0, str(root / location))
             break
 try:
