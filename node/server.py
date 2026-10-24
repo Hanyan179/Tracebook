@@ -28,6 +28,7 @@ class Server(ThreadingHTTPServer):
         self.store.transcription.start_worker()
 
     def server_close(self):
+        self.store.documents.close()
         self.store.transcription.close()
         super().server_close()
 
@@ -127,6 +128,11 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts)==3 and parts[2]=='preview' and self.command=='POST':
                 from documents import MAX_REQUEST
                 return self.send_json(200,store.documents.preview(self.body_json(MAX_REQUEST)))
+            if parts==['v1','documents','prepare'] and self.command=='POST':
+                from documents import MAX_REQUEST
+                return self.send_json(202,store.documents.prepare(self.body_json(MAX_REQUEST)))
+            if len(parts)==4 and parts[3]=='preparation' and self.command=='GET':
+                return self.send_json(200,store.documents.preparation(parts[2]))
             if len(parts)==4 and self.command=='POST':
                 self.body_json()
                 if parts[3]=='commit':return self.send_json(200,store.documents.commit(parts[2]))

@@ -274,7 +274,7 @@ struct LocalSourcesView: View {
                 Image(systemName: "doc.text").font(.title2).foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 6) {
                     Text("文字资料").font(.headline)
-                    Text(documentCount > 0 ? LF("已导入 %d 份文字资料", documentCount) : L("导入已有的 Markdown 或 TXT 文件。"))
+                    Text(documentCount > 0 ? LF("已导入 %d 份文字资料", documentCount) : L("导入 PDF、Markdown 或 TXT 中的文字。"))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()

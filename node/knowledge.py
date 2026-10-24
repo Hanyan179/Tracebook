@@ -184,6 +184,8 @@ class Knowledge:
                 'state': row['state'], 'textAvailable': bool(body.strip()),
                 'contentVersion': hashlib.sha256(body.encode()).hexdigest(),
                 'uri': 'library://' + row['kind'] + '/' + row['id']}
+        if row['kind'] == 'document':
+            result['documentInfo'] = self.s.documents.info(row['id'], result['contentVersion'])
         result['evidenceType']={'analysis':'model_analysis','memory':'user_confirmed','input':'local_user_input','document':'imported_document',
                                 'daily':'source_collection'}.get(row['kind'],'original_text')
         if row['kind']=='analysis':

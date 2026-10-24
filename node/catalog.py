@@ -148,6 +148,7 @@ class Catalog:
             path = 'documents/'+rid+'.md'
             document = self.s.read_document(path)
             data = {'id':rid,'title':item['title'],'path':path,'format':item['format'],'previousID':item['previous_id']}
+            data['documentInfo'] = self.s.documents.info(rid, document['etag'])
             self._upsert('document',rid,item['title'],document['text'],dt.datetime.fromisoformat(item['created_at']),
                          'ready' if document['text'] else 'missing',data,document['etag'])
 

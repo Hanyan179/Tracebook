@@ -63,6 +63,10 @@ struct SourcePassageReader: View {
                             if !context.before.isEmpty { Text(verbatim: context.before).textSelection(.enabled).lineSpacing(4) }
                         }
                         VStack(alignment: .leading, spacing: 10) {
+                            if let info = currentSource?.documentInfo {
+                                DocumentSourceNotice(info: info, quoteStart: context == nil ? nil : quoteStart,
+                                    quoteLength: quote.unicodeScalars.count)
+                            }
                             Label(L(quoteTitle), systemImage: "quote.opening").font(.caption.weight(.medium))
                             Text(verbatim: quote).textSelection(.enabled).lineSpacing(5)
                         }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
@@ -87,7 +91,9 @@ struct SourcePassageReader: View {
                     #endif
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
                     .onChange(of: context) { _, value in
-                        if value != nil, origin != .memory || typeSize.isAccessibilitySize { position.scrollTo("saved-quote", anchor: .top) }
+                        if value != nil, origin != .memory || typeSize.isAccessibilitySize || currentSource?.documentInfo != nil {
+                            position.scrollTo("saved-quote", anchor: .top)
+                        }
                     }
             }
         }.task(id: workspace.client?.endpoint.absoluteString) { await read() }

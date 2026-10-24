@@ -17,11 +17,15 @@ WHEELS = {
 
 COMMON = ('https://files.pythonhosted.org/packages/80/6c/9eb6d93ad8b9ac96cba13e6d2f419c316d8fdb91013e12dd478a99501699/uniseg-0.10.1-py3-none-any.whl',
           '74fe3f7b4ee46bbd703a70ea1e5cd28e04f63eee5af9a10388d93316c554e358')
+PDF = ('https://files.pythonhosted.org/packages/1b/4d/c9d2d67f204eff463237a1a8f5e25a6923b7b1043982b91fcaf104c8ef60/pypdf-6.21.2-py3-none-any.whl',
+       '1d44d1a3a200f25062adff0085b02040e4646431ac2ccac22e42679e91466084')
+TYPING = ('https://files.pythonhosted.org/packages/18/67/36e9267722cc04a6b9f15c7f3441c2363321a3ea07da7ae0c0707beb2a9c/typing_extensions-4.15.0-py3-none-any.whl',
+          'f0fa19c6845758ab08074a0cfa8b7aecb71c999ca73d62883bc25cc018c4e548')
 
 
 def prepare(target, url, digest, package, label):
-    marker = target / '.verified-wheel'
-    if marker.exists() and marker.read_text() == digest and (target / package).is_dir():
+    marker = target / ('.verified-wheel-' + package)
+    if marker.exists() and marker.read_text() == digest and (target / package).exists():
         print(label + ': dependency ready')
         return
     with urllib.request.urlopen(url, timeout=30) as response:
@@ -47,6 +51,8 @@ def main():
     for architecture, (url, digest) in WHEELS.items():
         prepare(ROOT / ('macos-cp39-' + architecture), url, digest, 'pyzstd', architecture)
     prepare(ROOT / 'common', *COMMON, 'uniseg', 'Unicode segmentation')
+    prepare(ROOT / 'common', *PDF, 'pypdf', 'PDF text extraction')
+    prepare(ROOT / 'common', *TYPING, 'typing_extensions.py', 'Python 3.9 typing compatibility')
 
 
 if __name__ == '__main__':

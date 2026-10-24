@@ -194,6 +194,12 @@
 			"path" = "Apple/Networking/ConversationView.swift";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"82C8940BEC8D72DDB1CF0F63" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Apple/Networking/DocumentSourceNotice.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"5A12F7CEBDCD94ED9FCE39A2" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -482,6 +488,12 @@
 			"path" = "Sources/VoiceMemoryCore/TransferJournal.swift";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"46472B2CC4281B2E2D0D9BF0" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Apple/PDFWorker/main.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"5944F127A91C7E9C009565D3" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "folder.assetcatalog";
@@ -582,6 +594,18 @@
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "text.script.python";
 			"path" = "node/memory_segments.py";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"6DDC81062D3932B10C827B8B" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.script.python";
+			"path" = "node/pdf_documents.py";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"4016B0BA7B496692741037B0" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.script.python";
+			"path" = "node/pdf_worker.py";
 			"sourceTree" = "SOURCE_ROOT";
 		};
 		"4867BF3E4C2A0C8E222DFF23" = {
@@ -979,6 +1003,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "FEF55EF766DDAEA3AA564E14";
 		};
+		"ABC09896FF9FCEF12B549A43" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "82C8940BEC8D72DDB1CF0F63";
+		};
 		"59FCB8D6EE76CB822EA52C29" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "5A12F7CEBDCD94ED9FCE39A2";
@@ -1108,6 +1136,7 @@
 				"69D26F836833E6840DA47070",
 				"67C434E57E04597111F9D191",
 				"DBFD21735D7C43C2D3AE3C1F",
+				"ABC09896FF9FCEF12B549A43",
 				"59FCB8D6EE76CB822EA52C29",
 				"453B02FBDF5958976CF5B589",
 				"572F4F7A9DA5898821622CF4",
@@ -1293,6 +1322,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "FEF55EF766DDAEA3AA564E14";
 		};
+		"4740F94E38BE8FD4376E5712" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "82C8940BEC8D72DDB1CF0F63";
+		};
 		"38608031006AF31B14EF7BD8" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "5A12F7CEBDCD94ED9FCE39A2";
@@ -1477,6 +1510,14 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "978689AC129C4845F6D272BD";
 		};
+		"9D7EAEA24B13AEF1BA43E9C4" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "6DDC81062D3932B10C827B8B";
+		};
+		"95864B52536263CE96115C06" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "4016B0BA7B496692741037B0";
+		};
 		"C4E902F4FB76D191ECAA748B" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "4867BF3E4C2A0C8E222DFF23";
@@ -1533,6 +1574,7 @@
 				"6341B0C6771B0053E32A10DF",
 				"87059B919040D4FCC1FEA395",
 				"A3BDCA390EDC52CF22CF920F",
+				"4740F94E38BE8FD4376E5712",
 				"38608031006AF31B14EF7BD8",
 				"6BEE75C3C0229FDA1EFE3C82",
 				"AB5F613BD0F3CB77E28DCCA2",
@@ -1593,6 +1635,8 @@
 				"CCC58450EC192820F31E5CC7",
 				"0A10EFA849D3F1B9281EA3F4",
 				"57B6FE0A08E149C0B3038EB1",
+				"9D7EAEA24B13AEF1BA43E9C4",
+				"95864B52536263CE96115C06",
 				"C4E902F4FB76D191ECAA748B",
 				"C589B3882108B610C05B0992",
 				"FDF82AB1BC14848957B3FB53",
@@ -1667,15 +1711,132 @@
 				"6CA5CDB65AFF958A1E3E9C62",
 				"C53F019B912789B676874BA4",
 				"CF3955D2204C1D622C8E07A2",
+				"6048E0C0E93FB0021386687D",
 			);
 			"buildRules" = (
 			);
 			"dependencies" = (
+				"D09E8B007EC37B95D8F66A86",
 			);
 			"name" = "VoiceMemoryMac";
 			"productName" = "VoiceMemoryMac";
 			"productReference" = "EE1D3D0290B84DE5FAC6A68A";
 			"productType" = "com.apple.product-type.application";
+		};
+		"EA63016F4794FAA81BE3A780" = {
+			"isa" = "PBXFileReference";
+			"explicitFileType" = "compiled.mach-o.executable";
+			"includeInIndex" = "0";
+			"path" = "PDFTextWorker";
+			"sourceTree" = "BUILT_PRODUCTS_DIR";
+		};
+		"CEF6704EDA3C11ECE3C2CBC1" = {
+			"isa" = "XCBuildConfiguration";
+			"baseConfigurationReference" = "DFBA7AADE0868074C2861C98";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "PDFTextWorker";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "$(VOICE_MEMORY_BUNDLE_PREFIX).pdf-worker";
+				"SDKROOT" = "macosx";
+				"SUPPORTED_PLATFORMS" = "macosx";
+				"MACOSX_DEPLOYMENT_TARGET" = "14.0";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-Onone";
+				"SKIP_INSTALL" = "YES";
+				"GENERATE_INFOPLIST_FILE" = "NO";
+				"CLANG_ENABLE_MODULES" = "YES";
+			};
+			"name" = "Debug";
+		};
+		"A80901D101FC4BBF0A036126" = {
+			"isa" = "XCBuildConfiguration";
+			"baseConfigurationReference" = "DFBA7AADE0868074C2861C98";
+			"buildSettings" = {
+				"PRODUCT_NAME" = "PDFTextWorker";
+				"PRODUCT_BUNDLE_IDENTIFIER" = "$(VOICE_MEMORY_BUNDLE_PREFIX).pdf-worker";
+				"SDKROOT" = "macosx";
+				"SUPPORTED_PLATFORMS" = "macosx";
+				"MACOSX_DEPLOYMENT_TARGET" = "14.0";
+				"SWIFT_OPTIMIZATION_LEVEL" = "-O";
+				"SKIP_INSTALL" = "YES";
+				"GENERATE_INFOPLIST_FILE" = "NO";
+				"CLANG_ENABLE_MODULES" = "YES";
+			};
+			"name" = "Release";
+		};
+		"11BA4C5C11D7C166E244A092" = {
+			"isa" = "XCConfigurationList";
+			"buildConfigurations" = (
+				"CEF6704EDA3C11ECE3C2CBC1",
+				"A80901D101FC4BBF0A036126",
+			);
+			"defaultConfigurationIsVisible" = "0";
+			"defaultConfigurationName" = "Release";
+		};
+		"765C4ACF6A7D8F8827B0BFB4" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "46472B2CC4281B2E2D0D9BF0";
+		};
+		"1AB4021B22C8EC6F72A7D2FC" = {
+			"isa" = "PBXSourcesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = (
+				"765C4ACF6A7D8F8827B0BFB4",
+			);
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"80F51D6847D92A1F604114FC" = {
+			"isa" = "PBXFrameworksBuildPhase";
+			"buildActionMask" = "2147483647";
+			"files" = (
+			);
+			"runOnlyForDeploymentPostprocessing" = "0";
+		};
+		"4A6EC0E4A3345DE77F8BBAB5" = {
+			"isa" = "PBXNativeTarget";
+			"buildConfigurationList" = "11BA4C5C11D7C166E244A092";
+			"buildPhases" = (
+				"1AB4021B22C8EC6F72A7D2FC",
+				"80F51D6847D92A1F604114FC",
+			);
+			"buildRules" = (
+			);
+			"dependencies" = (
+			);
+			"name" = "PDFTextWorker";
+			"productName" = "PDFTextWorker";
+			"productReference" = "EA63016F4794FAA81BE3A780";
+			"productType" = "com.apple.product-type.tool";
+		};
+		"4FE86982336E92A0A87F6349" = {
+			"isa" = "PBXContainerItemProxy";
+			"containerPortal" = "98F54143AB4E86B28C3AFEE0";
+			"proxyType" = "1";
+			"remoteGlobalIDString" = "4A6EC0E4A3345DE77F8BBAB5";
+			"remoteInfo" = "PDFTextWorker";
+		};
+		"D09E8B007EC37B95D8F66A86" = {
+			"isa" = "PBXTargetDependency";
+			"target" = "4A6EC0E4A3345DE77F8BBAB5";
+			"targetProxy" = "4FE86982336E92A0A87F6349";
+		};
+		"255BC07C474895048B53772F" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "EA63016F4794FAA81BE3A780";
+			"settings" = {
+				"ATTRIBUTES" = (
+					"CodeSignOnCopy",
+				);
+			};
+		};
+		"6048E0C0E93FB0021386687D" = {
+			"isa" = "PBXCopyFilesBuildPhase";
+			"buildActionMask" = "2147483647";
+			"dstPath" = "$(CONTENTS_FOLDER_PATH)/Helpers";
+			"dstSubfolderSpec" = "16";
+			"files" = (
+				"255BC07C474895048B53772F",
+			);
+			"name" = "Embed PDF text worker";
+			"runOnlyForDeploymentPostprocessing" = "0";
 		};
 		"670D34D486D4143501C70D55" = {
 			"isa" = "PBXContainerItemProxy";
@@ -1715,6 +1876,7 @@
 				"7F3F15022C32845777443236",
 				"2DF5BC94D77F8216856E3039",
 				"EE1D3D0290B84DE5FAC6A68A",
+				"EA63016F4794FAA81BE3A780",
 			);
 			"name" = "Products";
 			"sourceTree" = "<group>";
@@ -1744,6 +1906,7 @@
 				"2C064773E9808D17D3C16848",
 				"3229C047270F5A3EE2EB55EF",
 				"410ED90CEC447DD264CB76D5",
+				"46472B2CC4281B2E2D0D9BF0",
 				"46EFA6CC4339BE5CA285ABD7",
 				"5188C2D8FDCB11A57A52F84E",
 				"5693D7475ED26B99F817D7F5",
@@ -1759,6 +1922,7 @@
 				"7B7B6307F9EB390C15AF061A",
 				"7E2F4D748552EC426A08CCFE",
 				"7F6ED641FDB83917DA003176",
+				"82C8940BEC8D72DDB1CF0F63",
 				"8409AD27BCA39D4F9A1C5AF3",
 				"86007B4F04BC8C13787A7875",
 				"8A880889490F268B2BDDE3AD",
@@ -1810,6 +1974,8 @@
 				"E92421E41351C3920E88F232",
 				"E29E971597F9C47DC7915F0E",
 				"978689AC129C4845F6D272BD",
+				"6DDC81062D3932B10C827B8B",
+				"4016B0BA7B496692741037B0",
 				"4867BF3E4C2A0C8E222DFF23",
 				"F133B230F9341A0CC84E4DEA",
 				"8B0D777D4EB6CA613E17E9D3",
@@ -1864,6 +2030,7 @@
 				"0E156571E9AC8511994C2747",
 				"F9FB9627C43B9591DF0DEAD6",
 				"C5FC8C1A0215004CE550572D",
+				"4A6EC0E4A3345DE77F8BBAB5",
 			);
 		};
 	};

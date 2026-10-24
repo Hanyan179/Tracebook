@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Boot the actual app-bundled node and exercise a synthetic memory round trip."""
 import argparse
+import base64
 import json
 from pathlib import Path
 import socket
@@ -10,6 +11,21 @@ import tempfile
 import time
 import urllib.request
 import uuid
+
+
+def synthetic_pdf():
+    stream=b'BT /F1 12 Tf 40 740 Td (Synthetic PDF project evidence.) Tj ET'
+    objects=[b'<< /Type /Catalog /Pages 2 0 R >>',b'<< /Type /Pages /Kids [3 0 R 4 0 R] /Count 2 >>',
+        b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 6 0 R >>',
+        b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << >> >>',
+        b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+        b'<< /Length '+str(len(stream)).encode()+b' >>\nstream\n'+stream+b'\nendstream']
+    data=b'%PDF-1.4\n';offsets=[0]
+    for index,obj in enumerate(objects,1):
+        offsets.append(len(data));data+=str(index).encode()+b' 0 obj\n'+obj+b'\nendobj\n'
+    start=len(data);data+=b'xref\n0 7\n0000000000 65535 f \n'
+    data+=b''.join(('%010d 00000 n \n'%offset).encode() for offset in offsets[1:])
+    return data+b'trailer\n<< /Size 7 /Root 1 0 R >>\nstartxref\n'+str(start).encode()+b'\n%%EOF\n'
 
 
 def main():
@@ -74,7 +90,19 @@ def main():
                 preview = request(answer_path + 'answer-preview', {'sources': ['note/' + note['id']]})
                 assert not preview['configured'] and preview['items'][0]['source']['excerpt'] == note['text']
                 assert request(answer_path + 'answer')['job'] is None
-                print('Packaged node started; sources, memory history, segmentation and independent answer preview passed.')
+                preparation=request('/v1/documents/prepare',{'requestID':str(uuid.uuid4()),'files':[
+                    {'name':'synthetic-package.pdf','data':base64.b64encode(synthetic_pdf()).decode()}]})
+                for _ in range(100):
+                    state=request('/v1/documents/'+preparation['id']+'/preparation')
+                    if state['state']!='preparing':break
+                    time.sleep(.1)
+                assert state['state']=='ready' and state['preview']['pdfs'][0]['emptyPages']==[2]
+                assert request('/v1/documents/'+preparation['id']+'/commit',{})['added']==1
+                pdf=request('/v1/documents')['items'][0]
+                assert pdf['documentInfo']['rangesValid'] and pdf['documentInfo']['pageCount']==2
+                if sys.platform=='darwin':assert pdf['documentInfo']['parser']=='apple-pdfkit'
+                assert 'Synthetic PDF project evidence.' in request('/v1/sources/document/'+pdf['id'])['text']
+                print('Packaged node started; memory, segmentation, answer preview and isolated PDF import passed.')
             finally:
                 process.terminate()
                 try:

@@ -152,12 +152,13 @@ class Store:
             pass
 
     def close(self):
+        documents_closed = self.documents.close()
         answers_closed = self.answers.close()
         batches_closed = self.memory_batches.close()
         sources_closed = self.local_sources.close()
         speech_closed = self.transcription.close()
         memories_closed = self.memory_extraction.close()
-        if sources_closed and speech_closed and memories_closed and batches_closed and answers_closed:
+        if sources_closed and speech_closed and memories_closed and batches_closed and answers_closed and documents_closed:
             self.db.close()
 
     def setting(self, key):

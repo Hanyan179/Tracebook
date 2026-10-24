@@ -222,6 +222,7 @@ struct KnowledgeSourceReader: View {
                     if let notice = (currentSource ?? source).analysisNotice {
                         Label(L(notice), systemImage: "info.circle").font(.callout).foregroundStyle(.secondary)
                     }
+                    if let info = (currentSource ?? source).documentInfo { DocumentSourceNotice(info: info) }
                     if loaded && text.isEmpty { Text("这条记录还没有文字。").foregroundStyle(.secondary) }
                     if let metadata = documentParts.header {
                         Text("作者尚未确认，请核对资料中陈述的归属。").font(.caption).foregroundStyle(.secondary)

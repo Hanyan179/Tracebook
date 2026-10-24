@@ -27,6 +27,7 @@ class DocumentImportTests(unittest.TestCase):
         self.assertFalse(list((self.store.output/'documents').glob('*.md')))
         report=self.store.documents.commit(preview['id'])
         self.assertEqual(report['added'],1)
+        self.assertEqual(report['skipped'],1)
         self.assertEqual(self.store.documents.commit(preview['id']),report)
         self.assertEqual(self.import_files([self.item()])[1]['skipped'],1)
         cancelled=self.store.documents.preview({'files':[self.item('Discard this preview')]})

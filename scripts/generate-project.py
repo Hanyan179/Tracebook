@@ -60,6 +60,8 @@ mac += sorted(str(p.relative_to(ROOT)) for p in (ROOT / "Sources/VoiceMemoryCore
 mac += ["Apple/Shared/AudioPlayback.swift"]
 mac += design
 refs = {path: source(path) for path in sorted(set(watch + phone + mac))}
+pdf_worker = "Apple/PDFWorker/main.swift"
+refs[pdf_worker] = source(pdf_worker)
 brand_resource = add("brand-assets", "PBXFileReference", lastKnownFileType="folder.assetcatalog",
                      path="Apple/Resources/Brand.xcassets", sourceTree="SOURCE_ROOT")
 icon_resources = {
@@ -129,7 +131,34 @@ for name, files, sdk, plist, bundle in [
                         productName=name, productReference=products[name],
                         productType="com.apple.product-type.application")
 
+worker_name = "PDFTextWorker"
+products[worker_name] = add(worker_name + "product", "PBXFileReference",
+    explicitFileType="compiled.mach-o.executable", includeInIndex="0", path=worker_name, sourceTree="BUILT_PRODUCTS_DIR")
+worker_configs = []
+for mode in ["Debug", "Release"]:
+    worker_configs.append(add(worker_name + mode, "XCBuildConfiguration", baseConfigurationReference=config,
+        buildSettings={"PRODUCT_NAME": worker_name, "PRODUCT_BUNDLE_IDENTIFIER": "$(VOICE_MEMORY_BUNDLE_PREFIX).pdf-worker",
+                       "SDKROOT": "macosx", "SUPPORTED_PLATFORMS": "macosx", "MACOSX_DEPLOYMENT_TARGET": "14.0",
+                       "SWIFT_OPTIMIZATION_LEVEL": "-Onone" if mode == "Debug" else "-O",
+                       "SKIP_INSTALL": "YES", "GENERATE_INFOPLIST_FILE": "NO", "CLANG_ENABLE_MODULES": "YES"}, name=mode))
+worker_configuration = add(worker_name + "configs", "XCConfigurationList", buildConfigurations=worker_configs,
+    defaultConfigurationIsVisible="0", defaultConfigurationName="Release")
+targets[worker_name] = add(worker_name, "PBXNativeTarget", buildConfigurationList=worker_configuration,
+    buildPhases=[add(worker_name + "sources", "PBXSourcesBuildPhase", buildActionMask="2147483647",
+        files=[add(worker_name + "source", "PBXBuildFile", fileRef=refs[pdf_worker])], runOnlyForDeploymentPostprocessing="0"),
+        add(worker_name + "frameworks", "PBXFrameworksBuildPhase", buildActionMask="2147483647", files=[], runOnlyForDeploymentPostprocessing="0")],
+    buildRules=[], dependencies=[], name=worker_name, productName=worker_name, productReference=products[worker_name],
+    productType="com.apple.product-type.tool")
 project_id = ident("project")
+worker_proxy = add("pdf-worker-proxy", "PBXContainerItemProxy", containerPortal=project_id, proxyType="1",
+    remoteGlobalIDString=targets[worker_name], remoteInfo=worker_name)
+objects[targets["VoiceMemoryMac"]]["dependencies"].append(add("pdf-worker-dependency", "PBXTargetDependency",
+    target=targets[worker_name], targetProxy=worker_proxy))
+worker_embed = add("pdf-worker-embed-file", "PBXBuildFile", fileRef=products[worker_name],
+    settings={"ATTRIBUTES": ["CodeSignOnCopy"]})
+objects[targets["VoiceMemoryMac"]]["buildPhases"].append(add("pdf-worker-embed", "PBXCopyFilesBuildPhase",
+    buildActionMask="2147483647", dstPath="$(CONTENTS_FOLDER_PATH)/Helpers", dstSubfolderSpec="16", files=[worker_embed],
+    name="Embed PDF text worker", runOnlyForDeploymentPostprocessing="0"))
 proxy = add("watchproxy", "PBXContainerItemProxy", containerPortal=project_id, proxyType="1",
             remoteGlobalIDString=targets["VoiceMemoryWatch"], remoteInfo="VoiceMemoryWatch")
 dependency = add("watchdependency", "PBXTargetDependency", target=targets["VoiceMemoryWatch"], targetProxy=proxy)
@@ -174,6 +203,7 @@ project.mkdir(exist_ok=True)
 schemes = project / "xcshareddata/xcschemes"
 schemes.mkdir(parents=True, exist_ok=True)
 for name, target in targets.items():
+    if name == worker_name:continue
     reference = f'<BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="{target}" BuildableName="{name}.app" BlueprintName="{name}" ReferencedContainer="container:VoiceMemory.xcodeproj"/>'
     (schemes / f"{name}.xcscheme").write_text(f"""<?xml version="1.0" encoding="UTF-8"?>
 <Scheme LastUpgradeVersion="2660" version="1.7">
