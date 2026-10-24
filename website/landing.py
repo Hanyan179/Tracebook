@@ -5,17 +5,17 @@ def landing_home(lang, c, link):
         return f'<picture class="{cls}"><source media="(max-width:760px)" srcset="assets/{name}-small.png"><img src="assets/{name}.png" width="1280" height="720" alt="" loading="{"eager" if eager else "lazy"}"></picture>'
     hero = f'''
 <section class="landing-opening" aria-labelledby="landing-title">
- <div class="black-stage">
+ <div class="black-stage" data-capture="idle">
   <div class="hero-phone" aria-hidden="true">
    <div class="phone-speaker"></div><div class="phone-top">09:10 <span>迹库</span></div>
    <div class="phone-date">22 <small>OCTOBER</small></div>
-   <div class="phone-source"><span class="source-dot"></span><small>{t('留下一刻','Keep a moment')}</small><strong class="capture-label" data-idle="{t('准备好了','Ready when you are')}" data-recording="{t('正在留下…','Capturing…')}" data-saved="{t('原音已保存','Original audio saved')}">{t('准备好了','Ready when you are')}</strong><div class="signal-lines">{''.join('<i></i>' for _ in range(21))}</div><p class="phone-time">00:42</p></div>
+   <div class="phone-source"><span class="source-dot"></span><small>{t('留下一刻','Keep a moment')}</small><strong class="capture-label" data-idle="{t('准备好了','Ready when you are')}" data-recording="{t('正在留下…','Capturing…')}" data-saved="{t('原音已保存','Original audio saved')}">{t('准备好了','Ready when you are')}</strong><div class="signal-lines">{''.join('<i></i>' for _ in range(21))}</div><p class="phone-time" data-counter>00:00</p><div class="capture-source hero-saved-source" aria-hidden="true"><strong>{t("散步时的一个念头","A thought from a walk")}</strong><small>{t("原音已留存 · 合成示例","Audio retained · Synthetic example")}</small></div></div>
    <div class="phone-bottom"><span>◉</span><span>▤</span><span>⌕</span></div>
   </div>
   {photo('tap-scene-v4','hero-touch',True)}
-  <div class="stage-message"><img class="stage-logo" src="assets/brand-mark.png" width="68" height="68" alt=""><p class="stage-brand">{t('迹库','Tracebook')}</p><h1 id="landing-title">{t('片刻留下，<br>线索接上。','Keep the moment.<br>Continue the thread.')}</h1><p>{t('你的个人资料与记忆库','Your personal library, with memory.')}</p><a class="play-demo" href="#capture-demo" aria-label="{t('进入记录互动演示','Go to the interactive capture demo')}"><span class="play-symbol" aria-hidden="true">••</span><span class="play-label">{t('体验敲两下','Try two taps')}</span></a></div>
+  <div class="stage-message"><img class="stage-logo" src="assets/brand-mark.png" width="68" height="68" alt=""><p class="stage-brand">{t('迹库','Tracebook')}</p><h1 id="landing-title">{t('片刻留下，<br>线索接上。','Keep the moment.<br>Continue the thread.')}</h1><p>{t('你的个人资料与记忆库','Your personal library, with memory.')}</p><button type="button" class="hero-demo-button" data-capture-demo data-start="{t('敲两下，试试看','Try two taps')}" data-stop="{t('停止，留下这一刻','Stop and keep this moment')}" data-again="{t('再体验一次','Try again')}" hidden>{t('敲两下，试试看','Try two taps')}</button><a class="hero-demo-fallback" href="#capture-demo">{t('看看记录过程','Explore the capture flow')}</a><small class="hero-demo-note">{t('网页演示 · 不使用麦克风','Web demo · No microphone used')}</small></div>
   <p class="stage-caption">{t('AI 场景 · 界面演示，非运行截图','AI scene · Interface demo, not an app screenshot')}</p>
-  <p class="capture-feedback" role="status" aria-live="polite" data-capture-feedback data-recording="{t('演示：正在留下声音，不使用你的麦克风。','Demo: capturing sound. Your microphone is not used.')}" data-saved="{t('演示：原音来源已留存。没有生成转写。可再次体验。','Demo: an original audio source is saved. No transcript was generated. Try again anytime.')}"></p>
+  <p class="capture-feedback" role="status" aria-live="polite" data-capture-feedback data-recording="{t('演示：正在留下声音，不使用你的麦克风。','Demo: capturing sound. Your microphone is not used.')}" data-saved="{t('已留下一条合成原音来源。没有生成转写。','A synthetic audio source is saved. No transcript was generated.')}"></p>
  </div>
  <div class="opening-action"><a href="start.html" class="start-pill">{t('开始使用','Get started')} <span aria-hidden="true">↗</span></a><p>{t('开源开发版 · 暂无安装包','Open-source development build · No installer yet')}</p></div>
  <a href="#capture-ways" class="keep-exploring">{t('往下，接上这一天','Continue into your day')} <span aria-hidden="true">↓</span></a>

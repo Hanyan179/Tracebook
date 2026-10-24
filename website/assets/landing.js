@@ -13,6 +13,7 @@ if (typeof module !== 'undefined') module.exports = TraceDemo;
   const desktop = window.matchMedia('(min-width: 761px) and (min-height: 700px)');
   document.querySelectorAll('[data-capture-demo]').forEach(button => {
     button.hidden = false;
+    const fallback=button.parentElement.querySelector('.hero-demo-fallback');if(fallback)fallback.hidden=true;
     let started=0, elapsed=0, clock;
     const stage=button.closest('[data-capture]');
     const counter=stage.querySelector('[data-counter]');
