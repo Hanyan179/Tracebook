@@ -52,8 +52,9 @@ class Catalog:
         raise StoreError(status, message)
 
     def _search_index(self, kind, rid):
-        row = self.db.execute('SELECT title,body,tags FROM library_items WHERE kind=? AND id=?',(kind,rid)).fetchone()
-        text = normalized(row['title']+'\n'+row['body']+'\n'+' '.join(json.loads(row['tags'])))
+        row = self.db.execute('SELECT title,body,tags,data FROM library_items WHERE kind=? AND id=?',(kind,rid)).fetchone()
+        start = json.loads(row['data']).get('contentStart', 0) if kind == 'document' else 0
+        text = normalized(row['title']+'\n'+row['body'][start:]+'\n'+' '.join(json.loads(row['tags'])))
         self.db.execute('UPDATE library_items SET search_text=? WHERE kind=? AND id=?',(text,kind,rid))
         if self.trigram:
             key=kind+':'+rid
@@ -149,6 +150,7 @@ class Catalog:
             document = self.s.read_document(path)
             data = {'id':rid,'title':item['title'],'path':path,'format':item['format'],'previousID':item['previous_id']}
             data['documentInfo'] = self.s.documents.info(rid, document['etag'])
+            data['contentStart'] = self.s.documents.content_start(item, document['text'])
             self._upsert('document',rid,item['title'],document['text'],dt.datetime.fromisoformat(item['created_at']),
                          'ready' if document['text'] else 'missing',data,document['etag'])
 

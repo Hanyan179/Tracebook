@@ -1,7 +1,10 @@
 import http.client
+import base64
+import hashlib
 import json
 import threading
 import unittest
+import uuid
 import zipfile
 from unittest.mock import patch
 import test_node as fixtures
@@ -69,6 +72,95 @@ class DocumentImportTests(unittest.TestCase):
             documents=[name for name in bundle.namelist() if name.startswith('documents/')]
             self.assertEqual(len(documents),1)
             for name in bundle.namelist():self.assertNotIn(b'sk-proj-',bundle.read(name))
+
+    def test_search_skips_only_generated_header_and_preserves_file_bytes(self):
+        self.import_files([self.item('The orchard has a Friday review.', 'orchard.md')])
+        path=next((self.store.output/'documents').glob('*.md'));body=path.read_text()
+        expected=('# orchard.md\n\n来源：导入资料\n格式：md\n文件修改时间：2026-10-20T16:30:00+00:00\n'
+                  '作者：未确认。资料内容不自动成为本人事实或长期记忆。\n\n---\n\nThe orchard has a Friday review.\n')
+        self.assertEqual(body,expected)
+        source=self.store.knowledge.query({'query':'orchard','scopes':['documents']})['sources'][0]
+        self.assertTrue(source['excerpt'].startswith('The orchard'))
+        self.assertEqual(body[source['excerptStart']:source['excerptStart']+len(source['excerpt'])],source['excerpt'])
+        self.assertEqual(source['contentVersion'],hashlib.sha256(body.encode()).hexdigest())
+        self.assertEqual(self.store.answers.checked_source(source)['excerpt'],source['excerpt'])
+        self.assertEqual(self.store.knowledge.query({'query':'作者','scopes':['documents']})['sources'],[])
+        self.assertEqual(self.store.knowledge.query({'query':'文件修改时间','scopes':['documents']})['sources'],[])
+        self.assertEqual(path.read_text(),expected)
+
+    def test_filename_match_shows_body_and_keeps_original_markdown_metadata(self):
+        text='---\nauthor: A fictional author\n---\n# Original heading\n作者：合成作者。\n来源：正文中的说明。'
+        item=self.item(text,'quartz-index.md');item['contentRole']='generated';item.pop('modifiedAt')
+        self.import_files([item])
+        source=self.store.knowledge.query({'query':'quartz-index','scopes':['documents']})['sources'][0]
+        self.assertEqual(source['excerpt'],text)
+        self.assertEqual(source['evidenceType'],'model_generated_document')
+        self.assertEqual(source['contentRole'],'generated')
+        self.assertIn('正文中的说明',self.store.knowledge.query({'query':'正文中的说明','scopes':['documents']})['sources'][0]['excerpt'])
+        # Matching the body must not make this source eligible as personal memory evidence.
+        self.assertEqual(self.store.candidates(),[])
+
+    def test_changed_or_prepended_header_is_not_hidden_as_generated_content(self):
+        self.import_files([self.item('Orchard body.')]);path=next((self.store.output/'documents').glob('*.md'));original=path.read_text()
+        for body,query in [('Human prefix correction\n'+original,'correction'),
+                           (original.replace('作者：未确认','作者：人工修正'),'人工修正')]:
+            path.write_text(body);self.store.catalog.index_document(path.stem)
+            row=self.store.db.execute("SELECT data FROM library_items WHERE kind='document' AND id=?",(path.stem,)).fetchone()
+            self.assertEqual(json.loads(row['data'])['contentStart'],0)
+            source=self.store.knowledge.query({'query':query,'scopes':['documents']})['sources'][0]
+            self.assertIn(query,source['excerpt'])
+            self.assertEqual(body[source['excerptStart']:source['excerptStart']+len(source['excerpt'])],source['excerpt'])
+            self.assertEqual(path.read_text(),body)
+
+    def test_legacy_index_is_rebuilt_without_changing_sources_or_saved_turns(self):
+        self.import_files([self.item('Orchard content stays unchanged.','orchard.md')]);path=next((self.store.output/'documents').glob('*.md'));body=path.read_text()
+        chat=self.store.knowledge.create_conversation();request={'requestID':str(uuid.uuid4()),'query':'orchard','scopes':['documents']}
+        turn=self.store.knowledge.ask(chat['id'],request)
+        # A persisted turn from an older release included the archive prefix.
+        old_response=turn['response'];old_response['sources'][0].update(excerpt=body,excerptStart=0,excerptTruncated=False)
+        row=self.store.db.execute("SELECT data FROM library_items WHERE kind='document' AND id=?",(path.stem,)).fetchone()
+        data=json.loads(row['data']);data.pop('contentStart',None)
+        with self.store.db:
+            self.store.db.execute('UPDATE conversation_turns SET response=? WHERE id=?',(json.dumps(old_response),turn['id']))
+            self.store.db.execute("UPDATE library_items SET data=?,search_text=? WHERE kind='document' AND id=?",(json.dumps(data,ensure_ascii=False,sort_keys=True),body,path.stem))
+        self.store.close();self.store=Store(self.root/'node')
+        self.assertEqual(path.read_text(),body)
+        self.assertEqual(self.store.knowledge.ask(chat['id'],request)['response'],old_response)
+        source=self.store.knowledge.query({'query':'orchard','scopes':['documents']})['sources'][0]
+        self.assertTrue(source['excerpt'].startswith('Orchard content'))
+        self.assertEqual(self.store.knowledge.query({'query':'作者','scopes':['documents']})['sources'],[])
+
+    def test_binary_document_passages_keep_unicode_positions_and_source_coverage(self):
+        from test_docx_documents import package,paragraph
+        from test_pdf_documents import pdf_bytes
+        text='Orchard ＰＬＡＮＮＩＮＧ café 👩🏽‍💻 synthetic review.'
+        for extension,raw in [('pdf',pdf_bytes([text])),('docx',package(paragraph(text)))]:
+            with self.subTest(extension=extension):
+                item=self.item(name='orchard.'+extension);item.pop('text');item['data']=base64.b64encode(raw).decode()
+                self.import_files([item])
+                source=next(s for s in self.store.knowledge.query({'query':'planning','scopes':['documents']})['sources'] if s['title']==item['name'])
+                body=self.store.read_document('documents/'+source['id']+'.md')['text']
+                self.assertIn('ＰＬＡＮＮＩＮＧ',source['excerpt']);self.assertNotIn('来源：导入资料',source['excerpt'])
+                self.assertEqual(body[source['excerptStart']:source['excerptStart']+len(source['excerpt'])],source['excerpt'])
+                self.assertTrue(source['documentInfo']['rangesValid'])
+                self.assertEqual(self.store.answers.checked_source(source)['excerptStart'],source['excerptStart'])
+
+    def test_version_and_manual_body_edits_keep_content_positions_valid_for_retrieval(self):
+        item=self.item('Earlier orchard material.','orchard.md');item['contentRole']='transcript'
+        self.import_files([item]);item['text']='Updated orchard material.';self.import_files([item])
+        rows=self.store.documents.listing({})['items'];new=next(r for r in rows if r['documentRevision']['previousID'])
+        path=self.store.output/'documents'/(new['id']+'.md');body=path.read_text()+'\nManual sapphire addition é 👩🏽‍💻.\n';path.write_text(body)
+        self.store.catalog.index_document(new['id'])
+        source=self.store.knowledge.query({'query':'sapphire','scopes':['documents']})['sources'][0]
+        self.assertEqual(source['id'],new['id']);self.assertNotIn('此前导入版本',source['excerpt'])
+        self.assertEqual(body[source['excerptStart']:source['excerptStart']+len(source['excerpt'])],source['excerpt'])
+        self.assertEqual(source['contentVersion'],hashlib.sha256(body.encode()).hexdigest())
+
+    def test_header_without_remaining_body_does_not_return_an_empty_passage(self):
+        self.import_files([self.item('Orchard text.','orchard.md')]);path=next((self.store.output/'documents').glob('*.md'))
+        body=path.read_text();path.write_text(body[:body.index('Orchard text.')]);self.store.catalog.index_document(path.stem)
+        result=self.store.knowledge.query({'query':'orchard','scopes':['documents']})
+        self.assertEqual(result['sources'],[]);self.assertFalse(result['coverage']['hasMore'])
 
     def test_output_move_restart_and_tampered_preview(self):
         self.import_files([self.item()])

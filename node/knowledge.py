@@ -287,9 +287,14 @@ class Knowledge:
                                    score_args + args + terms + [limit + 1]).fetchall()
             sources = []
             remaining = 12000
+            processed = 0
             for row in rows[:limit]:
+                processed += 1
                 body = row['body']
-                excerpt, position = self.excerpt(body, terms, min(1400, remaining))
+                content_start = json.loads(row['data']).get('contentStart', 0) if row['kind'] == 'document' else 0
+                excerpt, position = self.excerpt(body[content_start:], terms, min(1400, remaining))
+                if not excerpt:continue
+                position += content_start
                 remaining -= len(excerpt)
                 sources.append({**self.source_data(row, body), 'excerpt': excerpt, 'excerptStart': position,
                                 'excerptTruncated': position > 0 or position + len(excerpt) < len(body)})
@@ -302,7 +307,7 @@ class Knowledge:
                    '在所选范围内没有找到匹配资料。可以换个关键词或日期范围。')
         return {'mode': 'retrieval', 'generatedAnswer': False, 'message': message, 'sources': sources,
                 'coverage': {'scopes': scopes, 'dateFrom': start, 'dateTo': end, 'eligibleItems': coverage,
-                             'returned': len(sources), 'hasMore': len(rows) > len(sources), 'indexRefreshSeconds': 60},
+                             'returned': len(sources), 'hasMore': len(rows) > processed, 'indexRefreshSeconds': 60},
                 'trust': 'source_data', 'createdAt': self.stamp()}
 
     @staticmethod

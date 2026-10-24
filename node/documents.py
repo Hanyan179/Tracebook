@@ -24,6 +24,29 @@ CONTENT_ROLES = {
 }
 
 
+def archive_header(item, previous):
+    """The exact app-written prefix, shared by imports and conservative indexing."""
+    basis = '文件修改时间' if item['dateBasis'] == 'modified' else '导入时间（文件时间未知）'
+    body = '# '+item['title']+'\n\n来源：导入资料\n格式：'+item['format']+'\n'+basis+'：'+item['created_at']+'\n'
+    body += '作者：未确认。资料内容不自动成为本人事实或长期记忆。\n'
+    role = item.get('contentRole', 'unknown')
+    if role != 'unknown':
+        body += '资料性质：'+CONTENT_ROLES[role]+'。此标记不代表内容已核实。\n'
+        if role == 'generated':
+            body += '记忆整理：不从模型生成内容提取本人事实，请回到原始来源核对。\n'
+    if previous:body += '此前导入版本：['+previous+']('+previous+'.md)\n'
+    if item['redacted']:body += '已隐藏识别到的常见凭证；原文件未修改。\n'
+    details = item.get('details', {})
+    if details.get('format') == 'pdf':
+        body += 'PDF 提取文字：保留文件页序；未识别图片中的文字，阅读顺序与表格可能需要校对。\n'
+        body += '原文件仍保留在选择的位置；本资料夹保存提取文字。\n'
+    elif details.get('format') == 'docx':
+        body += 'DOCX 提取文字：按文档结构读取正文、表格与附注，编号表示提取顺序，不是原文件页码。\n'
+        body += '样式、自动编号和版式未还原；表格、修订、域结果及遗漏内容请对照原文件。\n'
+        body += '批注与附注不代表本人陈述；原文件保持原位，资料夹仅保存提取文字。\n'
+    return body+'\n---\n\n'
+
+
 class DocumentImports:
     def __init__(self, store):
         self.s = store
@@ -326,28 +349,9 @@ class DocumentImports:
                 if exists:
                     skipped += 1
                 else:
-                    basis = '文件修改时间' if item['dateBasis'] == 'modified' else '导入时间（文件时间未知）'
-                    body = '# '+item['title']+'\n\n来源：导入资料\n格式：'+item['format']+'\n'+basis+'：'+item['created_at']+'\n'
-                    body += '作者：未确认。资料内容不自动成为本人事实或长期记忆。\n'
-                    role = item.get('contentRole', 'unknown')
-                    if role != 'unknown':
-                        body += '资料性质：'+CONTENT_ROLES[role]+'。此标记不代表内容已核实。\n'
-                        if role == 'generated':
-                            body += '记忆整理：不从模型生成内容提取本人事实，请回到原始来源核对。\n'
-                    if previous:
-                        body += '此前导入版本：['+previous+']('+previous+'.md)\n'
-                        versions += 1
-                    if item['redacted']:
-                        body += '已隐藏识别到的常见凭证；原文件未修改。\n'
+                    body = archive_header(item, previous)
+                    if previous:versions += 1
                     details = item.get('details', {})
-                    if details.get('format') == 'pdf':
-                        body += 'PDF 提取文字：保留文件页序；未识别图片中的文字，阅读顺序与表格可能需要校对。\n'
-                        body += '原文件仍保留在选择的位置；本资料夹保存提取文字。\n'
-                    elif details.get('format') == 'docx':
-                        body += 'DOCX 提取文字：按文档结构读取正文、表格与附注，编号表示提取顺序，不是原文件页码。\n'
-                        body += '样式、自动编号和版式未还原；表格、修订、域结果及遗漏内容请对照原文件。\n'
-                        body += '批注与附注不代表本人陈述；原文件保持原位，资料夹仅保存提取文字。\n'
-                    body += '\n---\n\n'
                     if details.get('format') == 'pdf':
                         details = {**details, 'pages': [{**p, 'start': p['start']+len(body), 'end': p['end']+len(body)} for p in details['pages']]}
                     elif details.get('format') == 'docx':
@@ -400,6 +404,22 @@ class DocumentImports:
         row = self.s.db.execute('SELECT details FROM documents WHERE id=?', (rid,)).fetchone()
         role = json.loads(row['details']).get('contentRole', 'unknown') if row else 'unknown'
         return role if role in CONTENT_ROLES else 'unknown'
+
+    @staticmethod
+    def content_start(item, body):
+        """Skip only an exact known prefix, never arbitrary user Markdown front matter.
+
+        Older imports did not store dateBasis. Both app-generated date labels are
+        reconstructible from their immutable row, so no source rewrite is needed.
+        If the user edited or prepended to the prefix, keep the whole text indexed.
+        """
+        details = json.loads(item['details'])
+        role = details.get('contentRole', 'unknown')
+        if role not in CONTENT_ROLES:return 0
+        for basis in ('modified', 'imported'):
+            prefix = archive_header({**dict(item), 'details': details, 'contentRole': role, 'dateBasis': basis}, item['previous_id'])
+            if body.startswith(prefix):return len(prefix)
+        return 0
 
     def listing(self, parameters):
         try:
