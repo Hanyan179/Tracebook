@@ -7,7 +7,7 @@
   filters.hidden=false;
   filters.querySelectorAll('button').forEach(button=>button.addEventListener('click',()=>{
     const kind=button.dataset.kind;filters.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));
-    let total=0;rows.forEach(row=>{row.hidden=kind!=='all'&&row.dataset.libraryKind!==kind;if(!row.hidden)total++;});count.textContent=total+' '+count.dataset.label;
+    let total=0;rows.forEach(row=>{row.hidden=kind!=='all'&&row.dataset.libraryKind!==kind;if(!row.hidden)total++;});count.textContent=total+' '+(total===1?count.dataset.singular:count.dataset.label);
   }));
   const work=document.getElementById('workbench'),source=document.getElementById('work-source'),steps=[...work.querySelectorAll('[data-command-step]')],output=work.querySelector('[data-command-output]');
   let selected=0,manualAt=null,manualOffset=0,queued=false,returnTarget=null;
