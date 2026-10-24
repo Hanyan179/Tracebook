@@ -9,6 +9,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+import uuid
 
 
 def main():
@@ -66,7 +67,14 @@ def main():
                 assert sum(unit['focusCharacters'] for unit in scope['units']) == len(long_text)
                 assert all(unit['characters'] <= 32000 for unit in scope['units'])
                 assert all(not unit['reusable'] for unit in scope['units'])
-                print('Packaged node started; source, memory history, files and bundled text segmentation passed.')
+                chat = request('/v1/conversations', {})
+                turn = request('/v1/conversations/' + chat['id'], {
+                    'query': 'Synthetic source', 'requestID': str(uuid.uuid4()), 'scopes': ['notes']})
+                answer_path = '/v1/conversations/' + chat['id'] + '/turns/' + turn['id'] + '/'
+                preview = request(answer_path + 'answer-preview', {'sources': ['note/' + note['id']]})
+                assert not preview['configured'] and preview['items'][0]['source']['excerpt'] == note['text']
+                assert request(answer_path + 'answer')['job'] is None
+                print('Packaged node started; sources, memory history, segmentation and independent answer preview passed.')
             finally:
                 process.terminate()
                 try:

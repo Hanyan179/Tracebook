@@ -15,7 +15,7 @@ enum ModelRuntime {
         }
         let preferences = ModelPreferences()
         for role in ModelRole.allCases {
-            let path = role == .summary ? "v1/model-session" : "v1/transcription-session"
+            let path = role.path
             let profile = preferences.profile(role)
             if profile.mode == .apiKey, let secret = preferences.secret(role, profile), !secret.isEmpty {
                 let validated = try profile.validated()

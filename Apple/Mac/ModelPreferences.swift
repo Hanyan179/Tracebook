@@ -3,9 +3,17 @@ import Security
 import CryptoKit
 
 enum ModelRole: String, CaseIterable, Identifiable {
-    case summary, transcription
+    case summary, transcription, answer
     var id: String { rawValue }
-    var title: String { self == .summary ? "文字整理模型" : "语音识别模型" }
+    var title: String {
+        switch self { case .summary: "文字整理模型"; case .transcription: "语音识别模型"; case .answer: "资料回答模型" }
+    }
+    var path: String {
+        switch self { case .summary: "v1/model-session"; case .transcription: "v1/transcription-session"; case .answer: "v1/answer-session" }
+    }
+    var symbol: String {
+        switch self { case .summary: "text.badge.star"; case .transcription: "waveform"; case .answer: "text.bubble" }
+    }
 }
 
 @MainActor
@@ -25,7 +33,7 @@ final class ModelPreferences: ObservableObject {
     func profile(_ role: ModelRole) -> ModelConfiguration {
         if let saved = profiles[role.rawValue] { return saved }
         var initial = ModelConfiguration()
-        if role == .transcription { initial.mode = .unconfigured }
+        if role != .summary { initial.mode = .unconfigured }
         return initial
     }
     func save(_ profile: ModelConfiguration, role: ModelRole, secret: String) throws {
@@ -96,10 +104,11 @@ struct ModelSettingsView: View {
         ScrollViewReader { scroller in
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    SettingsPageTitle(title: "模型", subtitle: "语音识别与文字整理分别配置。")
+                    SettingsPageTitle(title: "模型", subtitle: "语音识别、文字整理与资料回答分别配置。")
                     if let problem = preferences.problem { Text(problem).font(.callout).foregroundStyle(.secondary) }
                     ModelProfileEditor(workspace: workspace, preferences: preferences, role: .summary).id(ModelRole.summary.rawValue)
                     ModelProfileEditor(workspace: workspace, preferences: preferences, role: .transcription).id(ModelRole.transcription.rawValue)
+                    ModelProfileEditor(workspace: workspace, preferences: preferences, role: .answer).id(ModelRole.answer.rawValue)
                     Label("密钥只保存在这台电脑的钥匙串，不进入提示词、记忆或导出文件。", systemImage: "lock")
                         .font(.caption).foregroundStyle(.secondary).lineSpacing(4)
                 }.padding(28).frame(maxWidth: 860, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
@@ -124,13 +133,35 @@ private struct ModelProfileEditor: View {
     @State private var remove = false
     @State private var saving = false
     @State private var speech: ModelRuntimeState?
+    private var configured: Bool {
+        switch role {
+        case .summary: workspace.status?.analysisConfigured == true
+        case .transcription: workspace.status?.transcriptionConfigured == true
+        case .answer: workspace.status?.answerConfigured == true
+        }
+    }
+    private var purpose: String {
+        switch role {
+        case .summary: "用于每日分析与所选资料的记忆建议。仅在明确生成时发送对应文字；密钥只交给本机处理进程，不写入资料文件。"
+        case .transcription: "用于录音转写。保存后可在原音页面选择一条录音发送；自动转写需要另行开启。"
+        case .answer: "用于对话中的资料回答。每次先选择并预览发送片段，回答保留原文引用；不自动发送历史对话或写入记忆。"
+        }
+    }
+    private var savedMessage: String {
+        guard configured else { return "参数已保存，仍需配置可用的服务与密钥。" }
+        switch role {
+        case .summary: return "配置已保存。可生成每日分析或所选资料的记忆建议。"
+        case .transcription: return "语音配置已保存，尚未进行真实服务验证。可在原音页面转写。"
+        case .answer: return "回答配置已保存，尚未进行真实服务验证。可在对话中选择片段并回答。"
+        }
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             HStack {
-                Label(LocalizedStringKey(role.title), systemImage: role == .summary ? "text.badge.star" : "waveform")
+                Label(LocalizedStringKey(role.title), systemImage: role.symbol)
                     .font(.headline)
                 Spacer()
-                Text(L(role == .summary ? (workspace.status?.analysisConfigured == true ? "文字模型已配置" : "等待配置") : (workspace.status?.transcriptionConfigured == true ? "语音服务已配置" : "等待配置"))).font(.caption).foregroundStyle(.secondary)
+                Text(L(configured ? "模型已配置" : "等待配置")).font(.caption).foregroundStyle(.secondary)
             }
             Picker("处理方式", selection: $draft.mode) {
                 Text("稍后配置").tag(ModelConfiguration.Mode.unconfigured)
@@ -138,7 +169,7 @@ private struct ModelProfileEditor: View {
                 Text("官方服务").tag(ModelConfiguration.Mode.managed)
             }.pickerStyle(.segmented)
             if draft.mode == .apiKey {
-                if role == .summary {
+                if role != .transcription {
                     HStack {
                         Text("快速填写").font(.caption).foregroundStyle(.secondary)
                         Button("DeepSeek") { draft.endpoint = "https://api.deepseek.com"; draft.model = "deepseek-flash" }
@@ -168,7 +199,7 @@ private struct ModelProfileEditor: View {
                             .accessibilityIdentifier(role.rawValue + ".key")
                     }
                 }
-                Text(L(role == .summary ? "用于每日分析与所选资料的记忆建议。仅在明确生成时发送对应文字；密钥只交给本机处理进程，不写入资料文件。" : "用于录音转写。保存后可在原音页面选择一条录音发送；自动转写需要另行开启。"))
+                Text(L(purpose))
                     .font(.caption).foregroundStyle(.secondary)
             }
             if role == .transcription {
@@ -207,9 +238,7 @@ private struct ModelProfileEditor: View {
                             try preferences.save(draft, role: role, secret: secret); secret = ""
                             try await ModelRuntime.activate(workspace: workspace)
                             await loadSpeech()
-                            result = role == .summary
-                                ? (workspace.status?.analysisConfigured == true ? "配置已保存。可生成每日分析或所选资料的记忆建议。" : "参数已保存，仍需配置可用的服务与密钥。")
-                                : (workspace.status?.transcriptionConfigured == true ? "语音配置已保存，尚未进行真实服务验证。可在原音页面转写。" : "参数已保存，仍需配置可用的服务与密钥。")
+                            result = savedMessage
                         } catch { result = error.localizedDescription }
                     }
                 }.buttonStyle(FilledButtonStyle()).disabled(saving).accessibilityIdentifier(role.rawValue + ".save")

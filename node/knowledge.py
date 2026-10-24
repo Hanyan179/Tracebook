@@ -373,10 +373,10 @@ class Knowledge:
             return {'items': [self.turn_data(row) for row in reversed(shown)],
                     'nextBefore': shown[-1]['sequence'] if len(rows) > 30 else None}
 
-    @staticmethod
-    def turn_data(row):
-        return {key: json.loads(row[key]) if key == 'response' else row[key]
-                for key in ('id', 'sequence', 'question', 'response', 'created_at')}
+    def turn_data(self, row):
+        return {**{key: json.loads(row[key]) if key == 'response' else row[key]
+                  for key in ('id', 'sequence', 'question', 'response', 'created_at')},
+                'answerJob': self.s.answers.summary(row['id'])}
 
     def ask(self, cid, values):
         from store import canonical_id

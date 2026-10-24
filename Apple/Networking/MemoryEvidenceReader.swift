@@ -11,7 +11,7 @@ struct MemoryEvidenceReader: View {
 }
 
 struct SourcePassageReader: View {
-    enum Origin { case memory, search }
+    enum Origin { case memory, search, answer }
     @ObservedObject var workspace: NodeWorkspaceStore
     let source: KnowledgeSource
     let quote: String
@@ -25,6 +25,22 @@ struct SourcePassageReader: View {
     @State private var error: String?
     @State private var loading = true
     @State private var fullSource = false
+    private var pageTitle: String {
+        switch origin { case .memory: "引用上下文"; case .search: "检索片段上下文"; case .answer: "回答引用上下文" }
+    }
+    private var quoteTitle: String {
+        switch origin { case .memory: "提出时的引用"; case .search: "检索时保存的片段"; case .answer: "生成回答时引用的原文" }
+    }
+    private var locatedTitle: String {
+        switch origin { case .memory: "已定位到提出时的引用位置"; case .search: "已定位到检索片段"; case .answer: "已定位到回答引用的原文" }
+    }
+    private var changedNotice: String {
+        switch origin {
+        case .memory: "原文已变化，无法还原当时的前后文。下方保留原引用。"
+        case .search: "原文已变化，无法还原检索时的前后文。下方保留当时的片段。"
+        case .answer: "原文已变化，无法还原生成回答时的前后文。下方保留当时的引用。"
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -34,7 +50,7 @@ struct SourcePassageReader: View {
                         Text(verbatim: source.title).font(.title2.weight(.semibold))
                         Label(L(source.kindTitle) + " · " + source.date, systemImage: source.symbol)
                             .font(.caption).foregroundStyle(.secondary)
-                        if origin == .search, let analysisNotice = (currentSource ?? source).analysisNotice {
+                        if origin != .memory, let analysisNotice = (currentSource ?? source).analysisNotice {
                             Label(L(analysisNotice), systemImage: "info.circle").font(.callout).foregroundStyle(.secondary)
                         }
                         if let notice {
@@ -42,12 +58,12 @@ struct SourcePassageReader: View {
                                 .font(.callout).foregroundStyle(.secondary)
                         }
                         if let context {
-                            Label(L(origin == .search ? "已定位到检索片段" : "已定位到提出时的引用位置"), systemImage: "checkmark.circle").font(.caption).foregroundStyle(.secondary)
+                            Label(L(locatedTitle), systemImage: "checkmark.circle").font(.caption).foregroundStyle(.secondary)
                             if context.hasEarlierText { Text("前文已省略").font(.caption).foregroundStyle(.secondary) }
                             if !context.before.isEmpty { Text(verbatim: context.before).textSelection(.enabled).lineSpacing(4) }
                         }
                         VStack(alignment: .leading, spacing: 10) {
-                            Label(L(origin == .search ? "检索时保存的片段" : "提出时的引用"), systemImage: "quote.opening").font(.caption.weight(.medium))
+                            Label(L(quoteTitle), systemImage: "quote.opening").font(.caption.weight(.medium))
                             Text(verbatim: quote).textSelection(.enabled).lineSpacing(5)
                         }.padding(16).frame(maxWidth: .infinity, alignment: .leading)
                             .background(AppPalette.surface, in: RoundedRectangle(cornerRadius: 12))
@@ -65,13 +81,13 @@ struct SourcePassageReader: View {
                         Divider()
                         Button("查看当前完整原文", systemImage: "doc.text") { fullSource = true }
                     }.padding(24).frame(maxWidth: 720, alignment: .leading).frame(maxWidth: .infinity, alignment: .leading)
-                }.background(AppPalette.canvas).navigationTitle(L(origin == .search ? "检索片段上下文" : "引用上下文"))
+                }.background(AppPalette.canvas).navigationTitle(L(pageTitle))
                     #if os(iOS)
                     .navigationBarTitleDisplayMode(.inline)
                     #endif
                     .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { dismiss() } } }
                     .onChange(of: context) { _, value in
-                        if value != nil, origin == .search || typeSize.isAccessibilitySize { position.scrollTo("saved-quote", anchor: .top) }
+                        if value != nil, origin != .memory || typeSize.isAccessibilitySize { position.scrollTo("saved-quote", anchor: .top) }
                     }
             }
         }.task(id: workspace.client?.endpoint.absoluteString) { await read() }
@@ -97,7 +113,7 @@ struct SourcePassageReader: View {
             try Task.checkCancellation()
             currentSource = value
             guard value.contentVersion == source.contentVersion else {
-                notice = origin == .search ? "原文已变化，无法还原检索时的前后文。下方保留当时的片段。" : "原文已变化，无法还原当时的前后文。下方保留原引用。"; return
+                notice = changedNotice; return
             }
             guard let offset = value.offset, let total = value.totalCharacters,
                   let matched = SourceQuoteContext(text: value.text ?? "", offset: offset, totalCharacters: total,

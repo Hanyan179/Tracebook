@@ -24,6 +24,7 @@ from memory_files import MemoryFiles
 from memory_extraction import MemoryExtraction
 from memory_segments import MemorySegments
 from memory_batches import MemoryBatches
+from answers import Answers
 from transcription import Transcription
 
 MAX_AUDIO = 2 * 1024 * 1024 * 1024
@@ -134,6 +135,7 @@ class Store:
         self.knowledge = Knowledge(self)
         self.exchange = DataExchange(self)
         self.analysis = DailyAnalysis(self)
+        self.answers = Answers(self)
         self.memory_segments = MemorySegments(self)
         self.memory_extraction = MemoryExtraction(self)
         self.memory_batches = MemoryBatches(self)
@@ -150,11 +152,12 @@ class Store:
             pass
 
     def close(self):
+        answers_closed = self.answers.close()
         batches_closed = self.memory_batches.close()
         sources_closed = self.local_sources.close()
         speech_closed = self.transcription.close()
         memories_closed = self.memory_extraction.close()
-        if sources_closed and speech_closed and memories_closed and batches_closed:
+        if sources_closed and speech_closed and memories_closed and batches_closed and answers_closed:
             self.db.close()
 
     def setting(self, key):
@@ -511,7 +514,8 @@ class Store:
                     'transcriptionConfigured': self.transcription.configuration is not None,
                     'summaryMode': 'sourceDraft', 'conflicts': conflicts,
                     'memoryDelivery': self.memories.delivery_status(),
-                    'analysisConfigured':hasattr(self,'analysis') and self.analysis.configuration is not None}
+                    'analysisConfigured':hasattr(self,'analysis') and self.analysis.configuration is not None,
+                    'answerConfigured':self.answers.configuration is not None}
 
     def configure(self, values):
         with self.lock:

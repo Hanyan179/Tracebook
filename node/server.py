@@ -165,6 +165,10 @@ class Handler(BaseHTTPRequestHandler):
             if not ipaddress.ip_address(self.client_address[0]).is_loopback:raise StoreError(403,'请在资料库所在电脑配置模型。')
             if self.command=='POST':return self.send_json(200,store.analysis.configure(self.body_json()))
             if self.command=='GET':return self.send_json(200,store.analysis.state())
+        if parts==['v1','answer-session']:
+            if not ipaddress.ip_address(self.client_address[0]).is_loopback:raise StoreError(403,'请在资料库所在电脑配置回答模型。')
+            if self.command=='POST':return self.send_json(200,store.answers.configure(self.body_json()))
+            if self.command=='GET':return self.send_json(200,store.answers.configuration_state())
         if len(parts)==4 and parts[:2]==['v1','memory-segments']:
             if self.command=='GET':
                 parameters=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
@@ -258,6 +262,12 @@ class Handler(BaseHTTPRequestHandler):
         if len(parts)==4 and parts[:2]==['v1','sources'] and self.command=='GET':
             parameters={k:v[-1] for k,v in urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
             return self.send_json(200,store.knowledge.read_source(parts[2],parts[3],list(SCOPES),parameters))
+        if len(parts)==6 and parts[:2]==['v1','conversations'] and parts[3]=='turns':
+            if parts[5]=='answer-preview' and self.command=='POST':
+                return self.send_json(200,store.answers.preview(parts[2],parts[4],self.body_json()))
+            if parts[5]=='answer':
+                if self.command=='GET':return self.send_json(200,store.answers.status(parts[2],parts[4]))
+                if self.command=='POST':return self.send_json(202,store.answers.start(parts[2],parts[4],self.body_json()))
         if parts==['v1','conversations']:
             if self.command=='GET':
                 parameters=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)

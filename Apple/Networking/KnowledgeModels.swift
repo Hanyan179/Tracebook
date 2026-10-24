@@ -34,6 +34,7 @@ struct KnowledgeResult: Codable, Sendable {
     let generatedAnswer: Bool
     let sources: [KnowledgeSource]
     let coverage: Coverage
+    var answer: GroundedAnswer?
     struct Coverage: Codable, Sendable {
         let scopes: [String]
         let dateFrom: String?
@@ -51,6 +52,7 @@ struct ConversationTurn: Codable, Identifiable, Sendable {
     let sequence: Int
     let question: String
     let response: KnowledgeResult
+    var answerJob: AnswerJob?
 }
 struct ConversationPage: Codable, Sendable {
     let items: [ConversationTurn]

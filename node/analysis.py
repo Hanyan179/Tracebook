@@ -22,6 +22,18 @@ Return a JSON object with exactly these arrays: overview, decisions, todos, ques
 class NoRedirect(urllib.request.HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs):return None
 
+def validated_text_configuration(values):
+    from store import StoreError
+    endpoint,model,key=values.get('endpoint'),values.get('model'),values.get('key')
+    if not all(isinstance(v,str) and v.strip() for v in [endpoint,model,key]):
+        raise StoreError(400,'模型配置和密钥不完整。')
+    url=urllib.parse.urlsplit(endpoint)
+    if url.scheme!='https' or not url.hostname or url.username or url.password or url.query or url.fragment:
+        raise StoreError(400,'模型服务请使用不含密钥的 HTTPS 地址。')
+    if len(model)>200 or len(key)>4096 or any(c in key for c in '\r\n'):
+        raise StoreError(400,'模型配置格式不正确。')
+    return {'endpoint':endpoint.rstrip('/'),'model':model.strip(),'key':key.strip()}
+
 class DailyAnalysis:
     def __init__(self,store):
         self.s=store;self.configuration=None;self.run_lock=threading.Lock()
@@ -46,12 +58,8 @@ class DailyAnalysis:
         if values.get('clear') is True:
             with self.s.lock:self.configuration=None
             return self.state()
-        endpoint,model,key=values.get('endpoint'),values.get('model'),values.get('key')
-        if not all(isinstance(v,str) and v.strip() for v in [endpoint,model,key]):self.error(400,'模型配置和密钥不完整。')
-        url=urllib.parse.urlsplit(endpoint)
-        if url.scheme!='https' or not url.hostname or url.username or url.password or url.query or url.fragment:self.error(400,'模型服务请使用不含密钥的 HTTPS 地址。')
-        if len(model)>200 or len(key)>4096 or any(c in key for c in '\r\n'):self.error(400,'模型配置格式不正确。')
-        with self.s.lock:self.configuration={'endpoint':endpoint.rstrip('/'),'model':model.strip(),'key':key.strip()}
+        config=validated_text_configuration(values)
+        with self.s.lock:self.configuration=config
         return self.state()
     def state(self):
         with self.s.lock:

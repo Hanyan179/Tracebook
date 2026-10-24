@@ -182,6 +182,12 @@
 			"path" = "Apple/Networking/CatalogScreens.swift";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"7434A72D5122E9DBC311F073" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Apple/Networking/ConversationAnswerView.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"FEF55EF766DDAEA3AA564E14" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -504,6 +510,12 @@
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "text.script.python";
 			"path" = "node/analysis.py";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"AFC065E21B9CE98ED1123EA4" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.script.python";
+			"path" = "node/answers.py";
 			"sourceTree" = "SOURCE_ROOT";
 		};
 		"6F1053BC3CE3AFB02443E780" = {
@@ -959,6 +971,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "68430596F2B00D7C22CAF29C";
 		};
+		"67C434E57E04597111F9D191" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "7434A72D5122E9DBC311F073";
+		};
 		"DBFD21735D7C43C2D3AE3C1F" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "FEF55EF766DDAEA3AA564E14";
@@ -1090,6 +1106,7 @@
 				"0DADE07298A3B65E86DDDAA1",
 				"334571F0FB92541F51DBD8E5",
 				"69D26F836833E6840DA47070",
+				"67C434E57E04597111F9D191",
 				"DBFD21735D7C43C2D3AE3C1F",
 				"59FCB8D6EE76CB822EA52C29",
 				"453B02FBDF5958976CF5B589",
@@ -1268,6 +1285,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "68430596F2B00D7C22CAF29C";
 		};
+		"87059B919040D4FCC1FEA395" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "7434A72D5122E9DBC311F073";
+		};
 		"A3BDCA390EDC52CF22CF920F" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "FEF55EF766DDAEA3AA564E14";
@@ -1408,6 +1429,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "2AE9C54CC6783384DFB68CFD";
 		};
+		"3041628F6CDCA8E5540B2965" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "AFC065E21B9CE98ED1123EA4";
+		};
 		"E43F034BA7BD0A269C0CE2AB" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "6F1053BC3CE3AFB02443E780";
@@ -1506,6 +1531,7 @@
 				"1F8CB777F0487F6B066BB344",
 				"0BF612F4AC2C530D015CC3FB",
 				"6341B0C6771B0053E32A10DF",
+				"87059B919040D4FCC1FEA395",
 				"A3BDCA390EDC52CF22CF920F",
 				"38608031006AF31B14EF7BD8",
 				"6BEE75C3C0229FDA1EFE3C82",
@@ -1555,6 +1581,7 @@
 			"buildActionMask" = "2147483647";
 			"files" = (
 				"2E32AA01C161B359DD915F8E",
+				"3041628F6CDCA8E5540B2965",
 				"E43F034BA7BD0A269C0CE2AB",
 				"6CCB40B6F899A2199A306ACB",
 				"791896BCBFD4CDE164DA7D71",
@@ -1728,6 +1755,7 @@
 				"700E6F1F914B70DE0F02F16C",
 				"72476F13BB1B453AF56FF4E3",
 				"72F2C9AA7A64263AC275D217",
+				"7434A72D5122E9DBC311F073",
 				"7B7B6307F9EB390C15AF061A",
 				"7E2F4D748552EC426A08CCFE",
 				"7F6ED641FDB83917DA003176",
@@ -1770,6 +1798,7 @@
 				"FEF55EF766DDAEA3AA564E14",
 				"FF9031C5A8F72BF8CC01E44F",
 				"2AE9C54CC6783384DFB68CFD",
+				"AFC065E21B9CE98ED1123EA4",
 				"6F1053BC3CE3AFB02443E780",
 				"6EDAF739F75E2D32F4378217",
 				"DDEAE0E1626E98D64133EEC8",

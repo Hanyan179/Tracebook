@@ -8,14 +8,19 @@ struct ConversationView: View {
     @State private var source: KnowledgeSource?
     @FocusState private var composing: Bool
     @Environment(\.colorScheme) private var scheme
+    @Environment(\.dynamicTypeSize) private var typeSize
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 16) {
+            headerLayout {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(chat.conversations.first { $0.id == chat.current }?.title.nonEmpty ?? L("新对话")).font(.headline).lineLimit(1)
-                    Text("从自己的资料开始。").font(.caption).foregroundStyle(.secondary)
+                    Text(chat.conversations.first { $0.id == chat.current }?.title.nonEmpty ?? L("新对话"))
+                        .font(.headline).lineLimit(typeSize.isAccessibilitySize ? 2 : 1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if !typeSize.isAccessibilitySize {
+                        Text("从自己的资料开始。").font(.caption).foregroundStyle(.secondary)
+                    }
                 }
-                Spacer()
+                HStack(spacing: 16) {
                 Menu {
                     if chat.conversations.isEmpty { Text("还没有历史对话") }
                     ForEach(chat.conversations) { item in
@@ -24,10 +29,11 @@ struct ConversationView: View {
                     if chat.moreHistory {
                         Button("更早的历史对话") { Task { await chat.earlierConversations(client: workspace.client) } }
                     }
-                } label: { Image(systemName: "clock.arrow.circlepath") }
+                } label: { Image(systemName: "clock.arrow.circlepath").frame(minWidth: 44, minHeight: 44) }
                     .help("历史对话").accessibilityLabel("历史对话")
-                Button { chat.newConversation(); draft = ""; composing = true } label: { Image(systemName: "square.and.pencil") }
+                Button { chat.newConversation(); draft = ""; composing = true } label: { Image(systemName: "square.and.pencil").frame(minWidth: 44, minHeight: 44) }
                     .help("新对话").accessibilityLabel("新对话")
+                }
             }.buttonStyle(.plain).padding(.horizontal, 26).padding(.vertical, 20).disabled(chat.sending)
             Divider().opacity(0.5)
             ScrollViewReader { proxy in
@@ -56,6 +62,11 @@ struct ConversationView: View {
                 }
             }
     }
+    private var headerLayout: AnyLayout {
+        typeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 16))
+    }
     private var welcome: some View {
         VStack(alignment: .leading, spacing: 24) {
             BrandMark(size: 52)
@@ -83,7 +94,10 @@ struct ConversationView: View {
                 Text(verbatim: turn.question).font(.body).lineSpacing(4).textSelection(.enabled)
                     .padding(16).background(AppPalette.surface, in: RoundedRectangle(cornerRadius: 16))
             }
-            HStack(spacing: 9) { BrandMark(size: 22); Text("Lifto").font(.subheadline.weight(.semibold)); Text("资料检索").font(.caption).foregroundStyle(.secondary) }
+            HStack(spacing: 9) { BrandMark(size: 22); Text("Lifto").font(.subheadline.weight(.semibold)) }
+            if let conversationID = chat.current, workspace.status?.answerConfigured != nil || turn.response.answer != nil {
+                ConversationAnswerSection(workspace: workspace, conversationID: conversationID, turn: turn)
+            }
             if turn.response.sources.isEmpty {
                 Text("没有找到匹配资料。试试更具体的关键词，或调整查询范围。")
                     .font(.body).foregroundStyle(.secondary).lineSpacing(5)
@@ -124,12 +138,17 @@ struct ConversationView: View {
             if draft.count > 500 { Text("问题最多 500 个字符。").font(.caption).foregroundStyle(.secondary) }
             if let error = chat.error { Text(L(error)).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
             if !workspace.connected {
-                HStack { Text("连接资料库后即可查询。"); Spacer(); Button("重新连接") { Task { await workspace.refresh() } } }
+                HStack {
+                    if !typeSize.isAccessibilitySize { Text("连接资料库后即可查询。"); Spacer() }
+                    Button("重新连接") { Task { await workspace.refresh() } }
+                        .frame(minHeight: 44).accessibilityHint("连接资料库后即可查询。")
+                }
                     .font(.caption).foregroundStyle(.secondary)
             }
             VStack(alignment: .leading, spacing: 12) {
                 TextField("问问自己的资料…", text: $draft, axis: .vertical)
                     .font(.body).lineLimit(1...5).textFieldStyle(.plain).focused($composing)
+                    .accessibilityHint("先在本机检索；选择片段后可请求模型回答。")
                     .onSubmit { submit() }.disabled(chat.sending)
                 HStack {
                     Picker("查询范围", selection: $scope) {
@@ -151,7 +170,10 @@ struct ConversationView: View {
                 }
             }.padding(16).background(AppPalette.surface, in: RoundedRectangle(cornerRadius: 19))
                 .overlay(RoundedRectangle(cornerRadius: 19).stroke(AppPalette.line, lineWidth: 1))
-            Text("当前返回原文与来源；模型回答尚未启用。").font(.caption2).foregroundStyle(.secondary)
+            if !typeSize.isAccessibilitySize {
+                Text("先在本机检索；选择片段后可请求模型回答。")
+                    .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
         }.padding(.horizontal, 26).padding(.bottom, 20).padding(.top, 12)
             .frame(maxWidth: 950).frame(maxWidth: .infinity)
     }

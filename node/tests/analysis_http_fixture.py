@@ -55,7 +55,16 @@ class LocalModelFixture:
                 code = {'unauthorized': 401, 'rate_limit': 429, 'unavailable': 503,
                         'redirect': 307}.get(mode, 200)
                 content = json.loads(body['messages'][1]['content'])
-                if 'sources' in content:
+                if 'question' in content and 'sources' in content:
+                    source=content['sources'][0]
+                    quote=source['text'][:min(200,len(source['text']))]
+                    result={'status':'answered','statements':[{
+                        'text':control.get('text','合成回答：请核对所列原文。'),
+                        'citations':[{'source':source['id'] if mode!='bad_citation' else 'note/not-supplied',
+                                      'quote':quote}]}]}
+                    if mode=='empty':result={'status':'insufficient','statements':[]}
+                    if mode=='uncited':result['statements'][0]['citations']=[]
+                elif 'sources' in content:
                     sources = content['sources']
                     source = next((s for s in sources if s['id'].startswith('note/')), sources[0])
                     result = {key: [] for key in ['overview', 'decisions', 'todos', 'questions', 'memoryCandidates']}
