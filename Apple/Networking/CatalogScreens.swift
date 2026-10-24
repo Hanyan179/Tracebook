@@ -199,7 +199,9 @@ struct NodeMemoryView: View {
             Button("分类管理", systemImage: "folder") { managing = true }
             Button("记忆文件", systemImage: "doc.text") { editingFile = true }
             Divider()
-            Button("刷新记忆列表", systemImage: "arrow.clockwise") { Task { await reload() } }
+            Button("刷新记忆列表", systemImage: "arrow.clockwise") {
+                Task { await store.refresh(); await reload() }
+            }.disabled(store.loading || loader.loading)
             Button("电脑连接设置", systemImage: "network", action: configureConnection)
         } label: { Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44) }
             .accessibilityLabel("记忆列表操作")
