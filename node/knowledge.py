@@ -7,6 +7,7 @@ import datetime as dt
 import hashlib
 import hmac
 import json
+import math
 import re
 import secrets
 import time
@@ -284,15 +285,10 @@ class Knowledge:
             remaining = 12000
             for row in rows[:limit]:
                 body = row['body']
-                text = body.strip()
-                positions = [normalized(text).find(term) for term in terms if term in normalized(text)]
-                position = max(0, min(positions, default=0) - 100)
-                if position > 0:
-                    position = text.rfind('\n', 0, position) + 1
-                excerpt = text[position:position + min(1400, remaining)]
+                excerpt, position = self.excerpt(body, terms, min(1400, remaining))
                 remaining -= len(excerpt)
-                sources.append({**self.source_data(row, body), 'excerpt': excerpt,
-                                'excerptTruncated': position > 0 or len(text) > len(excerpt)})
+                sources.append({**self.source_data(row, body), 'excerpt': excerpt, 'excerptStart': position,
+                                'excerptTruncated': position > 0 or position + len(excerpt) < len(body)})
                 if remaining <= 0:
                     break
         english = values.get('language') == 'en'
@@ -304,6 +300,40 @@ class Knowledge:
                 'coverage': {'scopes': scopes, 'dateFrom': start, 'dateTo': end, 'eligibleItems': coverage,
                              'returned': len(sources), 'hasMore': len(rows) > len(sources), 'indexRefreshSeconds': 60},
                 'trust': 'source_data', 'createdAt': self.stamp()}
+
+    @staticmethod
+    def excerpt(body, terms, limit):
+        """Choose a useful passage without treating normalized offsets as source offsets.
+
+        Repeated background words must not beat a passage containing several question
+        terms. Windows stay in original coordinates, including casefold/NFKC expansions.
+        This is lexical retrieval, not a claim that the passage answers the question.
+        """
+        text=body.strip()
+        if not text:return '',0
+        leading=len(body)-len(body.lstrip())
+        folded=normalized(text)
+        weights={term:min(6,max(1,len(term)-1))/(1+math.log1p(folded.count(term)))
+                 for term in terms if term in folded}
+        position=0
+        if weights:
+            width=240;stride=120;best_score=-1;best_start=0;best_terms=[]
+            for start in range(0,len(text),stride):
+                passage=normalized(text[start:start+width])
+                matches=[term for term in weights if term in passage]
+                score=sum(weights[term] for term in matches)
+                if score>best_score:
+                    best_score,best_start,best_terms=score,start,matches
+            if best_terms:
+                anchor=max(best_terms,key=weights.get)
+                passage=text[best_start:best_start+width]
+                # Only this small passage needs a mapping; a normalized prefix ending
+                # at the match locates the original text without a whole-source map.
+                end=next(i for i in range(1,len(passage)+1) if anchor in normalized(passage[:i]))
+                hit=best_start+max(0,end-len(anchor))
+                newline=text.rfind('\n',max(0,hit-100),hit)
+                position=newline+1 if newline>=0 else max(0,hit-60)
+        return text[position:position+limit],leading+position
 
     def create_conversation(self):
         with self.s.lock:

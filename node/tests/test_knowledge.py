@@ -104,6 +104,44 @@ class KnowledgeTests(unittest.TestCase):
         result=self.store.knowledge.query({'query':'项目','dateTo':'2000-01-01'})
         self.assertEqual(result['sources'],[])
 
+    def test_question_excerpt_finds_specific_statement_after_repeated_background(self):
+        fact='本人陈述：我每周五回顾个人工作计划。'
+        note=self.note(('合成的阅读背景，不是个人事实。\n'*2200)+fact+'\n'+('其他人的背景记录。\n'*200))
+        source=self.store.knowledge.query({'query':'我什么时候回顾个人工作计划？','scopes':['notes']})['sources'][0]
+        self.assertEqual(source['id'],note['id'])
+        self.assertIn(fact,'\n'.join(source['excerpt'].splitlines()[:7]))
+        self.assertEqual(note['text'][source['excerptStart']:source['excerptStart']+len(source['excerpt'])],source['excerpt'])
+        self.assertTrue(source['excerptTruncated'])
+
+    def test_long_single_paragraph_does_not_rewind_excerpt_to_the_start(self):
+        fact='每周五回顾个人工作计划'
+        note=self.note('背景资料。'*11000+fact+'。'+'无关内容。'*1000)
+        source=self.store.knowledge.query({'query':'回顾工作计划','scopes':['notes']})['sources'][0]
+        self.assertGreater(source['excerptStart'],50000)
+        self.assertIn(fact,source['excerpt'][:200])
+        self.assertEqual(note['text'][source['excerptStart']:source['excerptStart']+len(source['excerpt'])],source['excerpt'])
+
+    def test_excerpt_offsets_follow_original_text_after_unicode_normalization(self):
+        # Case folding and compatibility characters change the indexed length.
+        text=' \n\t'+('Straße ﬃ e\u0301 👩🏽‍💻 background\n'*1700)+'我周五整理 ＰＬＡＮＮＩＮＧ 资料。\n'
+        note=self.note(text)
+        source=self.store.knowledge.query({'query':'planning','scopes':['notes']})['sources'][0]
+        self.assertIn('ＰＬＡＮＮＩＮＧ',source['excerpt'])
+        self.assertEqual(text[source['excerptStart']:source['excerptStart']+len(source['excerpt'])],source['excerpt'])
+        self.assertEqual(source['contentVersion'],self.store.knowledge.read_source('note',note['id'],['notes'],{})['contentVersion'])
+
+    def test_excerpt_keeps_request_budget_and_does_not_change_saved_history(self):
+        note=self.note('背景。'*1000+'每周五回顾工作计划。'+'背景。'*1000)
+        chat=self.store.knowledge.create_conversation()
+        request={'requestID':str(uuid.uuid4()),'query':'回顾工作计划','scopes':['notes']}
+        first=self.store.knowledge.ask(chat['id'],request)
+        source=first['response']['sources'][0]
+        self.assertLessEqual(len(source['excerpt']),1400)
+        original=(self.store.output/note['path']).read_text()
+        self.store.knowledge.save_note({'title':note['title'],'text':original+'人工补充','etag':note['etag']},note['id'])
+        self.assertEqual(self.store.knowledge.ask(chat['id'],request),first)
+        self.assertFalse(first['response']['generatedAnswer'])
+
     def test_http_reader_cannot_call_admin_or_audio_endpoints(self):
         note=self.note();grant=self.grant()
         server=Server(('127.0.0.1',0),self.store,'admin-test-only')
