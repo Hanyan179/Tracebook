@@ -174,32 +174,7 @@ private struct AnswerScopeSheet: View {
                 Section("所选片段") {
                     Text(LF("已选择 %d / 8 个片段", selection.count))
                     ForEach(turn.response.sources, id: \.identity) { value in
-                        VStack(alignment: .leading, spacing: 8) {
-                            Button { toggle(value.identity) } label: {
-                                HStack(alignment: .top, spacing: 12) {
-                                    Image(systemName: selection.contains(value.identity) ? "checkmark.circle.fill" : "circle")
-                                    Text(verbatim: value.title).fixedSize(horizontal: false, vertical: true)
-                                }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                            }.buttonStyle(.plain)
-                                .disabled(busy || !usable(value) || (selection.count >= 8 && !selection.contains(value.identity)))
-                                .accessibilityLabel(LF("选择片段：%@", value.title) + (value.kind == "document" ? ", " + value.documentArchiveLabel + ", " + (value.documentRevisionLabel(snapshot: true) ?? "") : ""))
-                                .accessibilityValue(L(selection.contains(value.identity) ? "已选择" : "未选择"))
-                                .accessibilityIdentifier("answer.source." + value.identity)
-                            Text(L(value.kindTitle) + " · " + value.date).font(.caption).foregroundStyle(.secondary)
-                            DocumentRevisionNotice(source: value, snapshot: true)
-                            if let notice = value.analysisNotice { Text(L(notice)).font(.footnote).foregroundStyle(.secondary) }
-                            if usable(value) {
-                                Text(verbatim: value.excerpt ?? "").font(.callout).foregroundStyle(.secondary).lineLimit(2)
-                                DisclosureGroup("查看本次片段全文") {
-                                    Text(verbatim: value.excerpt ?? "").textSelection(.enabled)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                }.font(.callout)
-                                Button("核对原文位置") { inspecting = value }.disabled(busy)
-                            } else {
-                                Text("这轮检索缺少有效片段位置，请重新查询这个问题。")
-                                    .font(.footnote).foregroundStyle(.secondary)
-                            }
-                        }.padding(.vertical, 4)
+                        passageRow(value)
                     }
                 }
                 if let plan {
@@ -273,6 +248,43 @@ private struct AnswerScopeSheet: View {
         #if os(macOS)
         .frame(minWidth: 580, idealWidth: 720, minHeight: 600, idealHeight: 720)
         #endif
+    }
+    private func selectionLabel(_ source: KnowledgeSource) -> String {
+        var label = LF("选择片段：%@", source.title)
+        if source.kind == "document" {
+            label += ", " + source.documentArchiveLabel
+            if let revision = source.documentRevisionLabel(snapshot: true) { label += ", " + revision }
+        }
+        return label
+    }
+    private func passageRow(_ value: KnowledgeSource) -> some View {
+        let selected = selection.contains(value.identity)
+        return VStack(alignment: .leading, spacing: 8) {
+            Button { toggle(value.identity) } label: {
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    Text(verbatim: value.title).fixedSize(horizontal: false, vertical: true)
+                }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }.buttonStyle(.plain)
+                .disabled(busy || !usable(value) || (selection.count >= 8 && !selected))
+                .accessibilityLabel(selectionLabel(value))
+                .accessibilityValue(L(selected ? "已选择" : "未选择"))
+                .accessibilityIdentifier("answer.source." + value.identity)
+            Text(L(value.kindTitle) + " · " + value.date).font(.caption).foregroundStyle(.secondary)
+            DocumentRevisionNotice(source: value, snapshot: true)
+            if let notice = value.analysisNotice { Text(L(notice)).font(.footnote).foregroundStyle(.secondary) }
+            if usable(value) {
+                Text(verbatim: value.excerpt ?? "").font(.callout).foregroundStyle(.secondary).lineLimit(2)
+                DisclosureGroup("查看本次片段全文") {
+                    Text(verbatim: value.excerpt ?? "").textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }.font(.callout)
+                Button("核对原文位置") { inspecting = value }.disabled(busy)
+            } else {
+                Text("这轮检索缺少有效片段位置，请重新查询这个问题。")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        }.padding(.vertical, 4)
     }
     private func usable(_ source: KnowledgeSource) -> Bool {
         source.textAvailable && source.excerptStart != nil && !(source.excerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
