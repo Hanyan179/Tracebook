@@ -35,6 +35,10 @@ final class AudioPlayback: NSObject, ObservableObject, AVAudioPlayerDelegate {
                 timer = nil
                 deactivateSession()
             } else {
+                if position >= duration {
+                    player.currentTime = 0
+                    position = 0
+                }
                 #if !os(macOS)
                 try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default)
                 try AVAudioSession.sharedInstance().setActive(true)
@@ -43,7 +47,7 @@ final class AudioPlayback: NSObject, ObservableObject, AVAudioPlayerDelegate {
                 isPlaying = true
                 timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
                     Task { @MainActor in
-                        guard let self else { return }
+                        guard let self, self.isPlaying else { return }
                         self.position = self.player?.currentTime ?? 0
                     }
                 }
@@ -56,6 +60,18 @@ final class AudioPlayback: NSObject, ObservableObject, AVAudioPlayerDelegate {
 
     func seek(to time: TimeInterval) {
         guard time.isFinite, let player else { return }
+        if time >= duration {
+            // AVAudioPlayer can wrap an end-position seek back to the start.
+            // Keep the displayed endpoint and wait for an explicit replay.
+            player.pause()
+            player.currentTime = 0
+            timer?.invalidate()
+            timer = nil
+            isPlaying = false
+            position = duration
+            deactivateSession()
+            return
+        }
         player.currentTime = min(max(0, time), duration)
         position = player.currentTime
     }
