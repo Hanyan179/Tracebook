@@ -47,7 +47,14 @@ struct ConversationView: View {
             composer
         }.background(AppPalette.canvas)
             .task(id: workspace.endpoint + String(workspace.connected)) { if workspace.connected { await chat.load(client: workspace.client) } }
-            .sheet(item: $source) { source in KnowledgeSourceReader(workspace: workspace, source: source).appLanguage() }
+            .sheet(item: $source) { source in
+                if let excerpt = source.excerpt, !excerpt.isEmpty, let start = source.excerptStart {
+                    SourcePassageReader(workspace: workspace, source: source, quote: excerpt,
+                        quoteStart: start, origin: .search).appLanguage()
+                } else {
+                    KnowledgeSourceReader(workspace: workspace, source: source).appLanguage()
+                }
+            }
     }
     private var welcome: some View {
         VStack(alignment: .leading, spacing: 24) {

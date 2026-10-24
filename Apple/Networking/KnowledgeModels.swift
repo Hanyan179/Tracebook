@@ -9,6 +9,7 @@ struct KnowledgeSource: Codable, Identifiable, Sendable {
     let contentVersion: String
     let textAvailable: Bool
     var excerpt: String?
+    var excerptStart: Int?
     var excerptTruncated: Bool?
     var text: String?
     var offset: Int?
