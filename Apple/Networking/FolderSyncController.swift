@@ -22,6 +22,9 @@ final class FolderSyncController: ObservableObject {
     var active = true
     var configured: Bool { selection != nil }
     var statusTitle: String {
+        #if os(macOS)
+        if !LocalNodeController.shared.receivingAllowed { return "接收已暂停" }
+        #endif
         if !configured { return "待选择资料夹" }
         if problem != nil { return "同步需要处理" }
         if busy { return "正在检查资料夹" }
@@ -104,6 +107,9 @@ final class FolderSyncController: ObservableObject {
         Task { await refresh() }
     }
     func refresh() async {
+        #if os(macOS)
+        guard LocalNodeController.shared.receivingAllowed else { return }
+        #endif
         guard !busy, configured else { return }
         #if os(iOS)
         guard SyncRoute.current == .folder else { return }

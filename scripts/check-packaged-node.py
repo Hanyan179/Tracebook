@@ -5,6 +5,7 @@ import base64
 import json
 from pathlib import Path
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -109,6 +110,27 @@ def main():
                     process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     process.kill(); process.wait(timeout=5)
+        backup_cli=script.with_name('backup_cli.py')
+        def backup_command(*arguments):
+            result=subprocess.run([sys.executable,'-B',str(backup_cli),*map(str,arguments)],
+                                  capture_output=True,text=True,timeout=30)
+            assert result.returncode==0, 'Packaged backup command failed: '+result.stdout[:1000]
+            reply=json.loads(result.stdout);assert reply['ok'];return reply
+        bundle_file=root/'library-backup.zip'
+        saved=backup_command('create','--data',root/'node','--destination',bundle_file)
+        preview=backup_command('inspect','--file',bundle_file,'--scratch',root)
+        assert preview['archiveSHA256']==saved['archiveSHA256']
+        restored=root/'restored'
+        result=backup_command('restore','--file',bundle_file,'--destination',restored,
+                              '--sha256',preview['archiveSHA256'],'--scratch',root)
+        assert result['receivingPaused'] and not (restored/'connection-token').exists()
+        with sqlite3.connect(restored/'node.sqlite3') as db:
+            assert db.execute('SELECT count(*) FROM candidates').fetchone()[0]==1
+            assert db.execute('SELECT count(*) FROM documents').fetchone()[0]==1
+            assert db.execute("SELECT value FROM settings WHERE key='memoryDeliveryPaused'").fetchone()[0]=='true'
+        assert (restored/'Library/memory.md').read_bytes()==(root/'node/Library/memory.md').read_bytes()
+        assert (restored/'Library/memories'/(cid+'.json')).read_bytes()==(root/'node/Library/memories'/(cid+'.json')).read_bytes()
+        print('Packaged backup create, inspect and independent restore passed; credentials excluded and automatic work paused.')
 
 
 if __name__ == '__main__':

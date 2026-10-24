@@ -13,6 +13,7 @@ import secrets
 import signal
 import tempfile
 import threading
+import time
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from store import Store, StoreError, MAX_AUDIO, validate_manifest, canonical_id
@@ -24,10 +25,18 @@ class Server(ThreadingHTTPServer):
     def __init__(self, address, store, token):
         self.store, self.token = store, token
         self.upload_slots = threading.BoundedSemaphore(3)
+        self.requests_condition = threading.Condition()
+        self.active_requests = 0
+        self.closing = False
         super().__init__(address, Handler)
         self.store.transcription.start_worker()
 
     def server_close(self):
+        # Idle keep-alive sockets must not hold shutdown open, but a request
+        # already writing library data must finish before the process exits.
+        with self.requests_condition:
+            self.closing = True
+            while self.active_requests:self.requests_condition.wait()
         self.store.documents.close()
         self.store.transcription.close()
         super().server_close()
@@ -429,6 +438,14 @@ class Handler(BaseHTTPRequestHandler):
             self.server.upload_slots.release()
 
     def route(self):
+        with self.server.requests_condition:
+            accepted = not self.server.closing
+            if accepted:self.server.active_requests += 1
+        if not accepted:
+            self.close_connection = True
+            try:self.send_json(503, {'error':'资料库正在停止，请稍后重试。'})
+            except (OSError, TimeoutError):pass
+            return
         try:
             self.dispatch()
         except StoreError as e:
@@ -439,6 +456,10 @@ class Handler(BaseHTTPRequestHandler):
         except Exception:
             self.close_connection = True
             self.send_json(500, {'error': '节点暂时无法完成操作，原有资料保留。'})
+        finally:
+            with self.server.requests_condition:
+                self.server.active_requests -= 1
+                self.server.requests_condition.notify_all()
 
     do_GET = do_PUT = do_POST = route
 
@@ -487,7 +508,7 @@ def main():
             except Exception:
                 pass  # Retry on the next pass; never discard recordings.
             stopped.wait(60)
-    threading.Thread(target=schedule, daemon=True).start()
+    scheduler = threading.Thread(target=schedule, daemon=True);scheduler.start()
     signal.signal(signal.SIGTERM, lambda *_: threading.Thread(target=server.shutdown, daemon=True).start())
     print('Voice Memory node ready at %s:%s' % server.server_address, flush=True)
     try:
@@ -495,7 +516,10 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
-        stopped.set();server.server_close();store.local_sources.close()
+        stopped.set();server.server_close();scheduler.join()
+        # close() asks every worker to stop and only closes SQLite once all have
+        # left their write paths. Retain the instance lock until that is true.
+        while not store.close():time.sleep(.1)
 
 if __name__ == '__main__':
     main()

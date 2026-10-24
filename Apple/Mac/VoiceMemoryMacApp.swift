@@ -14,7 +14,10 @@ struct VoiceMemoryMacApp: App {
 }
 
 final class MacAppDelegate: NSObject, NSApplicationDelegate {
-    func applicationWillTerminate(_ notification: Notification) { LocalNodeController.shared.stop() }
+    func applicationWillTerminate(_ notification: Notification) {
+        LibraryBackupController.shared.cancel()
+        LocalNodeController.shared.stop()
+    }
 }
 
 private enum WorkspaceSection: String, CaseIterable, Identifiable {
@@ -73,7 +76,7 @@ struct MacWorkspaceView: View {
                         Label(L(workspace.connected ? "资料库已就绪" : (local.starting || workspace.loading ? "正在准备资料库" : "资料库未连接")),
                               systemImage: workspace.connected ? "checkmark.circle" : "exclamationmark.circle")
                     }.buttonStyle(.plain).font(.caption).foregroundStyle(.secondary)
-                        .disabled(local.starting || workspace.loading)
+                        .disabled(local.starting || workspace.loading || local.maintenance)
                 }.padding(20)
             }.background(AppPalette.surface)
                 .navigationSplitViewColumnWidth(min: 190, ideal: 210, max: 260)
@@ -95,7 +98,19 @@ struct MacWorkspaceView: View {
                 }.navigationTitle(L((section ?? .recordings).title))
                     .libraryDestinations(store: workspace)
                     .background(AppPalette.canvas)
-            }.id((section?.rawValue ?? "") + language)
+            }.id((section?.rawValue ?? "") + language + local.dataDirectory.path)
+                .safeAreaInset(edge: .top) {
+                    if local.receivingPaused {
+                        HStack(spacing: 12) {
+                            Label("恢复副本 · 接收已暂停", systemImage: "pause.circle")
+                            Spacer(minLength: 8)
+                            Button("核对恢复设置") {
+                                UserDefaults.standard.set("数据与隐私", forKey: "settings.section"); openSettings()
+                            }
+                        }.font(.callout).padding(12).background(AppPalette.surface)
+                    }
+                }
+                .disabled(local.maintenance)
                 .navigationSplitViewColumnWidth(min: 680, ideal: 1000)
                 .toolbar(removing: .sidebarToggle)
         }.toolbar(removing: .sidebarToggle).tint(.primary)

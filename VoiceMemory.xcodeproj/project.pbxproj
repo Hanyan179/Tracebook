@@ -116,6 +116,12 @@
 			"path" = "Apple/Mac/ExternalAccessSettings.swift";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"F37D03F30ADD8BEE281C5886" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Apple/Mac/LibraryBackupSection.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"86007B4F04BC8C13787A7875" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -528,6 +534,18 @@
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "text.script.python";
 			"path" = "node/answers.py";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"6CD15CAE10116B333E6B92C5" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.script.python";
+			"path" = "node/backup.py";
+			"sourceTree" = "SOURCE_ROOT";
+		};
+		"E55D83CB2997401A1308536C" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.script.python";
+			"path" = "node/backup_cli.py";
 			"sourceTree" = "SOURCE_ROOT";
 		};
 		"6F1053BC3CE3AFB02443E780" = {
@@ -1270,6 +1288,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "287E134C920A7BF29DFCB0E7";
 		};
+		"18EE7A92C7C194853AFC997B" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "F37D03F30ADD8BEE281C5886";
+		};
 		"447ABBDD68701B2197140FDC" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "86007B4F04BC8C13787A7875";
@@ -1466,6 +1488,14 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "AFC065E21B9CE98ED1123EA4";
 		};
+		"80CCCF90E919E727A3E3EC23" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "6CD15CAE10116B333E6B92C5";
+		};
+		"10AFC61F3473A3CEF266308D" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "E55D83CB2997401A1308536C";
+		};
 		"E43F034BA7BD0A269C0CE2AB" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "6F1053BC3CE3AFB02443E780";
@@ -1561,6 +1591,7 @@
 				"C5DF8C275F88CD5AA4CD52DB",
 				"DB96BB8FF577E3586CA47398",
 				"6BCEB200113FB82470EC83A6",
+				"18EE7A92C7C194853AFC997B",
 				"447ABBDD68701B2197140FDC",
 				"B9534CD409040BF5996F2BFD",
 				"4425F35CECED2BD0D736A38C",
@@ -1624,6 +1655,8 @@
 			"files" = (
 				"2E32AA01C161B359DD915F8E",
 				"3041628F6CDCA8E5540B2965",
+				"80CCCF90E919E727A3E3EC23",
+				"10AFC61F3473A3CEF266308D",
 				"E43F034BA7BD0A269C0CE2AB",
 				"6CCB40B6F899A2199A306ACB",
 				"791896BCBFD4CDE164DA7D71",
@@ -1957,12 +1990,15 @@
 				"ECE5325410D111357C660179",
 				"EEBCD34C50040AA17662972A",
 				"F1B27260CB06CDE05790079C",
+				"F37D03F30ADD8BEE281C5886",
 				"F96EA3F77652D32C12371A24",
 				"FA131A6380B6279245B6A25B",
 				"FEF55EF766DDAEA3AA564E14",
 				"FF9031C5A8F72BF8CC01E44F",
 				"2AE9C54CC6783384DFB68CFD",
 				"AFC065E21B9CE98ED1123EA4",
+				"6CD15CAE10116B333E6B92C5",
+				"E55D83CB2997401A1308536C",
 				"6F1053BC3CE3AFB02443E780",
 				"6EDAF739F75E2D32F4378217",
 				"DDEAE0E1626E98D64133EEC8",

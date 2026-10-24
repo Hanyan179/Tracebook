@@ -88,8 +88,8 @@ struct MacSettingsView: View {
         Form {
             Section { SettingsPageTitle(title: "数据与隐私", subtitle: "资料保存在你选择的位置。") }
             Section("保存与归档") {
-                Text(L(workspace.status?.outputDirectory ?? L("尚未连接资料库")))
-                    .font(.callout).textSelection(.enabled)
+                Text(verbatim: workspace.status?.outputDirectory ?? L("尚未连接资料库"))
+                    .font(.callout).textSelection(.enabled).id(workspace.status?.outputDirectory)
                 HStack {
                     Button("选择归档目录") { Task { await local.chooseFolder(workspace: workspace) } }
                     Button("在文件夹中打开") {
@@ -98,6 +98,7 @@ struct MacSettingsView: View {
                 }.disabled(!workspace.connected)
                 Text("更换目录会保留原目录中的资料。").font(.caption).foregroundStyle(.secondary)
             }
+            LibraryBackupSection(workspace: workspace)
             DataTransferSection(workspace: workspace)
             Section("密钥与内容") {
                 Label("模型密钥保存在系统钥匙串。", systemImage: "key")

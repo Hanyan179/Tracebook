@@ -190,6 +190,11 @@ class Memories:
     def deliver_pending(self, force=False):
         """Only project saved data; never run a model or repeat a memory decision."""
         with self.s.lock:
+            paused = self.db.execute("SELECT value FROM settings WHERE key='memoryDeliveryPaused'").fetchone()
+            if paused and paused[0] == 'true':
+                if not force: return self.delivery_status()
+                with self.db:
+                    self.db.execute("UPDATE settings SET value='false' WHERE key='memoryDeliveryPaused'")
             self.s.memory_files.recover()
             if self.s.memory_files.pending():
                 return self.delivery_status()

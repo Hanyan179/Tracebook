@@ -160,6 +160,8 @@ class Store:
         memories_closed = self.memory_extraction.close()
         if sources_closed and speech_closed and memories_closed and batches_closed and answers_closed and documents_closed:
             self.db.close()
+            return True
+        return False
 
     def setting(self, key):
         return self.db.execute('SELECT value FROM settings WHERE key=?', (key,)).fetchone()[0]

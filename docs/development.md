@@ -86,3 +86,22 @@ DerivedData/Mac/Build/Products/Debug/VoiceMemoryMac.app/Contents/MacOS/VoiceMemo
 在本地暂存文件后执行 `python3 scripts/check-public-tree.py`，检查实际将提交的内容。脚本拦截常见凭证模式、本机私人路径、数据库、签名和本地交接；它不能证明所有隐私风险都已消除，需要同时检查变更。
 
 首次公开为源码开发版本，没有自动发布应用二进制或创建稳定版本承诺。发布安装包前还需干净机器运行、解释器分发、签名公证、升级回滚和真实链路验收。
+
+
+## 备份与还原演练
+
+电脑的“设置→数据与隐私→备份与还原”支持可取消的文件校验和恢复。备份前暂停本机节点，结束后重新打开；恢复创建独立副本，原库保留。资料库损坏而不能启动时仍可选择备份恢复，不需要先让旧库运行。首次恢复后先核对原音、文字、人工历史和记忆引用，再明确恢复接收；模型任务和外部来源另行选择。
+
+独立节点维护时可使用下列命令。先正常停止对应节点，等待其退出；不要对运行中的数据库直接复制主文件，也不要把凭证写入参数。
+
+```sh
+python node/backup_cli.py create --data artifacts/dev/node --destination artifacts/dev/library-backup.zip
+python node/backup_cli.py inspect --file artifacts/dev/library-backup.zip --scratch artifacts/dev/backup-check
+python node/backup_cli.py restore --file artifacts/dev/library-backup.zip \
+  --destination artifacts/dev/restored-library --sha256 '<archiveSHA256 from inspection>' \
+  --scratch artifacts/dev/backup-check
+```
+
+目标文件和恢复目录必须尚不存在，备份存放在节点及文字目录之外。恢复目录只有通过校验后才有 `restored-library.json`；异常断电留下的未完成目录不得手动当成已完成副本。压缩包目前不加密、最多十万个内容文件及 256 GiB（吉比字节），这些是读取限制，不代表极限容量已实测。原始外部附件、来源目录、设备口令、密钥和读取授权不会随包恢复。当前格式不接受未知版本或不匹配的数据列，未来结构升级需补迁移与旧包验收。
+
+`test_backup.py` 覆盖原音与历史回读、记忆和已保存回答引用、本地输入断开授权、正在写入时的关停、受损文件、不安全路径、预览后变化和取消清理。实际界面演练还需核对返回原库、重启副本、接收暂停与明确继续后的去重；测试结果不能替代真实云盘或跨机器恢复。

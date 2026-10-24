@@ -158,6 +158,9 @@ final class NodeSyncController: ObservableObject {
         jobs.removeAll { $0.id == job.id }; jobs.append(job)
     }
     func refresh() {
+        #if os(macOS)
+        guard LocalNodeController.shared.receivingAllowed else { return }
+        #endif
         #if os(iOS)
         guard SyncRoute.current == .direct else { return }
         #endif
@@ -193,6 +196,9 @@ final class NodeSyncController: ObservableObject {
                     return try RecordingExport.prepare(id: recordingID, from: library, to: folder)
                 }.value
                 guard job.target == endpoint, self.client != nil else { return }
+                #if os(macOS)
+                guard LocalNodeController.shared.receivingAllowed else { return }
+                #endif
                 #if os(iOS)
                 guard SyncRoute.current == .direct else { return }
                 #endif
@@ -207,6 +213,26 @@ final class NodeSyncController: ObservableObject {
             } catch { job.fail(error.localizedDescription); try? persist(job); problem = error.localizedDescription }
         }
     }
+    #if os(macOS)
+    func prepareForLibrarySwitch() throws {
+        // Receipts at the same address belong to the previous library. Cached
+        // audio must obtain a receipt from the selected copy before it is done.
+        let retained = Set(try library.load().recordings.filter { $0.isPlayable && $0.trashedAt == nil }.map(\.id))
+        for var job in jobs where job.target == endpoint && retained.contains(job.recordingID) {
+            job.state = .queued; job.nextAttemptAt = nil; job.message = nil; job.updatedAt = .now
+            try persist(job)
+        }
+    }
+    func suspendForLibraryMaintenance() async throws {
+        for _ in 0..<300 {
+            let tasks = await session.allTasks
+            tasks.forEach { $0.cancel() }
+            if tasks.isEmpty && !preparing { return }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        throw NodeFailure(message: "原音传输尚未结束，未切换资料库。请稍后重试。")
+    }
+    #endif
     private func complete(_ result: UploadResult) {
         guard let description = result.key else { return }
         let parts = description.split(separator: "/")
