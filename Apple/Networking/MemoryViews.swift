@@ -6,6 +6,7 @@ struct MemoryModelProposal: Codable, Sendable {
     let endpoint: String
     let taskID: String
     let createdAt: String
+    var segment: MemorySourceSegment?
 }
 
 struct MemoryEvidence: Codable, Identifiable, Sendable {
@@ -77,6 +78,9 @@ struct MemoryContentView: View {
                 if let proposal = value.proposal {
                     Label(LF("由模型提出：%@", proposal.model), systemImage: "sparkles")
                         .font(.caption).foregroundStyle(.secondary)
+                    if let segment = proposal.segment {
+                        Text(segment.rangeTitle).font(.caption).foregroundStyle(.secondary)
+                    }
                 }
                 if value.state == "pending" {
                     Text("确认内容与归属后再保存。待确认建议不会因超时自动成为记忆。")

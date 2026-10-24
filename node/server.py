@@ -165,6 +165,11 @@ class Handler(BaseHTTPRequestHandler):
             if not ipaddress.ip_address(self.client_address[0]).is_loopback:raise StoreError(403,'请在资料库所在电脑配置模型。')
             if self.command=='POST':return self.send_json(200,store.analysis.configure(self.body_json()))
             if self.command=='GET':return self.send_json(200,store.analysis.state())
+        if len(parts)==4 and parts[:2]==['v1','memory-segments']:
+            if self.command=='GET':
+                parameters=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                return self.send_json(200,store.memory_segments.prepare(parts[2],parts[3],parameters.get('version',[None])[-1]))
+            if self.command=='POST':return self.send_json(200,store.memory_segments.read(parts[2],parts[3],self.body_json()))
         if parts==['v1','memory-batches']:
             if self.command=='GET':return self.send_json(200,store.memory_batches.listing())
             if self.command=='POST':return self.send_json(202,store.memory_batches.start(self.body_json()))

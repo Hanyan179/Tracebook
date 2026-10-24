@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch pinned, hash-verified decoder wheels into the ignored Mac build runtime."""
+"""Fetch pinned, hash-verified dependencies into the ignored Mac build runtime."""
 import hashlib
 import io
 from pathlib import Path
@@ -15,30 +15,38 @@ WHEELS = {
 }
 
 
+COMMON = ('https://files.pythonhosted.org/packages/80/6c/9eb6d93ad8b9ac96cba13e6d2f419c316d8fdb91013e12dd478a99501699/uniseg-0.10.1-py3-none-any.whl',
+          '74fe3f7b4ee46bbd703a70ea1e5cd28e04f63eee5af9a10388d93316c554e358')
+
+
+def prepare(target, url, digest, package, label):
+    marker = target / '.verified-wheel'
+    if marker.exists() and marker.read_text() == digest and (target / package).is_dir():
+        print(label + ': dependency ready')
+        return
+    with urllib.request.urlopen(url, timeout=30) as response:
+        data = response.read(16 * 1024 * 1024 + 1)
+    if hashlib.sha256(data).hexdigest() != digest:
+        raise RuntimeError('Dependency wheel checksum mismatch')
+    target.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        for entry in archive.infolist():
+            path = target / entry.filename
+            if target.resolve() not in path.resolve().parents:
+                raise RuntimeError('Unsafe wheel member')
+            if entry.is_dir():
+                path.mkdir(parents=True, exist_ok=True)
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(archive.read(entry))
+    marker.write_text(digest)
+    print(label + ': prepared with bundled license notices')
+
+
 def main():
     for architecture, (url, digest) in WHEELS.items():
-        target = ROOT / ('macos-cp39-' + architecture)
-        marker = target / '.verified-wheel'
-        if marker.exists() and marker.read_text() == digest and (target / 'pyzstd').is_dir():
-            print(architecture + ': decoder ready')
-            continue
-        with urllib.request.urlopen(url, timeout=30) as response:
-            data = response.read(16 * 1024 * 1024 + 1)
-        if hashlib.sha256(data).hexdigest() != digest:
-            raise RuntimeError('Decoder wheel checksum mismatch')
-        target.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(io.BytesIO(data)) as archive:
-            for entry in archive.infolist():
-                path = target / entry.filename
-                if target.resolve() not in path.resolve().parents:
-                    raise RuntimeError('Unsafe wheel member')
-                if entry.is_dir():
-                    path.mkdir(parents=True, exist_ok=True)
-                else:
-                    path.parent.mkdir(parents=True, exist_ok=True)
-                    path.write_bytes(archive.read(entry))
-        marker.write_text(digest)
-        print(architecture + ': decoder prepared with bundled license notices')
+        prepare(ROOT / ('macos-cp39-' + architecture), url, digest, 'pyzstd', architecture)
+    prepare(ROOT / 'common', *COMMON, 'uniseg', 'Unicode segmentation')
 
 
 if __name__ == '__main__':

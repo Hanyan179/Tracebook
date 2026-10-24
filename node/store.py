@@ -22,6 +22,7 @@ from documents import DocumentImports
 from memories import Memories
 from memory_files import MemoryFiles
 from memory_extraction import MemoryExtraction
+from memory_segments import MemorySegments
 from memory_batches import MemoryBatches
 from transcription import Transcription
 
@@ -133,6 +134,7 @@ class Store:
         self.knowledge = Knowledge(self)
         self.exchange = DataExchange(self)
         self.analysis = DailyAnalysis(self)
+        self.memory_segments = MemorySegments(self)
         self.memory_extraction = MemoryExtraction(self)
         self.memory_batches = MemoryBatches(self)
         self.transcription = Transcription(self)

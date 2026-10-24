@@ -1,3 +1,4 @@
-# Decoder only; the node otherwise uses Python's standard library.
-# 0.18 is the last pyzstd release supporting the system macOS Python 3.9.
+# Pinned decoder and Unicode grapheme segmentation; other node features use the standard library.
+# Both support the system macOS Python 3.9; build preparation bundles their license notices.
 pyzstd==0.18.0
+uniseg==0.10.1

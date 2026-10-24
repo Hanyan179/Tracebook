@@ -1,5 +1,6 @@
 """Loopback HTTPS fixture, never a real model or a production transport override."""
 import json
+import re
 import email.parser
 import email.policy
 import hashlib
@@ -61,6 +62,12 @@ class LocalModelFixture:
                     result['overview'] = [{'text': control.get('text', '合成协议响应。'),
                                            'sources': [source['id'] if mode != 'bad_citation' else 'note/not-supplied']}]
                     result['memoryCandidates'] = [{'text': '合成待核对建议，不是已确认事实。', 'sources': [source['id']]}]
+                elif mode == 'segments':
+                    # Deterministic synthetic protocol fixture, not a semantic model evaluation.
+                    matches=list(re.finditer(r'本人陈述：[^\r\n]+',content['text']))[:8]
+                    result={'candidates': [{
+                        'text':'合成分段结果：'+match[0][5:], 'quote':match[0],
+                        'subject':'user','basis':'explicit'} for match in matches]}
                 else:
                     result = {'candidates': [] if mode == 'empty' else [{
                         'text': control.get('text', '合成待核对建议。'),

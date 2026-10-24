@@ -59,7 +59,14 @@ def main():
                 assert updated['state'] == 'confirmed'
                 assert len(request('/v1/candidates/' + cid + '/history')['items']) == 2
                 assert (root / 'node/Library/memories' / (cid + '.json')).is_file()
-                print('Packaged node started; synthetic source, memory confirmation, history and file round trip passed.')
+                long_text = 'Synthetic paragraph with source context.\n' * 1500
+                long_note = request('/v1/notes', {'title': 'Synthetic long package check', 'text': long_text})
+                scope = request('/v1/memory-segments/note/' + long_note['id'])
+                assert len(scope['units']) > 1
+                assert sum(unit['focusCharacters'] for unit in scope['units']) == len(long_text)
+                assert all(unit['characters'] <= 32000 for unit in scope['units'])
+                assert all(not unit['reusable'] for unit in scope['units'])
+                print('Packaged node started; source, memory history, files and bundled text segmentation passed.')
             finally:
                 process.terminate()
                 try:

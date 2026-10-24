@@ -1,29 +1,39 @@
 import SwiftUI
 
-private struct BatchReference: Codable { let kind: String; let id: String }
+struct BatchReference: Codable, Sendable {
+    let kind: String
+    let id: String
+    var segment: MemorySourceSegment? = nil
+    var contentVersion: String? = nil
+    var identity: String { kind + "/" + id + (segment.map { "/\($0.start)-\($0.end)" } ?? "") }
+}
 private struct BatchSource: Decodable, Sendable {
     let id: String; let kind: String; let title: String; let date: String; let textAvailable: Bool
     var identity: String { kind + "/" + id }
     var reference: BatchReference { .init(kind: kind, id: id) }
 }
-private struct BatchItem: Decodable, Sendable {
+struct BatchItem: Decodable, Sendable {
     let id: String; let kind: String; let title: String; let date: String
     let contentVersion: String; let characters: Int; let reusable: Bool
     let problem: String?
     var status: String?
     var candidateIDs: [String]?
-    var reference: BatchReference { .init(kind: kind, id: id) }
-    var identity: String { kind + "/" + id }
+    var segment: MemorySourceSegment?
+    var reference: BatchReference { .init(kind: kind, id: id, segment: segment, contentVersion: segment == nil ? nil : contentVersion) }
+    var identity: String { reference.identity }
 }
-private struct BatchPlan: Decodable, Sendable {
+struct BatchPlan: Decodable, Sendable {
     let items: [BatchItem]; let model: String; let endpoint: String; let snapshot: String
     let configured: Bool; let newRequests: Int; let characters: Int; let sourceLimit: Int
+    var segmented: Bool { items.contains { $0.segment != nil } }
+    var canReuseAll: Bool { !items.isEmpty && items.allSatisfy { $0.problem == nil && $0.reusable } }
 }
 private struct BatchState: Decodable, Identifiable, Sendable {
     let id: String; let status: String; let problem: String?; let createdAt: String
     let items: [BatchItem]; let model: String; let endpoint: String; let configured: Bool
     let finishedCount: Int; let candidateCount: Int
     let remainingRequests: Int
+    var segmented: Bool { items.contains { $0.segment != nil } }
     var running: Bool { status == "running" || status == "pausing" }
 }
 private struct BatchList: Decodable, Sendable { let items: [BatchState] }
@@ -65,7 +75,7 @@ struct MemoryBatchView: View {
                         Button { selected = batch } label: {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(L(batchStatusTitle(batch.status))).font(.headline)
-                                Text(LF("已处理 %d / %d 份资料", batch.finishedCount, batch.items.count)).font(.callout)
+                                Text(LF(batch.segmented ? "已处理 %d / %d 段内容" : "已处理 %d / %d 份资料", batch.finishedCount, batch.items.count)).font(.callout)
                                 if let date = ISO8601DateFormatter().date(from: batch.createdAt) {
                                     Text(date, format: .dateTime.month().day().hour().minute()).font(.caption).foregroundStyle(.secondary)
                                 }
@@ -114,13 +124,17 @@ private struct MemoryBatchSelectionView: View {
     @State private var showingPreview = false
     @State private var generation = UUID()
     @State private var selectionExpanded = false
+    @State private var showingSegments = false
+    @State private var segmentSources: [BatchReference] = []
+    private let initialReferences: [BatchReference]
     init(store: NodeWorkspaceStore, initialItems: [BatchItem] = []) {
         self.store = store
+        initialReferences = initialItems.map(\.reference)
         _kind = State(initialValue: initialItems.first?.kind ?? "note")
         let sources = initialItems.map {
             BatchSource(id: $0.id, kind: $0.kind, title: $0.title, date: $0.date, textAvailable: $0.characters > 0)
         }
-        _selected = State(initialValue: Dictionary(uniqueKeysWithValues: sources.map { ($0.identity, $0) }))
+        _selected = State(initialValue: Dictionary(sources.map { ($0.identity, $0) }, uniquingKeysWith: { first, _ in first }))
         _selectionExpanded = State(initialValue: !initialItems.isEmpty)
     }
     var body: some View {
@@ -177,6 +191,9 @@ private struct MemoryBatchSelectionView: View {
             }
             .task(id: kind + "\u{1f}" + query) { await load(more: false) }
             .sheet(isPresented: $showingPreview) { if let plan { MemoryBatchPlanSheet(store: store, initial: plan).appLanguage() } }
+            .sheet(isPresented: $showingSegments) {
+                MemorySegmentSelectionView(store: store, sources: segmentSources, preferred: initialReferences).appLanguage()
+            }
     }
     private func toggle(_ item: BatchSource) {
         if selected[item.identity] != nil { selected.removeValue(forKey: item.identity) }
@@ -208,13 +225,16 @@ private struct MemoryBatchSelectionView: View {
             defer { previewing = false }
             do {
                 let data = try await client.sendData("v1/memory-batches/preview", method: "POST", body: JSONEncoder().encode(Body(sources: refs)))
-                plan = try JSONDecoder().decode(BatchPlan.self, from: data); showingPreview = true
+                let preview = try JSONDecoder().decode(BatchPlan.self, from: data)
+                if preview.items.contains(where: { $0.characters > 32000 }) {
+                    segmentSources = refs; showingSegments = true
+                } else { plan = preview; showingPreview = true }
             } catch { problem = error.localizedDescription }
         }
     }
 }
 
-private struct MemoryBatchPlanSheet: View {
+struct MemoryBatchPlanSheet: View {
     @ObservedObject var store: NodeWorkspaceStore
     @Environment(\.dismiss) private var dismiss
     @State private var plan: BatchPlan
@@ -234,9 +254,9 @@ private struct MemoryBatchPlanSheet: View {
                 else {
                     Form {
                         Section("发送范围") {
-                            Text(LF("%d 份资料，共 %d 个字符", plan.items.count, plan.characters)).font(.headline)
+                            Text(LF(plan.segmented ? "%d 段内容，含前后文共 %d 个字符" : "%d 份资料，共 %d 个字符", plan.items.count, plan.characters)).font(.headline)
                             Text(LF("最多新增 %d 次模型请求，已有结果会复用。", plan.newRequests)).font(.callout)
-                            Text(L(plan.newRequests == 0 ? "已有结果可以复用，无需再次发送资料。" : "只发送下方选中的文字。模型可能收费；生成内容均为待确认建议。"))
+                            Text(L(plan.canReuseAll ? "已有结果可以复用，无需再次发送资料。" : "只发送下方选中的文字。模型可能收费；生成内容均为待确认建议。"))
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
                         if plan.newRequests > 0 {
@@ -256,9 +276,12 @@ private struct MemoryBatchPlanSheet: View {
                         }
                         }
                         Section("本次所选资料") {
-                            ForEach(plan.items, id: \.identity) { item in
+                            ForEach(Array(plan.items.enumerated()), id: \.element.identity) { index, item in
                                 VStack(alignment: .leading, spacing: 8) {
-                                    Text(verbatim: item.title).font(.headline)
+                                    if index == 0 || item.id != plan.items[index - 1].id || item.kind != plan.items[index - 1].kind {
+                                        Text(verbatim: item.title).font(.headline)
+                                    }
+                                    if let segment = item.segment { Text(segment.rangeTitle).font(.callout) }
                                     Text(LF("%d 个字符", item.characters)).font(.caption).foregroundStyle(.secondary)
                                     if let issue = item.problem { Text(L(issue)).foregroundStyle(.secondary) }
                                     else if item.reusable { Text("复用已有结果").font(.caption).foregroundStyle(.secondary) }
@@ -270,7 +293,7 @@ private struct MemoryBatchPlanSheet: View {
                             if plan.items.contains(where: { $0.problem != nil }) {
                                 Text("请返回选择，移除未就绪的资料后再预览。")
                             }
-                            Button(plan.newRequests == 0 ? "读取已有结果" : "发送所选资料并整理") { start() }
+                            Button(plan.canReuseAll ? "读取已有结果" : "发送所选资料并整理") { start() }
                                 .buttonStyle(FilledButtonStyle())
                                 .disabled(busy || stale || plan.items.contains { $0.problem != nil } || (!plan.configured && plan.newRequests > 0))
                             Button("重新预览范围") { refreshPlan() }.disabled(busy)
@@ -332,81 +355,90 @@ private struct MemoryBatchProgressView: View {
     @Environment(\.openSettings) private var openSettings
     #endif
     var body: some View {
-        Form {
-            if let state {
-                Section {
-                    Text(L(batchStatusTitle(state.status))).font(.headline)
-                    ProgressView(value: Double(state.finishedCount), total: Double(max(1, state.items.count)))
-                    Text(LF("已处理 %d / %d 份资料", state.finishedCount, state.items.count))
-                    Text(LF("已保存 %d 条建议", state.candidateCount)).font(.callout)
-                    if let issue = state.problem { Text(L(issue)).foregroundStyle(.secondary) }
-                    if state.status == "pausing" { Text("当前资料完成后暂停，不再发送下一份。") }
-                    else if state.running {
-                        Text("可以关闭窗口，稍后从批量整理查看结果。").font(.footnote).foregroundStyle(.secondary)
-                        Button("暂停后续资料") { update("pause") }.disabled(busy)
-                    } else if state.status != "ready" {
-                        Text("继续时只处理未完成项。已保存的建议会复用，来源版本变化的资料会跳过并提示。")
-                            .font(.footnote).foregroundStyle(.secondary)
-                        Text(L(state.remainingRequests == 0 ? "已有结果可以复用，无需再次发送资料。" : "服务未返回结果的请求，重试可能再次计费。"))
-                            .font(.footnote).foregroundStyle(.secondary)
-                        if !state.configured && state.remainingRequests > 0 {
-                            Text("请先在电脑设置中配置文字模型。").font(.callout)
-                            #if os(macOS)
-                            Button("配置文字模型") {
-                                UserDefaults.standard.set("模型", forKey: "settings.section")
-                                UserDefaults.standard.set("summary", forKey: "model.focusRole"); openSettings()
+        ScrollViewReader { proxy in
+            Form {
+                if let state {
+                    Section {
+                        Text(L(batchStatusTitle(state.status))).font(.headline)
+                        ProgressView(value: Double(state.finishedCount), total: Double(max(1, state.items.count)))
+                        Text(LF(state.segmented ? "已处理 %d / %d 段内容" : "已处理 %d / %d 份资料", state.finishedCount, state.items.count))
+                        Text(LF("已保存 %d 条建议", state.candidateCount)).font(.callout)
+                        if let issue = state.problem { Text(L(issue)).foregroundStyle(.secondary) }
+                        if state.status == "pausing" { Text("当前资料完成后暂停，不再发送下一份。") }
+                        else if state.running {
+                            Text("可以关闭窗口，稍后从批量整理查看结果。").font(.footnote).foregroundStyle(.secondary)
+                            Button("暂停后续资料") { update("pause") }.disabled(busy)
+                        } else if state.status != "ready" {
+                            Text("继续时只处理未完成项。已保存的建议会复用，来源版本变化的资料会跳过并提示。")
+                                .font(.footnote).foregroundStyle(.secondary)
+                            Text(L(state.remainingRequests == 0 ? "已有结果可以复用，无需再次发送资料。" : "服务未返回结果的请求，重试可能再次计费。"))
+                                .font(.footnote).foregroundStyle(.secondary)
+                            if !state.configured && state.remainingRequests > 0 {
+                                Text("请先在电脑设置中配置文字模型。").font(.callout)
+                                #if os(macOS)
+                                Button("配置文字模型") {
+                                    UserDefaults.standard.set("模型", forKey: "settings.section")
+                                    UserDefaults.standard.set("summary", forKey: "model.focusRole"); openSettings()
+                                }
+                                #endif
                             }
-                            #endif
+                            Button("继续未完成项") { update("resume") }.disabled(busy || (!state.configured && state.remainingRequests > 0))
+                            NavigationLink("重新选择并预览") {
+                                MemoryBatchSelectionView(store: store, initialItems: state.items.filter { $0.status != "ready" })
+                            }.disabled(busy)
+                            Text("资料或服务变化时，可带回未完成项重新核对。发送后会新建任务，原任务与已完成结果保留。")
+                                .font(.footnote).foregroundStyle(.secondary)
                         }
-                        Button("继续未完成项") { update("resume") }.disabled(busy || (!state.configured && state.remainingRequests > 0))
-                        NavigationLink("重新选择并预览") {
-                            MemoryBatchSelectionView(store: store, initialItems: state.items.filter { $0.status != "ready" })
-                        }.disabled(busy)
-                        Text("资料或服务变化时，可带回未完成项重新核对。发送后会新建任务，原任务与已完成结果保留。")
-                            .font(.footnote).foregroundStyle(.secondary)
+                        if let problem { Text(L(problem)).font(.callout).foregroundStyle(.secondary) }
+                        Text("模型建议仍需核对，不会自动成为已确认记忆。").font(.footnote).foregroundStyle(.secondary)
                     }
-                    if let problem { Text(L(problem)).font(.callout).foregroundStyle(.secondary) }
-                    Text("模型建议仍需核对，不会自动成为已确认记忆。").font(.footnote).foregroundStyle(.secondary)
+                    .id("batch-state")
+                    if !state.model.isEmpty && !state.endpoint.isEmpty {
+                    Section("这次选择的服务") {
+                        Text(verbatim: state.model)
+                        Text(verbatim: state.endpoint).font(.caption).textSelection(.enabled)
+                    }
+                    }
+                    Section("逐份进度") {
+                        ForEach(state.items, id: \.identity) { item in
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text(verbatim: item.title).font(.headline)
+                                if let segment = item.segment { Text(segment.rangeTitle).font(.callout) }
+                                Text(L(batchStatusTitle(item.status ?? "queued"))).font(.callout).foregroundStyle(.secondary)
+                                if let issue = item.problem { Text(L(issue)).font(.callout).foregroundStyle(.secondary) }
+                                if !(item.candidateIDs ?? []).isEmpty {
+                                    Button(LF("查看 %d 条建议", item.candidateIDs?.count ?? 0)) { selected = item }
+                                } else if item.status == "ready" {
+                                    Text("没有提出适合长期保留的记忆。").font(.footnote).foregroundStyle(.secondary)
+                                }
+                            }.padding(.vertical, 6)
+                        }
+                    }
+                } else if problem == nil { ProgressView("正在读取") }
+                Section {
+                    if state == nil, let problem { Text(L(problem)).foregroundStyle(.secondary) }
+                    Button("重新读取") { refreshID = UUID() }.disabled(busy)
                 }
-                if !state.model.isEmpty && !state.endpoint.isEmpty {
-                Section("这次选择的服务") {
-                    Text(verbatim: state.model)
-                    Text(verbatim: state.endpoint).font(.caption).textSelection(.enabled)
-                }
-                }
-                Section("逐份进度") {
-                    ForEach(state.items, id: \.identity) { item in
-                        VStack(alignment: .leading, spacing: 10) {
-                            Text(verbatim: item.title).font(.headline)
-                            Text(L(batchStatusTitle(item.status ?? "queued"))).font(.callout).foregroundStyle(.secondary)
-                            if let issue = item.problem { Text(L(issue)).font(.callout).foregroundStyle(.secondary) }
-                            if !(item.candidateIDs ?? []).isEmpty {
-                                Button(LF("查看 %d 条建议", item.candidateIDs?.count ?? 0)) { selected = item }
-                            } else if item.status == "ready" {
-                                Text("没有提出适合长期保留的记忆。").font(.footnote).foregroundStyle(.secondary)
-                            }
-                        }.padding(.vertical, 6)
+            }.formStyle(.grouped).batchTitle("整理进度")
+                .onChange(of: state?.status) { previous, current in
+                    if previous != nil && previous != current {
+                        proxy.scrollTo("batch-state", anchor: .top)
                     }
                 }
-            } else if problem == nil { ProgressView("正在读取") }
-            Section {
-                if state == nil, let problem { Text(L(problem)).foregroundStyle(.secondary) }
-                Button("重新读取") { refreshID = UUID() }.disabled(busy)
-            }
-        }.formStyle(.grouped).batchTitle("整理进度")
-            .onChange(of: store.status?.analysisConfigured) { _, _ in
-                if state?.running != true { refreshID = UUID() }
-            }
-            .task(id: refreshID) {
-                repeat {
-                    await load()
-                    guard state?.running == true else { break }
-                    do { try await Task.sleep(for: .seconds(2)) } catch { break }
-                } while !Task.isCancelled
-            }
-            .sheet(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) {
-                if let selected { MemoryBatchResultsView(store: store, item: selected).appLanguage() }
-            }
+                .onChange(of: store.status?.analysisConfigured) { _, _ in
+                    if state?.running != true { refreshID = UUID() }
+                }
+                .task(id: refreshID) {
+                    repeat {
+                        await load()
+                        guard state?.running == true else { break }
+                        do { try await Task.sleep(for: .seconds(2)) } catch { break }
+                    } while !Task.isCancelled
+                }
+                .sheet(isPresented: Binding(get: { selected != nil }, set: { if !$0 { selected = nil } })) {
+                    if let selected { MemoryBatchResultsView(store: store, item: selected).appLanguage() }
+                }
+        }
     }
     @MainActor private func load() async {
         guard let client = store.client else { problem = "请先连接资料库。"; return }
@@ -442,7 +474,7 @@ private struct MemoryBatchResultsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section { Text(verbatim: item.title).font(.headline) }
+                Section { Text(verbatim: item.title).font(.headline); if let segment = item.segment { Text(segment.rangeTitle).font(.callout) } }
                 ForEach(candidates) { candidate in
                     Button { selected = candidate } label: {
                         VStack(alignment: .leading, spacing: 10) {

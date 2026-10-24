@@ -24,6 +24,7 @@ struct MemoryExtractionSection: View {
     @State private var requesting = false
     @State private var problem: String?
     @State private var refreshID = UUID()
+    @State private var choosingSegments = false
     #if os(macOS)
     @Environment(\.openSettings) private var openSettings
     #endif
@@ -33,12 +34,13 @@ struct MemoryExtractionSection: View {
             Section("所选资料") {
                 Label(source.title, systemImage: source.symbol)
                 if let state {
-                    Text(LF("本次包含这份资料的完整文字，共 %d 个字符。", state.characters))
+                    Text(LF(state.characters > state.limit ? "资料完整文字共 %d 个字符；发送范围将在选择后确认。" : "本次包含这份资料的完整文字，共 %d 个字符。", state.characters))
                         .font(.callout).foregroundStyle(.secondary)
                     if state.sourceChanged {
                         Text("原文已变化，请重新打开资料后生成。").foregroundStyle(.secondary)
                     } else if state.characters > state.limit {
-                        Text("这份资料超过 32000 个字符，请先手动提出记忆建议。").foregroundStyle(.secondary)
+                        Text("这份资料较长，可以选择片段后分批整理。").foregroundStyle(.secondary)
+                        Button("选择片段并整理") { choosingSegments = true }.disabled(requesting)
                     }
                 }
             }
@@ -61,6 +63,8 @@ struct MemoryExtractionSection: View {
                             Text("建议已保存到资料库，文字文件尚待恢复。重试不会再次请求模型。")
                                 .font(.callout).foregroundStyle(.secondary)
                             Button("重试保存") { start() }.disabled(requesting)
+                        } else if state.characters > state.limit {
+                            Text("长资料按片段整理，请先在上方选择范围。").font(.callout).foregroundStyle(.secondary)
                         } else if state.configured {
                             Text(verbatim: state.model).font(.headline)
                             Text(verbatim: state.endpoint).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
@@ -111,6 +115,9 @@ struct MemoryExtractionSection: View {
                     guard state?.status == "running" else { break }
                     do { try await Task.sleep(for: .seconds(2)) } catch { break }
                 } while !Task.isCancelled
+            }
+            .sheet(isPresented: $choosingSegments, onDismiss: { refreshID = UUID() }) {
+                MemorySegmentSelectionView(store: workspace, sources: [.init(kind: source.kind, id: source.id, contentVersion: source.contentVersion)]).appLanguage()
             }
             .sheet(item: $selected, onDismiss: { refreshID = UUID() }) { candidate in
                 MemoryDetail(store: workspace, candidate: candidate).appLanguage()

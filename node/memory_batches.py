@@ -6,6 +6,7 @@ import math
 import threading
 from catalog import encoded, normalized
 from memory_extraction import MAX_CHARACTERS
+from memory_segments import segment_value, valid_version
 
 MAX_SOURCES = 20
 STOP_PROBLEMS = {
@@ -66,43 +67,58 @@ class MemoryBatches:
     def references(self, values):
         from store import canonical_id
         if not isinstance(values,list) or not 1<=len(values)<=MAX_SOURCES:self.error(400,'每批请选择 1 至 20 份资料。')
-        refs=[];seen=set()
+        refs=[];seen={}
         for value in values:
             if not isinstance(value,dict) or not isinstance(value.get('kind'),str) or value['kind'] not in self.s.memories.KINDS:self.error(400,'资料类型不正确。')
             kind,rid=value['kind'],canonical_id(value.get('id'));key=(kind,rid)
-            if key in seen:self.error(400,'同一份资料不能重复选择。')
-            seen.add(key);refs.append({'kind':kind,'id':rid})
+            span=segment_value(value.get('segment'))
+            ref={'kind':kind,'id':rid}
+            if span:
+                if not valid_version(value.get('contentVersion')):self.error(400,'请先读取当前版本的分段范围。')
+                ref.update(segment=span,contentVersion=value['contentVersion'])
+            for previous in seen.get(key,[]):
+                if previous is None or span is None or max(previous['start'],span['start'])<min(previous['end'],span['end']):
+                    self.error(400,'同一份资料或重叠片段不能重复选择。')
+            seen.setdefault(key,[]).append(span);refs.append(ref)
         return refs
 
     def preview(self, values):
         from store import StoreError
-        refs=self.references(values)
-        with self.s.lock:
-            config=self.s.analysis.configuration or {};rules=self.s.memory_extraction.rules()
-            items=[]
-            for ref in refs:
-                item={**ref,'title':ref['id'],'date':'','contentVersion':'','characters':0,'reusable':False,'problem':None}
-                try:
+        refs=self.references(values);items=[]
+        for ref in refs:
+            item={**ref,'title':ref['id'],'date':'','contentVersion':ref.get('contentVersion',''),
+                  'characters':0,'reusable':False,'problem':None}
+            try:
+                with self.s.lock:
                     row,text,version=self.s.memories.source(ref['kind'],ref['id'])
                     item.update(title=row['title'],date=row['day'],contentVersion=version,characters=len(text))
-                    if not text.strip():item['problem']='这份资料还没有可整理的文字。'
-                    elif len(text)>MAX_CHARACTERS:item['problem']='这份资料超过 32000 个字符，请先手动提出记忆建议。'
-                    task_id,_=self.s.memory_extraction.identity(ref['kind'],ref['id'],version)
+                if ref.get('segment') and version!=ref['contentVersion']:
+                    self.error(409,'原文已变化，请重新读取并选择片段。')
+                selected=self.s.memory_segments.select(text,version,ref.get('segment'))
+                focus=text[selected['start']:selected['end']] if selected else text
+                if selected:item.update(segment=selected,characters=selected['contextEnd']-selected['contextStart'])
+                if not focus.strip():item['problem']='这份资料还没有可整理的文字。'
+                elif not selected and len(text)>MAX_CHARACTERS:item['problem']='这份资料超过 32000 个字符，请先手动提出记忆建议。'
+                task_id,_=self.s.memory_extraction.identity(ref['kind'],ref['id'],version,selected)
+                with self.s.lock:
                     old=self.db.execute('SELECT result FROM memory_extractions WHERE id=?',(task_id,)).fetchone()
                     item['reusable']=bool(old and old['result'] is not None)
-                except (StoreError,OSError,UnicodeError):
-                    # Keep the known label so an unavailable selection can be identified and removed.
+                    _,_,current=self.s.memories.source(ref['kind'],ref['id'])
+                if current!=version:self.error(409,'原文在分段时发生变化，请重新读取。')
+            except (StoreError,OSError,UnicodeError) as error:
+                with self.s.lock:
                     known=self.db.execute('SELECT title,day FROM library_items WHERE kind=? AND id=?',(ref['kind'],ref['id'])).fetchone()
                     if known:item.update(title=known['title'],date=known['day'])
-                    item['problem']='这份资料不可读取或已归档，请返回选择其他资料。'
-                items.append(item)
+                item['problem']=str(error) if isinstance(error,StoreError) and error.status in (409,413,503) else '这份资料不可读取或已归档，请返回选择其他资料。'
+            items.append(item)
+        with self.s.lock:
+            config=self.s.analysis.configuration or {};rules=self.s.memory_extraction.rules()
             plan={'items':items,'model':config.get('model',''),'endpoint':config.get('endpoint',''),
                   'rulesVersion':hashlib.sha256(rules.encode()).hexdigest()}
-            # Reusability can improve while previewing without changing the authorized input.
-            signature={**plan,'items':[{k:v for k,v in item.items() if k!='reusable'} for item in items]}
-            return {**plan,'snapshot':hashlib.sha256(json.dumps(signature,sort_keys=True).encode()).hexdigest(),
-                    'configured':bool(config),'newRequests':sum(not i['reusable'] and i['problem'] is None for i in items),
-                    'characters':sum(i['characters'] for i in items),'sourceLimit':MAX_SOURCES}
+        signature={**plan,'items':[{k:v for k,v in item.items() if k!='reusable'} for item in items]}
+        return {**plan,'snapshot':hashlib.sha256(json.dumps(signature,sort_keys=True).encode()).hexdigest(),
+                'configured':bool(config),'newRequests':sum(not i['reusable'] and i['problem'] is None for i in items),
+                'characters':sum(i['characters'] for i in items),'sourceLimit':MAX_SOURCES}
 
     def listing(self):
         with self.s.lock:
@@ -122,7 +138,7 @@ class MemoryBatches:
             remaining_requests=0
             for item in items:
                 if item['status']=='ready':continue
-                tid,_=self.s.memory_extraction.identity(item['kind'],item['id'],item['contentVersion'])
+                tid,_=self.s.memory_extraction.identity(item['kind'],item['id'],item['contentVersion'],item.get('segment'))
                 saved=self.db.execute('SELECT result FROM memory_extractions WHERE id=?',(tid,)).fetchone()
                 if not saved or saved['result'] is None:remaining_requests+=1
             return {'id':row['id'],'status':row['status'],'problem':row['problem'],
@@ -144,8 +160,13 @@ class MemoryBatches:
             if old:
                 if old['fingerprint']!=fingerprint:self.error(409,'这次批量整理的范围已变化，请重新预览。')
                 return self.status(key)
+        plan=self.preview(refs)
+        with self.s.lock:
+            old=self.db.execute('SELECT fingerprint FROM memory_batches WHERE id=?',(key,)).fetchone()
+            if old:
+                if old['fingerprint']!=fingerprint:self.error(409,'这次批量整理的范围已变化，请重新预览。')
+                return self.status(key)
             self.require_idle()
-            plan=self.preview(refs)
             if plan['snapshot']!=snapshot:self.error(409,'资料或模型服务在预览后发生变化，请重新预览发送范围。')
             if any(i['problem'] for i in plan['items']):self.error(409,'所选资料有未就绪项，请返回选择并移除后再试。')
             if plan['newRequests'] and not plan['configured']:self.error(409,'请先在电脑设置中配置文字模型。')
@@ -183,7 +204,7 @@ class MemoryBatches:
             remaining=[item for item in state['items'] if item['status']!='ready']
             needs_request=False
             for item in remaining:
-                tid,_=self.s.memory_extraction.identity(item['kind'],item['id'],item['contentVersion'])
+                tid,_=self.s.memory_extraction.identity(item['kind'],item['id'],item['contentVersion'],item.get('segment'))
                 old=self.db.execute('SELECT result FROM memory_extractions WHERE id=?',(tid,)).fetchone()
                 needs_request=needs_request or not (old and old['result'] is not None)
             if needs_request:
@@ -224,7 +245,7 @@ class MemoryBatches:
                         if hashlib.sha256(self.s.memory_extraction.rules().encode()).hexdigest()!=plan['rulesVersion']:
                             self.error(409,'记忆整理规则已变化，请重新选择资料并预览。')
                     result=self.s.memory_extraction.start(item['kind'],item['id'],
-                        {'contentVersion':item['contentVersion'],'sendToModel':True,'model':plan['model'],'endpoint':plan['endpoint']},background=False,batch_id=key)
+                        {'contentVersion':item['contentVersion'],'segment':item.get('segment'),'sendToModel':True,'model':plan['model'],'endpoint':plan['endpoint']},background=False,batch_id=key)
                     if result['sourceChanged']:self.error(409,'原文已变化，未发送这个新版本，请重新选择资料并预览。')
                     status='ready' if result['status']=='ready' else 'failed'
                     ids,problem=result['candidateIDs'],result['problem']

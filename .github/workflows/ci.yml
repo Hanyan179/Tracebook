@@ -30,7 +30,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - name: Check public files and links
         run: python scripts/check-public-tree.py
-      - name: Install decoder
+      - name: Install pinned node dependencies
         run: python -m pip install -r node/requirements.txt
       - name: Test node with synthetic data
         run: python -m unittest discover -s node/tests -v
@@ -45,7 +45,7 @@ jobs:
           persist-credentials: false
       - name: Inspect toolchain
         run: xcodebuild -version
-      - name: Prepare bundled decoder and project
+      - name: Prepare bundled dependencies and project
         run: |
           python3 scripts/prepare-node-runtime.py
           python3 scripts/generate-project.py

@@ -19,7 +19,7 @@
 
 另检索到 CASS（会话检索工具），但其[许可文件](https://github.com/Dicklesworthstone/coding_agent_session_search/blob/5bfcc15ef3e0789e2f0200d5ee2ca7f1e97faa93/LICENSE)包含额外主体限制，未引入其实现。许可名称及选择只是本次工程取舍记录，不替代发布前的许可核查。
 
-本轮唯一新增运行依赖是 pyzstd（压缩会话解码库）。选择与分发方式见 [第三方依赖](../THIRD_PARTY.md)。
+压缩会话使用 pyzstd（压缩会话解码库），长资料分段使用 uniseg（字素分段库）。固定版本、选择原因与分发方式见 [第三方依赖](../THIRD_PARTY.md)。
 
 ## 记忆应如何形成
 

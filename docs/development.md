@@ -18,7 +18,7 @@ xcodebuild -project VoiceMemory.xcodeproj -scheme VoiceMemoryMac \
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-准备脚本下载固定版本及校验值的官方压缩解码轮包，放在忽略的 `DerivedData/PythonRuntime/`，随桌面构建打包，不修改系统安装。工程生成器使用标准库，不需要额外项目生成工具。
+准备脚本下载固定版本及校验值的官方压缩解码与字符分段轮包，放在忽略的 `DerivedData/PythonRuntime/`，随桌面构建打包，不修改系统安装。工程生成器使用标准库，不需要额外项目生成工具。
 
 手机模拟器构建包含手表目标，不需要个人签名：
 
