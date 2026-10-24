@@ -19,6 +19,7 @@ private struct DocumentPreview: Decodable, Identifiable, Sendable {
     let warnings: [Warning]
     let samples: [Sample]
     let pdfs: [PDFCoverage]?
+    let docxDocuments: [DOCXCoverage]?
     let sourceRoles: [SourceRole]?
     struct SourceRole: Decodable, Sendable { let name: String; let contentRole: String }
     struct PDFCoverage: Decodable, Sendable {
@@ -29,6 +30,14 @@ private struct DocumentPreview: Decodable, Identifiable, Sendable {
         let failedPages: [Int]
         let parserWarnings: Bool
     }
+    struct DOCXCoverage: Decodable, Sendable {
+        let name: String
+        let paragraphs: Int
+        let tables: Int
+        let parts: [DocumentPart]
+        let blocks: Int
+        let warnings: [DocumentStructureWarning]
+    }
     struct Warning: Decodable, Sendable {
         let name: String
         let reason: String
@@ -38,13 +47,16 @@ private struct DocumentPreview: Decodable, Identifiable, Sendable {
             case "too_large": "单份资料最多 2 MB"
             case "encrypted": "PDF 已加密，请先导出未加密副本"
             case "invalid_pdf": "PDF 损坏或结构不受支持"
+            case "invalid_docx": "DOCX 损坏或结构不受支持"
+            case "encrypted_docx": "DOCX 已加密，请先导出未加密副本"
+            case "unsupported_docx": "请导出为标准 DOCX 文档，不支持启用宏的格式"
             case "page_limit": "PDF 最多 200 页，请拆分后导入"
             case "text_limit": "提取文字过大，请拆分文件后导入"
             case "no_text": "未提取到文字，可能为空白页或扫描件"
             case "parser_timeout": "解析超时，请拆分文件后重试"
             case "parser_limit": "解析超过资源限制，请拆分文件后重试"
-            case "parser_unavailable": "PDF 解析组件不可用，请更新电脑应用"
-            case "parser_busy": "其他 PDF 正在解析，请稍后重试"
+            case "parser_unavailable": "资料解析组件不可用，请更新电脑应用"
+            case "parser_busy": "其他资料正在解析，请稍后重试"
             case "not_processed", "batch_limit": "本批未处理，请单独选择后重试"
             default: "文件为空、无法读取或不是 UTF-8 文字"
             }
@@ -100,7 +112,7 @@ struct DocumentLibraryView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(LF("已导入 %d 份文字资料", count)).font(.headline)
-                        Text("支持 PDF、Markdown 和 TXT。先预览，再保存提取文字。").font(.caption).foregroundStyle(.secondary)
+                        Text("支持 DOCX、PDF、Markdown 和 TXT。先预览，再保存提取文字。").font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button("选择文件", systemImage: "plus") { choose() }.buttonStyle(FilledButtonStyle()).disabled(busy || preparingID != nil)
@@ -140,6 +152,11 @@ struct DocumentLibraryView: View {
                                         Text(verbatim: item.title).font(.body)
                                         Text(verbatim: item.date).font(.caption).foregroundStyle(.secondary)
                                         Text(L(item.documentRole.title)).font(.caption).foregroundStyle(.secondary)
+                                        if let revision = item.documentRevision,
+                                           revision.previousID != nil || revision.isLatestImport == false {
+                                            Text(L(revision.isLatestImport == true ? "此文件最近导入的版本" : "此文件的较早导入版本"))
+                                                .font(.caption).foregroundStyle(.secondary)
+                                        }
                                     }
                                     Spacer()
                                     Image(systemName: "chevron.right").foregroundStyle(.secondary)
@@ -209,14 +226,25 @@ struct DocumentLibraryView: View {
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
                     }
-                    Section("内容预览") {
+                    if let documents = value.docxDocuments, !documents.isEmpty {
+                        Section("DOCX 提取范围") {
+                            ForEach(Array(documents.enumerated()), id: \.offset) { _, document in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(verbatim: document.name).font(.headline)
+                                    DocumentStructureCoverage(parts: document.parts, blockCount: document.blocks, warnings: document.warnings)
+                                }.font(.callout)
+                            }
+                            Text("原文件保持原位，资料夹仅保存提取文字。").font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                    if !value.samples.isEmpty { Section("内容预览") {
                         ForEach(Array(value.samples.enumerated()), id: \.offset) { _, sample in
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(verbatim: sample.name).font(.headline)
                                 Text(verbatim: sample.text).font(.caption).textSelection(.enabled)
                             }
                         }
-                    }
+                    } }
                     Text("文件日期只用于归档，不代表内容发生时间；文件中的陈述不自动视为本人事实。")
                         .font(.caption).foregroundStyle(.secondary)
                     if let problem { Text(L(problem)).foregroundStyle(.secondary) }
@@ -233,8 +261,8 @@ struct DocumentLibraryView: View {
     private func choose() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [.pdf, .plainText, UTType(filenameExtension: "md") ?? .plainText, UTType(filenameExtension: "markdown") ?? .plainText]
-        panel.message = L("选择 PDF、Markdown 或 TXT，每份最多 2 MB；PDF 最多 200 页。不识别扫描图片中的文字。")
+        panel.allowedContentTypes = [.pdf, .plainText, UTType(filenameExtension: "docx") ?? .data, UTType(filenameExtension: "md") ?? .plainText, UTType(filenameExtension: "markdown") ?? .plainText]
+        panel.message = L("选择 DOCX、PDF、Markdown 或 TXT，每份最多 2 MB；PDF 最多 200 页。不识别图片中的文字。")
         guard panel.runModal() == .OK else { return }
         let urls = panel.urls
         guard urls.count <= 100 else { problem = "每次请选择 1 至 100 份文字资料。";return }
@@ -286,7 +314,7 @@ struct DocumentLibraryView: View {
             let handle = try FileHandle(forReadingFrom: url);defer { try? handle.close() }
             let data = try handle.read(upToCount: 2 * 1024 * 1024 + 1) ?? Data()
             guard data.count <= 2 * 1024 * 1024 else { item.error = "too_large";return item }
-            if url.pathExtension.lowercased() == "pdf" { item.data = data.base64EncodedString() }
+            if ["pdf", "docx"].contains(url.pathExtension.lowercased()) { item.data = data.base64EncodedString() }
             else { item.text = String(data: data, encoding: .utf8) }
             if let date = info.contentModificationDate { item.modifiedAt = ISO8601DateFormatter().string(from: date) }
             if item.text == nil && item.data == nil { item.error = "unreadable" }

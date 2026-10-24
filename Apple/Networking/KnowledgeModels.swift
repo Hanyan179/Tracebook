@@ -18,6 +18,7 @@ struct KnowledgeSource: Codable, Identifiable, Sendable {
     var evidenceType: String?
     var analysisFreshness: String?
     var documentInfo: DocumentSourceInfo?
+    var documentRevision: DocumentRevision?
     var contentRole: String?
     var documentRole: DocumentContentRole { DocumentContentRole(rawValue: contentRole ?? "unknown") ?? .unknown }
     var identity: String { kind + "/" + id }
@@ -31,6 +32,11 @@ struct KnowledgeSource: Codable, Identifiable, Sendable {
         default: return "分析的来源版本未确认，请核对原文。"
         }
     }
+}
+struct DocumentRevision: Codable, Sendable {
+    let previousID: String?
+    let importedAt: String
+    let isLatestImport: Bool?
 }
 struct KnowledgeResult: Codable, Sendable {
     let mode: String

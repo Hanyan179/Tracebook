@@ -20,7 +20,7 @@ xcodebuild -project VoiceMemory.xcodeproj -scheme VoiceMemoryMac \
 
 准备脚本下载固定版本及校验值的官方 Python Build Standalone（独立运行环境）双架构文件，以及压缩解码、字符分段与 PDF（便携文档）解析轮包，放在忽略的 `DerivedData/PythonRuntime/`，随桌面构建打包，不修改系统安装。重分发许可证来自同次上游发行，保存在 `vendor/python-licenses/` 并随应用携带。首次准备需要下载运行环境，后续复用校验缓存。工程生成器使用标准库，不需要额外项目生成工具。
 
-电脑方案还构建系统 PDFKit（文档框架）的 `PDFTextWorker`，嵌入应用的 `Contents/Helpers/`。电脑节点必须能找到这个工具才支持 PDF（便携文档）提取；源码节点默认查找上述 `DerivedData/Mac` 构建结果，缺失时明确报告未就绪。其他已支持的类 Unix（操作系统）节点使用固定版本 `pypdf`。包内检查会实际启动节点，完成合成 PDF（便携文档）的准备、确认和页码回读。
+电脑方案还构建系统 PDFKit（文档框架）的 `PDFTextWorker`，嵌入应用的 `Contents/Helpers/`。电脑节点必须能找到这个工具才支持 PDF（便携文档）提取；源码节点默认查找上述 `DerivedData/Mac` 构建结果，缺失时明确报告未就绪。其他已支持的类 Unix（操作系统）节点使用固定版本 `pypdf`。包内检查会实际启动节点，完成合成 PDF（便携文档）的准备、确认和页码回读。 DOCX（办公文档）由随包的 `docx_worker.py` 使用标准库解析，不需办公软件；`node/tests/test_docx_documents.py` 覆盖包结构、文本顺序、修订、提取位置、版本保护、临时文件与进程退出。
 
 手机模拟器构建包含手表目标，不需要个人签名：
 

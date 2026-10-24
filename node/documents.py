@@ -11,6 +11,7 @@ import threading
 import time
 from local_sources import redact
 from pdf_documents import PDFError, extract_pdf
+from docx_documents import DOCXError, extract_docx
 
 NAMESPACE = uuid.UUID('2132fb96-e68f-4a7b-8bd2-697b876fcb0d')
 MAX_REQUEST = 16 * 1024 * 1024
@@ -47,15 +48,16 @@ class DocumentImports:
         # traverse a linked directory or remove unfamiliar files.
         scratch = store.data/'document-previews'
         if scratch.is_dir() and not scratch.is_symlink():
-            for folder in scratch.glob('.pdf-*'):
-                if folder.is_symlink() or not folder.is_dir():continue
-                for name in ('input.pdf', 'result.json'):
-                    path = folder/name
-                    if path.is_file() and not path.is_symlink():
-                        try:path.unlink()
-                        except OSError:pass
-                try:folder.rmdir()
-                except OSError:pass
+            for kind in ('pdf', 'docx'):
+                for folder in scratch.glob('.'+kind+'-*'):
+                    if folder.is_symlink() or not folder.is_dir():continue
+                    for name in ('input.'+kind, 'result.json'):
+                        path = folder/name
+                        if path.is_file() and not path.is_symlink():
+                            try:path.unlink()
+                            except OSError:pass
+                    try:folder.rmdir()
+                    except OSError:pass
 
     def error(self, status, message):
         from store import StoreError
@@ -130,6 +132,7 @@ class DocumentImports:
         duplicate = 0
         total = 0
         details_report = []
+        docx_report = []
         fingerprint = hashlib.sha256(json.dumps(files, sort_keys=True, ensure_ascii=False).encode()).hexdigest() if preparation_id else None
         deadline = time.monotonic() + 40
         for index, value in enumerate(files):
@@ -180,7 +183,46 @@ class DocumentImports:
                 except PDFError as error:
                     if str(error) == 'cancelled':raise
                     reason = str(error)
-            if suffix not in ('.md', '.markdown', '.txt', '.text', '.pdf'):
+            elif suffix == '.docx' and not reason:
+                try:
+                    encoded = value.get('data')
+                    if not isinstance(encoded, str):raise DOCXError('invalid_docx')
+                    if len(encoded) > 4 * ((MAX_FILE+2)//3):raise DOCXError('too_large')
+                    try:raw_docx = base64.b64decode(encoded, validate=True)
+                    except (binascii.Error, ValueError):raise DOCXError('invalid_docx')
+                    total += len(raw_docx)
+                    if total > 12 * 1024 * 1024:self.error(413, '本批资料超过 12 MB，请分批导入。')
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:raise DOCXError('not_processed')
+                    extracted = extract_docx(raw_docx, self.s.data/'document-previews', cancel, seconds=min(10, remaining))
+                    pieces = [];blocks = [];position = 0;hidden = False
+                    names = {'body': '正文', 'header': '页眉', 'footer': '页脚', 'footnote': '脚注', 'endnote': '尾注', 'comment': '批注'}
+                    by_part = {}
+                    for block in extracted['blocks']:by_part.setdefault(block['part'], []).append(block)
+                    for part in extracted['parts']:
+                        heading = '## '+names[part['kind']]+('' if part['kind'] == 'body' else ' '+str(part['number']))+'\n\n'
+                        pieces.append(heading);position += len(heading)
+                        previous_cell = None
+                        for block in by_part.get(part['id'], []):
+                            location = (block.get('table'), block.get('row'), block.get('cell'))
+                            if block['kind'] == 'table_cell' and location != previous_cell:
+                                label = '表格 '+str(location[0])+' · 第 '+str(location[1])+' 行 · 第 '+str(location[2])+' 个单元格\n\n'
+                                pieces.append(label);position += len(label)
+                            previous_cell = location
+                            passage, redacted = redact(block['text']);hidden = hidden or redacted
+                            blocks.append({k:v for k,v in block.items() if k != 'text'})
+                            blocks[-1].update(start=position, end=position+len(passage))
+                            pieces.append(passage+'\n\n');position += len(passage)+2
+                    text = ''.join(pieces)
+                    if len(text.encode()) > MAX_FILE:raise DOCXError('text_limit')
+                    details = {'format': 'docx', 'parser': extracted['parser'], 'parts': extracted['parts'],
+                        'blocks': blocks, 'paragraphCount': extracted['paragraphCount'], 'tableCount': extracted['tableCount'],
+                        'warnings': extracted['warnings'], 'parserWarnings': bool(extracted['warnings']),
+                        'originalFileSHA256': hashlib.sha256(raw_docx).hexdigest(), 'redacted': bool(hidden)}
+                except DOCXError as error:
+                    if str(error) == 'cancelled':raise
+                    reason = str(error)
+            if suffix not in ('.md', '.markdown', '.txt', '.text', '.pdf', '.docx'):
                 reason = 'unsupported'
             elif not isinstance(text, str) or not text.strip() or '\0' in text:
                 reason = reason or 'unreadable'
@@ -188,15 +230,16 @@ class DocumentImports:
                 reason = 'too_large'
             if reason:
                 allowed = ('unsupported', 'too_large', 'encrypted', 'invalid_pdf', 'page_limit', 'text_limit',
-                           'no_text', 'parser_limit', 'parser_timeout', 'parser_unavailable', 'parser_busy', 'not_processed', 'batch_limit')
+                           'no_text', 'parser_limit', 'parser_timeout', 'parser_unavailable', 'parser_busy', 'not_processed', 'batch_limit',
+                           'invalid_docx', 'encrypted_docx', 'unsupported_docx')
                 warnings.append({'name': name, 'reason': reason if reason in allowed else 'unreadable'})
                 continue
-            if suffix != '.pdf':total += len(text.encode())
+            if suffix not in ('.pdf', '.docx'):total += len(text.encode())
             if total > 12 * 1024 * 1024:
                 self.error(413, '本批资料超过 12 MB，请分批导入。')
-            if suffix == '.pdf':hidden = details['redacted']
+            if suffix in ('.pdf', '.docx'):hidden = details['redacted']
             else:text, hidden = redact(text.lstrip('\ufeff').replace('\r\n', '\n').replace('\r', '\n'))
-            signature = hashlib.sha256((('pdf-v1\0'+details['originalFileSHA256']+'\0') if details else '').encode()+text.encode()).hexdigest()
+            signature = hashlib.sha256(((details['format']+'-v1\0'+details['originalFileSHA256']+'\0') if details else '').encode()+text.encode()).hexdigest()
             # Preserve legacy IDs for unclassified imports. A different explicit
             # classification is a new revision, never an in-place trust upgrade.
             if role != 'unknown':
@@ -206,12 +249,15 @@ class DocumentImports:
                 duplicate += 1
                 continue
             seen.add(rid)
-            if details:
+            if details.get('format') == 'pdf':
                 details_report.append({'name': name, 'pages': details['pageCount'],
                     'textPages': sum(p['status'] == 'text' for p in details['pages']),
                     'emptyPages': [p['number'] for p in details['pages'] if p['status'] == 'empty'],
                     'failedPages': [p['number'] for p in details['pages'] if p['status'] == 'unreadable'],
                     'parserWarnings': details['parserWarnings']})
+            elif details.get('format') == 'docx':
+                docx_report.append({'name': name, 'paragraphs': details['paragraphCount'], 'tables': details['tableCount'],
+                                    'parts': details['parts'], 'blocks': len(details['blocks']), 'warnings': details['warnings']})
             if role != 'unknown':details = {**details, 'contentRole': role}
             source = value.get('sourcePath')
             source = source if isinstance(source, str) and 0 < len(source) <= 4096 else name
@@ -236,6 +282,7 @@ class DocumentImports:
                   'duplicates': duplicate+sum(i['existing'] for i in items),
                   'redacted': sum(i['redacted'] for i in items), 'warnings': warnings,
                   'titles': [i['title'] for i in items], 'pdfs': details_report,
+                  'docxDocuments': docx_report,
                   'sourceRoles': [{'name': i['title'], 'contentRole': i['contentRole']} for i in items],
                   'samples': [{'name': i['title'], 'text': i['text'][:400]} for i in items[:3]]}
         if fingerprint:report['requestHash'] = fingerprint
@@ -296,11 +343,17 @@ class DocumentImports:
                     if details.get('format') == 'pdf':
                         body += 'PDF 提取文字：保留文件页序；未识别图片中的文字，阅读顺序与表格可能需要校对。\n'
                         body += '原文件仍保留在选择的位置；本资料夹保存提取文字。\n'
+                    elif details.get('format') == 'docx':
+                        body += 'DOCX 提取文字：按文档结构读取正文、表格与附注，编号表示提取顺序，不是原文件页码。\n'
+                        body += '样式、自动编号和版式未还原；表格、修订、域结果及遗漏内容请对照原文件。\n'
+                        body += '批注与附注不代表本人陈述；原文件保持原位，资料夹仅保存提取文字。\n'
                     body += '\n---\n\n'
                     if details.get('format') == 'pdf':
                         details = {**details, 'pages': [{**p, 'start': p['start']+len(body), 'end': p['end']+len(body)} for p in details['pages']]}
+                    elif details.get('format') == 'docx':
+                        details = {**details, 'blocks': [{**b, 'start': b['start']+len(body), 'end': b['end']+len(body)} for b in details['blocks']]}
                     body += item['text']+'\n'
-                    if details.get('format') == 'pdf':details['textVersion'] = hashlib.sha256(body.encode()).hexdigest()
+                    if details.get('format') in ('pdf', 'docx'):details['textVersion'] = hashlib.sha256(body.encode()).hexdigest()
                     output = self.s.export('documents/'+item['id']+'.md', body, item['signature'])
                     if output['state'] == 'conflict':
                         self.error(409, '资料目标已有人工内容，已保留，请先核对另存版本。')
@@ -335,8 +388,11 @@ class DocumentImports:
     def info(self, rid, version):
         row = self.s.db.execute('SELECT details FROM documents WHERE id=?', (rid,)).fetchone()
         details = json.loads(row['details']) if row else {}
-        if details.get('format') != 'pdf':return None
+        if details.get('format') not in ('pdf', 'docx'):return None
         valid = details['textVersion'] == version
+        if details['format'] == 'docx':
+            return {**details, 'rangesValid': valid, 'blocks': details['blocks'] if valid else
+                    [{k:v for k,v in b.items() if k not in ('start', 'end')} for b in details['blocks']]}
         return {**details, 'rangesValid': valid,
                 'pages': details['pages'] if valid else [{k:v for k,v in p.items() if k in ('number','status')} for p in details['pages']]}
 
@@ -351,11 +407,16 @@ class DocumentImports:
         except (ValueError, TypeError):
             self.error(400, '读取位置不正确。')
         with self.s.lock:
-            rows = self.s.db.execute('SELECT id FROM documents ORDER BY imported_at DESC,id DESC LIMIT 41 OFFSET ?', (offset,)).fetchall()
+            rows = self.s.db.execute('SELECT id,previous_id,imported_at,source_path FROM documents ORDER BY imported_at DESC,id DESC LIMIT 41 OFFSET ?', (offset,)).fetchall()
             items = []
             for row in rows[:40]:
                 self.s.catalog.index_document(row['id'])
                 source = self.s.db.execute("SELECT * FROM library_items WHERE kind='document' AND id=?", (row['id'],)).fetchone()
-                items.append(self.s.knowledge.source_data(source, source['body']))
+                item = self.s.knowledge.source_data(source, source['body'])
+                location = self.s.db.execute('SELECT document_id FROM document_locations WHERE path_hash=?',
+                    (hashlib.sha256(row['source_path'].encode()).hexdigest(),)).fetchone()
+                item['documentRevision'] = {'previousID': row['previous_id'], 'importedAt': row['imported_at'],
+                                            'isLatestImport': location[0] == row['id'] if location else None}
+                items.append(item)
             return {'items': items, 'count': self.s.db.execute('SELECT COUNT(*) FROM documents').fetchone()[0],
                     'nextOffset': offset+40 if len(rows)>40 else None}
