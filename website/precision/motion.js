@@ -64,6 +64,9 @@ if(typeof module!=='undefined')module.exports=PrecisionMotion;
   noteChoice.hidden=false;story.querySelector('.note-fallback').hidden=true;
   const openNote=()=>{note.classList.add('is-selected');story.classList.add('is-reading');noteChoice.setAttribute('aria-expanded','true');story.querySelector('.review-surface').toggleAttribute('inert',true);requestAnimationFrame(()=>{if(!story.classList.contains('is-pinned'))note.scrollIntoView({behavior:reduced.matches?'instant':'smooth',block:'start'});note.focus({preventScroll:true});});};
   const closeNote=()=>{if(pinned())goProgress(.88,'instant');note.classList.remove('is-selected');story.classList.remove('is-reading');noteChoice.setAttribute('aria-expanded','false');paint();accessible(story.querySelector('.review-surface'),true);if(!pinned())noteChoice.scrollIntoView({behavior:'instant',block:'center'});noteChoice.focus({preventScroll:true});};
+  // Leaving this reading context is not the same action as returning to its review.
+  const leaveReader=()=>{cancel();manualOffset=0;note.classList.remove('is-selected');story.classList.remove('is-reading');noteChoice.setAttribute('aria-expanded','false');paint();};
+  note.querySelector('[data-source-route]')?.addEventListener('click',leaveReader);
   noteChoice.addEventListener('click',()=>{history.pushState(null,'','#note-original');openNote();});
   document.querySelector('[data-return-review]').addEventListener('click',event=>{event.preventDefault();history.pushState(null,'','#review');closeNote();});
   note.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();history.pushState(null,'','#review');closeNote();}});
