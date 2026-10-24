@@ -92,8 +92,8 @@ struct MemoryFileReviewSheet: View {
     }
     private var decisions: some View {
         Group {
-            Button("保留我的文件") { confirming = "keep" }.buttonStyle(.bordered)
-            Button("采用新生成的文件") { confirming = "generated" }.buttonStyle(.borderedProminent)
+            Button("保留我的文件") { confirming = "keep" }.buttonStyle(.bordered).frame(minHeight: 44)
+            Button("采用新生成的文件") { confirming = "generated" }.buttonStyle(FilledButtonStyle())
         }.fixedSize(horizontal: false, vertical: true)
     }
     private var recovery: some View {

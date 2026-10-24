@@ -118,6 +118,7 @@ struct NodeDailyView: View {
 struct NodeMemoryView: View {
     @Environment(\.dynamicTypeSize) private var typeSize
     @ObservedObject var store: NodeWorkspaceStore
+    let configureConnection: () -> Void
     @StateObject private var loader = LibraryLoader<NodeCandidate>()
     @State private var filter = LibraryFilter(state: "confirmed")
     @State private var scope = "confirmed"
@@ -126,16 +127,18 @@ struct NodeMemoryView: View {
     @State private var selected: NodeCandidate?
     @State private var deciding: UUID?
     @State private var batching = false
+    @State private var editingFile = false
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                ViewThatFits(in: .horizontal) {
-                    HStack { scopePicker; Spacer(); actions }
-                    VStack(alignment: .leading, spacing: 14) { scopePicker; actions }
-                }
+            VStack(alignment: .leading, spacing: 12) {
+                scopePicker
                 LibraryFilters(filter: $filter, facets: loader.facets)
-                Text(LF("%d 条记忆", loader.total)).font(.caption).foregroundStyle(AppPalette.muted)
-                MemoryFileDeliveryButton(store: store)
+                ViewThatFits(in: .horizontal) {
+                    if !typeSize.isAccessibilitySize {
+                        HStack(spacing: 12) { count; Spacer(minLength: 8); MemoryFileDeliveryButton(store: store) }
+                    }
+                    VStack(alignment: .leading, spacing: 8) { count; MemoryFileDeliveryButton(store: store) }
+                }
                 if let notice = store.memoryNotice { Text(L(notice)).font(.callout).foregroundStyle(.secondary) }
                 if let problem = store.problem { Text(problem).font(.footnote).foregroundStyle(AppPalette.muted) }
                 if store.status?.memoryDelivery == nil && !(store.status?.conflicts.isEmpty ?? true) {
@@ -173,6 +176,10 @@ struct NodeMemoryView: View {
                 }
             }.padding(16).frame(maxWidth: 1100).frame(maxWidth: .infinity)
         }.background(AppPalette.canvas)
+            .toolbar { ToolbarItem { actions } }
+            .navigationDestination(isPresented: $editingFile) {
+                NodeDocumentEditor(store: store, path: "v1/memory", title: "记忆文件", hint: "人工编辑会保留独立版本，分类列表来自确认条目。")
+            }
             .task(id: store.endpoint + filter.signature + store.libraryRevision.uuidString) { await reload() }
             .onChange(of: scope) { _, value in filter.archived = value == "archived"; filter.state = value == "archived" ? "" : value }
             .sheet(isPresented: $managing) { CategoryManager(store: store, kind: "memory") }
@@ -183,22 +190,19 @@ struct NodeMemoryView: View {
     private var scopePicker: some View {
         MemoryScopeControls(selection: $scope, pendingCount: store.overview?.pendingMemoryCount)
     }
+    private var count: some View {
+        Text(LF("%d 条记忆", loader.total)).font(.caption).foregroundStyle(AppPalette.muted)
+    }
     private var actions: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 14) { batchAction; secondaryActions }.fixedSize(horizontal: true, vertical: false)
-            VStack(alignment: .leading, spacing: 14) { batchAction; secondaryActions }
-        }
-    }
-    private var batchAction: some View {
-        Button("批量整理", systemImage: "sparkles") { batching = true }.buttonStyle(.bordered)
-    }
-    private var secondaryActions: some View {
-        let layout = typeSize.isAccessibilitySize ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14)) : AnyLayout(HStackLayout(spacing: 14))
-        return layout {
-            Button("分类管理") { managing = true }.buttonStyle(.bordered)
-            NavigationLink { NodeDocumentEditor(store: store, path: "v1/memory", title: "记忆文件", hint: "人工编辑会保留独立版本，分类列表来自确认条目。") } label: { Text("记忆文件") }.font(.caption)
-            Button { Task { await reload() } } label: { Image(systemName: "arrow.clockwise") }.accessibilityLabel("刷新记忆列表")
-        }
+        Menu {
+            Button("批量整理", systemImage: "sparkles") { batching = true }
+            Button("分类管理", systemImage: "folder") { managing = true }
+            Button("记忆文件", systemImage: "doc.text") { editingFile = true }
+            Divider()
+            Button("刷新记忆列表", systemImage: "arrow.clockwise") { Task { await reload() } }
+            Button("电脑连接设置", systemImage: "network", action: configureConnection)
+        } label: { Image(systemName: "ellipsis").frame(minWidth: 44, minHeight: 44) }
+            .accessibilityLabel("记忆列表操作")
     }
     private func reload() async { await loader.reload(client: store.client, kind: "memory", filter: filter) }
     private func decide(_ candidate: NodeCandidate, _ accepted: Bool) {

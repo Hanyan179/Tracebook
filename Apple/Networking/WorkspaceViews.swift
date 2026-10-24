@@ -19,7 +19,7 @@ struct WorkspaceHomeView: View {
                     }.pickerStyle(.segmented).padding()
                     if section == 0 { NodeRecordsView(store: store) }
                     else if section == 1 { NodeDailyView(store: store) }
-                    else { NodeMemoryView(store: store) }
+                    else { NodeMemoryView(store: store, configureConnection: { settings = true }) }
                 }
             } else {
                 ContentUnavailableView {
@@ -31,7 +31,11 @@ struct WorkspaceHomeView: View {
                 }
             }
         }.navigationTitle("电脑资料库")
-            .toolbar { ToolbarItem { Button { settings = true } label: { Image(systemName: "network") }.accessibilityLabel("电脑连接设置") } }
+            .toolbar {
+                if section != 2 || !store.configured {
+                    ToolbarItem { Button { settings = true } label: { Image(systemName: "network") }.accessibilityLabel("电脑连接设置") }
+                }
+            }
             .sheet(isPresented: $settings) {
                 NavigationStack {
                     NodeConnectionView(store: store)

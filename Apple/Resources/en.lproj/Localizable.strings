@@ -105,6 +105,7 @@
 "刷新原音列表" = "Refresh recordings";
 "刷新每日记录" = "Refresh daily notes";
 "刷新记忆列表" = "Refresh memories";
+"记忆列表操作" = "Memory list actions";
 "刷新资料" = "Refresh library";
 "前往系统设置 → 辅助功能 → 触控 → 轻点背面" = "Go to Settings → Accessibility → Touch → Back Tap";
 "前往设置允许麦克风" = "Allow microphone access in Settings";
