@@ -20,14 +20,14 @@ class SiteTests(unittest.TestCase):
     def setUpClass(cls):site.build();cls.paths=sorted((ROOT/'dist').rglob('*.html'))
     def test_six_pages_and_explicit_asset_whitelist(self):
         self.assertEqual(len(self.paths),6)
-        self.assertEqual({p.name for p in (ROOT/'dist/assets').iterdir()},{'tokens.css','slice.css','whole.css','motion.js','whole.js','brand-mark.png','favicon.png','precision-tap-v1.png'})
+        self.assertEqual({p.name for p in (ROOT/'dist/assets').iterdir()},{'tokens.css','slice.css','whole.css','motion.js','whole.js','brand-mark.png','favicon.png','precision-tap-v1.png','river-walk-scene.png'})
     def test_links_landmarks_and_resources(self):
         for path in self.paths:
             p=Page(path.read_text());self.assertEqual(len(p.ids),len(set(p.ids)))
             for tag in ('h1','main','header','footer'):self.assertEqual(sum(t==tag for t,a in p.tags),1)
             self.assertFalse(any(t in ('iframe','form','input','video','audio') for t,a in p.tags))
             self.assertFalse(any(k.startswith('on') for t,a in p.tags for k in a))
-            scripts=[a for t,a in p.tags if t=='script'];self.assertEqual(len(scripts),2 if path.name=='index.html' else 0)
+            scripts=[a for t,a in p.tags if t=='script' and a.get('type')!='application/json'];self.assertEqual(len(scripts),2 if path.name=='index.html' else 0)
             for script in scripts:self.assertIn('defer',script)
             for t,a in p.tags:
                 if t=='img':self.assertIn('alt',a)
@@ -50,9 +50,9 @@ class SiteTests(unittest.TestCase):
         for relative in ['index.html','en/index.html']:
             text=(ROOT/'dist'/relative).read_text();page=Page(text)
             self.assertEqual(sum(a.get('id')=='audio-source' for t,a in page.tags),1)
-            self.assertIn('recording / DEMO_AUDIO / v1',text);self.assertIn('note / NOTE_ID / v1',text)
+            self.assertIn('recording / DEMO_AUDIO / v1',text);self.assertIn('note / NOTE_WALK_01 / v1',text)
             for old in ['day-carousel','capture-theatre','day-product','source-reflections','opening-sequence']:self.assertNotIn(old,text)
-            self.assertEqual(sum(t=='img' for t,a in page.tags),2)
+            self.assertEqual(sum(t=='img' for t,a in page.tags),3)
     def test_languages_and_navigation(self):
         for path in self.paths:
             p=Page(path.read_text());self.assertEqual(next(a['lang'] for t,a in p.tags if t=='html'),'en' if path.parent.name=='en' else 'zh-CN')

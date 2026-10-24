@@ -46,7 +46,7 @@ def build():
     (OUT/'assets').mkdir(parents=True)
     for name in ['tokens.css','slice.css','whole.css','motion.js','whole.js']:
         shutil.copy2(ROOT/'precision'/name,OUT/'assets'/name)
-    for name in ['brand-mark.png','favicon.png','precision-tap-v1.png']:
+    for name in ['brand-mark.png','favicon.png','precision-tap-v1.png','river-walk-scene.png']:
         shutil.copy2(ROOT/'assets'/name,OUT/'assets'/name)
     for l in COPY:
         folder=OUT/('en' if l=='en' else '')

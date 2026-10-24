@@ -38,18 +38,21 @@ class Element extends Hub{
  toggleAttribute(k,yes){yes?this.setAttribute(k,''):this.removeAttribute(k);}
  getBoundingClientRect(){return this.rect;}
  focus(){this.doc.activeElement=this;this.doc.emit('focusin',{target:this});let p=this;while(p){p.emit('focusin',{target:this});p=p.parentElement;}}
+ appendChild(e){this.children.push(e);e.parentElement=this;return e;}
+ remove(){if(this.parentElement)this.parentElement.children=this.parentElement.children.filter(e=>e!==this);}
+ click(){this.doc.clicked=this;this.emit('click');}
  scrollIntoView(options){this.lastView=options;}
  scrollTo(options){this.scrollTop=options.top;this.lastScroll=options;this.scrollWasExpanded=this.classList.contains('is-expanded');}
 }
 function setup({width=1180,height=757,hash='',whole=false}={}){
- const doc=new Hub();const tree=new Element(html,doc,null);doc.querySelectorAll=s=>tree.querySelectorAll(s);doc.querySelector=s=>tree.querySelector(s);doc.getElementById=id=>doc.querySelector('#'+id);doc.hidden=false;doc.activeElement=null;doc.body=tree.querySelector('body');
+ const doc=new Hub();const tree=new Element(html,doc,null);doc.querySelectorAll=s=>tree.querySelectorAll(s);doc.querySelector=s=>tree.querySelector(s);doc.getElementById=id=>doc.querySelector('#'+id);doc.hidden=false;doc.activeElement=null;doc.body=tree.querySelector('body');doc.documentElement=tree.querySelector('html');doc.documentElement.lang=doc.documentElement.getAttribute('lang');doc.createElement=tag=>new Element({tag,attrs:{},children:[],text:''},doc,null);
  const win=new Hub(), intervals=new Map(),timeouts=new Map(),frames=new Map(),medias=[],observers=[];let clock=0,id=0;
- const ctx={document:doc,innerHeight:height,innerWidth:width,scrollY:0,performance:{now:()=>clock},Date:{now:()=>clock},setInterval:fn=>{intervals.set(++id,fn);return id;},clearInterval:id=>intervals.delete(id),setTimeout:fn=>{timeouts.set(++id,fn);return id;},clearTimeout:id=>timeouts.delete(id),requestAnimationFrame:fn=>{frames.set(++id,fn);return id;},cancelAnimationFrame:id=>frames.delete(id),addEventListener:(...args)=>win.addEventListener(...args),scrollTo:options=>{win.lastScroll=options;}};
+ const blobs=[];const ctx={Blob,URL:{createObjectURL:blob=>{blobs.push(blob);return 'blob:synthetic-'+blobs.length;},revokeObjectURL:url=>{doc.revoked=url;}},document:doc,innerHeight:height,innerWidth:width,scrollY:0,performance:{now:()=>clock},Date:{now:()=>clock},setInterval:fn=>{intervals.set(++id,fn);return id;},clearInterval:id=>intervals.delete(id),setTimeout:fn=>{timeouts.set(++id,fn);return id;},clearTimeout:id=>timeouts.delete(id),requestAnimationFrame:fn=>{frames.set(++id,fn);return id;},cancelAnimationFrame:id=>frames.delete(id),addEventListener:(...args)=>win.addEventListener(...args),scrollTo:options=>{win.lastScroll=options;}};
  win.location={hash};win.matchMedia=query=>{const media=new Hub();media.media=query;media.matches=query.includes('reduced-motion')?false:width>=(query.includes('900px')?900:761)&&(!query.includes('min-height')||height>=700);media.change=value=>{media.matches=value;media.emit('change',{matches:value});};medias.push(media);return media;};
  class Observer{constructor(fn){this.fn=fn;observers.push(this);}observe(element){this.element=element;this.fire(true);}fire(isIntersecting){this.fn([{isIntersecting,intersectionRatio:isIntersecting?1:0,target:this.element}]);}}
  win.IntersectionObserver=Observer;ctx.IntersectionObserver=Observer;ctx.window=win;ctx.matchMedia=win.matchMedia;ctx.location=win.location;ctx.history={pushState:(_,__,hash)=>{win.location.hash=hash;}};
  vm.runInNewContext(fs.readFileSync(path.join(root,'precision/motion.js'),'utf8'),ctx);
  if(whole)vm.runInNewContext(fs.readFileSync(path.join(root,'precision/whole.js'),'utf8'),ctx);
- return {doc,win,ctx,intervals,timeouts,medias,observers,one:s=>doc.querySelector(s),all:s=>doc.querySelectorAll(s),tick(ms){clock+=ms;for(const fn of [...intervals.values()])fn();},flush(){const batch=[...frames.values()];frames.clear();for(const fn of batch)fn(clock);},media:part=>medias.find(x=>x.media.includes(part))};
+ return {blobs,doc,win,ctx,intervals,timeouts,medias,observers,one:s=>doc.querySelector(s),all:s=>doc.querySelectorAll(s),tick(ms){clock+=ms;for(const fn of [...intervals.values()])fn();},flush(){const batch=[...frames.values()];frames.clear();for(const fn of batch)fn(clock);},media:part=>medias.find(x=>x.media.includes(part))};
 }
 module.exports={setup};
