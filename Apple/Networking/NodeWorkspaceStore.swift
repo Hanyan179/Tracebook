@@ -141,6 +141,11 @@ final class NodeWorkspaceStore: ObservableObject {
         status = nil; overview = nil; problem = nil; memoryNotice = nil
         playback.stop(); libraryRevision = UUID()
     }
+    /// Invalidate in-flight reads without discarding an editor's current contents.
+    func localProcessStopped(_ message: String) {
+        configurationRevision = UUID(); loading = false; connected = false
+        problem = L(message)
+    }
     func disconnect() {
         ConnectionSecret.remove(); endpoint = ""; UserDefaults.standard.removeObject(forKey: "node.endpoint")
         configurationRevision = UUID(); loading = false

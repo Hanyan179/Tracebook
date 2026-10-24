@@ -86,7 +86,11 @@ struct MacWorkspaceView: View {
         } detail: {
             NavigationStack(path: $navigationPath) {
                 Group {
-                    if useLocal && !workspace.connected && !workspace.hasUnfinishedEdits && !local.starting && local.problem != nil {
+                    if useLocal && !workspace.connected && !workspace.hasUnfinishedEdits
+                        && (local.starting || local.maintenance || !local.hasAttemptedStartup) {
+                        ProgressView(L("正在准备资料库"))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if useLocal && !workspace.connected && !workspace.hasUnfinishedEdits && local.problem != nil {
                         ContentUnavailableView {
                             Label("无法打开资料库", systemImage: "externaldrive.badge.exclamationmark")
                         } description: {

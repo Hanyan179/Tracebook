@@ -70,8 +70,10 @@ struct NodeClient: Sendable {
         request.timeoutInterval = 45
         return request
     }
-    func read<T: Decodable & Sendable>(_ path: String, query: [String: String] = [:], as type: T.Type) async throws -> T {
-        let (data, response) = try await URLSession.shared.data(for: request(path, query: query))
+    func read<T: Decodable & Sendable>(_ path: String, query: [String: String] = [:], timeout: TimeInterval = 45, as type: T.Type) async throws -> T {
+        var readRequest = request(path, query: query)
+        readRequest.timeoutInterval = timeout
+        let (data, response) = try await URLSession.shared.data(for: readRequest)
         try Self.validate(data, response)
         return try JSONDecoder().decode(type, from: data)
     }

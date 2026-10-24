@@ -9,29 +9,34 @@ struct NotesLibrary: View {
     @State private var creating = false
     @State private var managing = false
     @FocusState private var searching: Bool
+    #if os(macOS)
+    @FocusState private var listFocused: Bool
+    #endif
     private var emptyTitle: String { filter.hasSearchFilters || filter.archived ? "没有匹配的笔记" : "还没有笔记" }
     var body: some View {
         Group {
             #if os(macOS)
-            HSplitView {
-                list.frame(minWidth: 290, idealWidth: 330, maxWidth: 410)
-                if let item = loader.items.first(where: { $0.id == selection }) {
-                    NoteReader(workspace: workspace, note: item).id(item.id)
-                        .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ContentUnavailableView {
-                        Label(L(loader.problem != nil ? "暂时无法读取笔记" : loader.loading ? "正在读取资料" : loader.total == 0 ? emptyTitle : "选择一篇笔记"),
-                              systemImage: "note.text")
-                    } description: {
-                        Text(L(loader.problem ?? "随手写下想法，之后随时找回。"))
-                    } actions: {
-                        if loader.problem != nil { Button("重新读取") { Task { await reload() } } }
-                        else if !loader.loading && !filter.hasSearchFilters && !filter.archived {
-                            Button("写下第一篇笔记") { creating = true }.disabled(!workspace.connected)
+            GeometryReader { geometry in
+                HSplitView {
+                    list.frame(minWidth: 290, idealWidth: 330, maxWidth: 410)
+                    if let item = loader.items.first(where: { $0.id == selection }) {
+                        NoteReader(workspace: workspace, note: item).id(item.id)
+                            .frame(minWidth: 380, maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        ContentUnavailableView {
+                            Label(L(loader.problem != nil ? "暂时无法读取笔记" : loader.loading ? "正在读取资料" : loader.total == 0 ? emptyTitle : "选择一篇笔记"),
+                                  systemImage: "note.text")
+                        } description: {
+                            Text(L(loader.problem ?? "随手写下想法，之后随时找回。"))
+                        } actions: {
+                            if loader.problem != nil { Button("重新读取") { Task { await reload() } } }
+                            else if !loader.loading && !filter.hasSearchFilters && !filter.archived {
+                                Button("写下第一篇笔记") { creating = true }.disabled(!workspace.connected)
+                            }
                         }
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
+                }.frame(width: geometry.size.width, height: geometry.size.height)
             }
             #else
             list.navigationDestination(for: UUID.self) { id in
@@ -77,21 +82,41 @@ struct NotesLibrary: View {
                 }
             }.padding(18)
             Divider()
-            List(selection: $selection) {
-                ForEach(loader.items) { item in
-                    #if os(macOS)
-                    row(item).tag(item.id).listRowSeparator(.hidden)
-                    #else
-                    NavigationLink(value: item.id) { row(item) }
-                    #endif
+            ScrollViewReader { proxy in
+                List(selection: $selection) {
+                    ForEach(loader.items) { item in
+                        #if os(macOS)
+                        row(item).tag(item.id).id(item.id).listRowSeparator(.hidden)
+                        #else
+                        NavigationLink(value: item.id) { row(item) }
+                        #endif
+                    }
                 }
+                #if os(macOS)
+                .listStyle(.inset)
+                .focusable(interactions: .edit)
+                .focused($listFocused)
+                .focusEffectDisabled()
+                .simultaneousGesture(TapGesture().onEnded { listFocused = true })
+                .onMoveCommand { direction in
+                    guard listFocused, !loader.items.isEmpty else { return }
+                    let step: Int
+                    switch direction {
+                    case .up: step = -1
+                    case .down: step = 1
+                    default: return
+                    }
+                    let current = loader.items.firstIndex { $0.id == selection }
+                        ?? (step > 0 ? -1 : loader.items.count)
+                    let next = min(max(current + step, 0), loader.items.count - 1)
+                    selection = loader.items[next].id
+                    proxy.scrollTo(loader.items[next].id)
+                }
+                #else
+                .listStyle(.plain)
+                #endif
+                .scrollContentBackground(.hidden).tint(.gray)
             }
-            #if os(macOS)
-            .listStyle(.inset)
-            #else
-            .listStyle(.plain)
-            #endif
-            .scrollContentBackground(.hidden).tint(.gray)
             if loader.loading { ProgressView().controlSize(.small).padding(10) }
             if let error = loader.problem {
                 VStack(spacing: 8) {

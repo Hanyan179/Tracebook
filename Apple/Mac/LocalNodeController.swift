@@ -15,6 +15,7 @@ final class LocalNodeController: ObservableObject {
     @Published private(set) var dataDirectory: URL
     @Published private(set) var receivingPaused = false
     @Published private(set) var maintenance = false
+    @Published private(set) var hasAttemptedStartup = false
     @Published private(set) var baseDirectory: URL
     @Published private(set) var selectionProblem: String?
     @Published private(set) var rememberedLocation: RememberedLibrary?
@@ -98,7 +99,7 @@ final class LocalNodeController: ObservableObject {
             problem = "还有未完成的编辑。请先保存或复制内容，并关闭编辑页面，再切换或备份资料库。"
             return
         }
-        starting = true; problem = nil
+        starting = true; hasAttemptedStartup = true; problem = nil
         workspace.prepareForLocalStartup()
         defer { starting = false }
         do {
@@ -133,7 +134,7 @@ final class LocalNodeController: ObservableObject {
             let tokenURL = dataDirectory.appendingPathComponent("connection-token")
             if let token = try? String(contentsOf: tokenURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
                let url = URL(string: localEndpoint),
-               (try? await NodeClient(endpoint: url, token: token).read("v1/status", as: NodeStatus.self)) != nil {
+               (try? await NodeClient(endpoint: url, token: token).read("v1/status", timeout: 1, as: NodeStatus.self)) != nil {
                 try workspace.configure(endpoint: localEndpoint, token: token)
                 running = true; managesProcess = process?.isRunning == true
                 if !managesProcess { problem = "已连接外部启动的本机节点；监听地址请在启动它的位置修改。" }
@@ -141,23 +142,37 @@ final class LocalNodeController: ObservableObject {
                 try await ModelRuntime.activate(workspace: workspace)
                 return
             }
-            let process = try BundledNodeRuntime.process(script: script, arguments: ["--data", dataDirectory.path,
-                "--host", allowLAN && !receivingPaused ? "0.0.0.0" : "127.0.0.1", "--port", String(port)])
-            let log = dataDirectory.appendingPathComponent("node.log")
-            if !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil, attributes: [.posixPermissions: 0o600]) }
-            let handle = try FileHandle(forWritingTo: log); try handle.seekToEnd()
-            process.standardOutput = handle; process.standardError = handle
-            process.terminationHandler = { [weak self] ended in Task { @MainActor in
-                if self?.process === ended { self?.running = false; self?.managesProcess = false }
-            } }
-            try process.run(); self.process = process; managesProcess = true
-            try? handle.close()
-            for _ in 0..<30 {
+            let process: Process
+            if let existing = self.process, existing.isRunning {
+                // A connection timeout is not evidence that the owned process exited.
+                process = existing
+            } else {
+                let created = try BundledNodeRuntime.process(script: script, arguments: ["--data", dataDirectory.path,
+                    "--host", allowLAN && !receivingPaused ? "0.0.0.0" : "127.0.0.1", "--port", String(port)])
+                let log = dataDirectory.appendingPathComponent("node.log")
+                if !FileManager.default.fileExists(atPath: log.path) { FileManager.default.createFile(atPath: log.path, contents: nil, attributes: [.posixPermissions: 0o600]) }
+                let handle = try FileHandle(forWritingTo: log); try handle.seekToEnd()
+                defer { try? handle.close() }
+                created.standardOutput = handle; created.standardError = handle
+                created.terminationHandler = { [weak self, weak workspace] ended in Task { @MainActor in
+                    guard let self, self.process === ended else { return }
+                    self.running = false; self.managesProcess = false
+                    if !self.maintenance && !self.starting {
+                        let message = "本机资料库已停止。已有资料保留，请重新打开。"
+                        self.problem = message; workspace?.localProcessStopped(message)
+                    }
+                } }
+                try created.run(); self.process = created; process = created
+            }
+            managesProcess = true
+            let clock = ContinuousClock()
+            let deadline = clock.now.advanced(by: .seconds(10))
+            while clock.now < deadline {
                 try await Task.sleep(for: .milliseconds(250))
                 guard process.isRunning else { throw NodeFailure(message: "资料库未能启动，请检查应用是否完整及连接端口是否被占用。") }
                 if let token = try? String(contentsOf: tokenURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),
                    let url = URL(string: localEndpoint),
-                   (try? await NodeClient(endpoint: url, token: token).read("v1/status", as: NodeStatus.self)) != nil {
+                   (try? await NodeClient(endpoint: url, token: token).read("v1/status", timeout: 1, as: NodeStatus.self)) != nil {
                     try workspace.configure(endpoint: localEndpoint, token: token)
                     running = true; await workspace.refresh()
                     try await ModelRuntime.activate(workspace: workspace)

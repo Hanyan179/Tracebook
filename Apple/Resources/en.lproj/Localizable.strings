@@ -2039,3 +2039,5 @@
 "应用运行环境不完整，请重新安装完整版本；已有资料仍保留。" = "The app runtime is incomplete. Reinstall the complete app. Your existing data is retained.";
 
 "资料库未能启动，请检查应用是否完整及连接端口是否被占用。" = "The library could not start. Check that the app is complete and its connection port is available.";
+
+"本机资料库已停止。已有资料保留，请重新打开。" = "The local library stopped. Your saved data is retained. Reopen the library to continue.";
