@@ -18,6 +18,8 @@ struct KnowledgeSource: Codable, Identifiable, Sendable {
     var evidenceType: String?
     var analysisFreshness: String?
     var documentInfo: DocumentSourceInfo?
+    var contentRole: String?
+    var documentRole: DocumentContentRole { DocumentContentRole(rawValue: contentRole ?? "unknown") ?? .unknown }
     var identity: String { kind + "/" + id }
     var symbol: String { switch kind { case "document": "doc.text"; case "input": "keyboard"; case "note": "note.text"; case "analysis": "sparkles"; case "daily": "calendar"; case "memory": "bookmark"; default: "waveform" } }
     var kindTitle: String { switch kind { case "document": "导入资料"; case "input": "本地输入"; case "note": "笔记"; case "analysis": "AI 每日分析"; case "daily": "每日记录"; case "memory": "长期记忆"; default: "原音文字" } }

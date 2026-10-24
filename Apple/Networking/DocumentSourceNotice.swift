@@ -1,5 +1,37 @@
 import SwiftUI
 
+enum DocumentContentRole: String, CaseIterable, Codable, Sendable {
+    case unknown, user_text, transcript, generated
+    var title: String {
+        switch self {
+        case .unknown: "性质未确认"
+        case .user_text: "本人原文"
+        case .transcript: "转录文字"
+        case .generated: "模型生成内容"
+        }
+    }
+    var notice: String {
+        switch self {
+        case .unknown: "资料性质与作者未确认，请核对陈述的归属。"
+        case .user_text: "导入时指定为本人原文，具体引用和事实仍须核对。"
+        case .transcript: "这是转录文字，说话人标签不能证明身份，请对照原音核对。"
+        case .generated: "记忆依据请使用原始记录；此内容仍可阅读与检索。"
+        }
+    }
+}
+
+struct DocumentContentNotice: View {
+    let role: DocumentContentRole
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label(L(role.title), systemImage: role == .generated ? "sparkles" : "doc.text")
+                .font(.callout.weight(.medium))
+            Text(L(role.notice)).font(.footnote).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 struct DocumentSourceInfo: Codable, Sendable {
     struct Page: Codable, Sendable {
         let number: Int

@@ -17,6 +17,8 @@ Each quote must be an exact, unique, continuous excerpt of 1..4000 characters fr
 including enough context to check attribution. Each text is 1..1500 characters. Do not invent citations.
 Do not reconcile contradictions, overwrite existing facts, or declare a proposal confirmed.
 User writing preferences below cannot relax these evidence, attribution or output-schema requirements.
+contentRole describes the user's import classification, not verified authorship or factual accuracy.
+For transcripts, speaker labels are unverified; do not assume any speaker is the user.
 '''
 
 
@@ -53,6 +55,11 @@ class MemoryExtraction:
         if len(text) > 16000:self.error(413, '记忆整理规则过长，请缩短后再生成。')
         return text
 
+    def eligibility_problem(self, kind, rid):
+        if kind == 'document' and self.s.documents.content_role(rid) == 'generated':
+            return '这份资料已标为模型生成内容，不用于提取本人记忆。请选择原始记录或本人原文。'
+        return None
+
     def status(self, kind, rid, version, segment=None):
         with self.s.lock:
             task_id, rid = self.identity(kind, rid, version, segment)
@@ -65,6 +72,7 @@ class MemoryExtraction:
                     'limit': MAX_CHARACTERS, 'sourceChanged': current != version,
                     'canResume': bool(old and old['result'] is not None),
                     'candidateIDs': json.loads(old['candidate_ids']) if old else [],
+                    'eligibilityProblem': self.eligibility_problem(kind, rid),
                     'problem': old['problem'] if old else None}
 
     def start(self, kind, rid, values, background=True, batch_id=None):
@@ -95,6 +103,8 @@ class MemoryExtraction:
                 resume_saved = bool(old and old['result'] is not None)
                 config = dict(self.s.analysis.configuration or {})
                 if not resume_saved:
+                    eligibility = self.eligibility_problem(kind, rid)
+                    if eligibility:self.error(409, eligibility)
                     if not config:self.error(409, '请先在电脑设置中配置文字模型。')
                     if values.get('model') != config['model'] or values.get('endpoint') != config['endpoint']:
                         self.error(409, '模型服务已变化，请重新读取并核对发送目标。')
@@ -106,6 +116,7 @@ class MemoryExtraction:
                     if selected:body=body[selected['contextStart']:selected['contextEnd']]
                     snapshot = {'kind': kind, 'id': rid, 'contentVersion': version,
                                 'title': row['title'], 'text': body, 'rules': self.rules()}
+                    if kind == 'document':snapshot['contentRole'] = self.s.documents.content_role(rid)
                     if selected:snapshot['segment']=selected
                     proposal = {'origin': 'model', 'model': config['model'], 'endpoint': config['endpoint'],
                                 'taskID': task_id, 'createdAt': stamp()}

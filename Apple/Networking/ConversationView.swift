@@ -224,9 +224,9 @@ struct KnowledgeSourceReader: View {
                         Label(L(notice), systemImage: "info.circle").font(.callout).foregroundStyle(.secondary)
                     }
                     if let info = (currentSource ?? source).documentInfo { DocumentSourceNotice(info: info) }
+                    if source.kind == "document" { DocumentContentNotice(role: (currentSource ?? source).documentRole) }
                     if loaded && text.isEmpty { Text("这条记录还没有文字。").foregroundStyle(.secondary) }
                     if let metadata = documentParts.header {
-                        Text("作者尚未确认，请核对资料中陈述的归属。").font(.caption).foregroundStyle(.secondary)
                         MarkdownReader(text: documentParts.body)
                         DisclosureGroup("资料信息") { Text(verbatim: metadata).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
                     } else {
@@ -235,7 +235,9 @@ struct KnowledgeSourceReader: View {
                     if let error { Text(L(error)).font(.caption).foregroundStyle(.secondary); Button("重新读取") { Task { await read(reset: true) } } }
                     if loading { ProgressView() }
                     if nextOffset != nil, error == nil { Button("继续读取") { Task { await read(reset: false) } }.disabled(loading) }
-                    if ["note", "recording", "input", "document"].contains(source.kind), loaded, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if ["note", "recording", "input", "document"].contains(source.kind), loaded,
+                       !(source.kind == "document" && (currentSource ?? source).documentRole == .generated),
+                       !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                         Divider()
                         Button("提出记忆建议", systemImage: "bookmark.badge.plus") { proposing = true }.disabled(loading || error != nil)
                         if proposalSaved { Text("已加入待确认记忆。").font(.caption).foregroundStyle(.secondary) }

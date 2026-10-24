@@ -2041,3 +2041,17 @@
 "资料库未能启动，请检查应用是否完整及连接端口是否被占用。" = "The library could not start. Check that the app is complete and its connection port is available.";
 
 "本机资料库已停止。已有资料保留，请重新打开。" = "The local library stopped. Your saved data is retained. Reopen the library to continue.";
+
+"性质未确认" = "Content type unconfirmed";
+"本人原文" = "My original writing";
+"转录文字" = "Transcript";
+"模型生成内容" = "Model-generated content";
+"资料性质与作者未确认，请核对陈述的归属。" = "The content type and author are unconfirmed. Check who each statement belongs to.";
+"导入时指定为本人原文，具体引用和事实仍须核对。" = "Marked as your original writing during import. Individual quotes and facts still need review.";
+"这是转录文字，说话人标签不能证明身份，请对照原音核对。" = "This is a transcript. Speaker labels do not establish identity; check the original audio.";
+"记忆依据请使用原始记录；此内容仍可阅读与检索。" = "Use original records for personal memory evidence.";
+"这批资料的性质" = "Content type for this batch";
+"选择适用于本批所有文件的性质；混合资料请分批导入，无法确定时保留未确认。更正性质会另存版本。" = "Choose the type that applies to every file in this batch. Import mixed types separately or leave them unconfirmed. A corrected type is saved as a new version.";
+"资料性质不受支持，请重新选择。" = "This content type is not supported. Choose it again.";
+"这份资料已标为模型生成内容，不用于提取本人记忆。请选择原始记录或本人原文。" = "This source is marked as model-generated content and cannot be used to extract personal memories. Choose original records or your own writing.";
+"这份资料已标为模型生成内容，不作为本人记忆的原始依据。请选择原始记录。" = "This source is marked as model-generated content and cannot serve as original evidence for a personal memory. Choose the original records.";

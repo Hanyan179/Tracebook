@@ -9,6 +9,7 @@ struct BatchReference: Codable, Sendable {
 }
 private struct BatchSource: Decodable, Sendable {
     let id: String; let kind: String; let title: String; let date: String; let textAvailable: Bool
+    var contentRole: String?
     var identity: String { kind + "/" + id }
     var reference: BatchReference { .init(kind: kind, id: id) }
 }
@@ -169,6 +170,10 @@ private struct MemoryBatchSelectionView: View {
                             VStack(alignment: .leading, spacing: 6) {
                                 Text(verbatim: source.title).fixedSize(horizontal: false, vertical: true)
                                 Text(verbatim: source.date).font(.caption).foregroundStyle(.secondary)
+                                if source.kind == "document" {
+                                    Text(L((DocumentContentRole(rawValue: source.contentRole ?? "unknown") ?? .unknown).title))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
                                 if !source.textAvailable { Text("尚无文字").font(.caption).foregroundStyle(.secondary) }
                             }
                         }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading).padding(.vertical, 6)

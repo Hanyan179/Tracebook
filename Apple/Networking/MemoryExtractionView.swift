@@ -11,6 +11,7 @@ private struct MemoryExtractionState: Decodable, Sendable {
     let canResume: Bool
     let candidateIDs: [UUID]
     let problem: String?
+    let eligibilityProblem: String?
 }
 
 /// Generating is an explicit action on one source; closing the sheet leaves its task intact.
@@ -33,12 +34,13 @@ struct MemoryExtractionSection: View {
         Group {
             Section("所选资料") {
                 Label(source.title, systemImage: source.symbol)
+                if source.kind == "document" { DocumentContentNotice(role: source.documentRole) }
                 if let state {
                     Text(LF(state.characters > state.limit ? "资料完整文字共 %d 个字符；发送范围将在选择后确认。" : "本次包含这份资料的完整文字，共 %d 个字符。", state.characters))
                         .font(.callout).foregroundStyle(.secondary)
                     if state.sourceChanged {
                         Text("原文已变化，请重新打开资料后生成。").foregroundStyle(.secondary)
-                    } else if state.characters > state.limit {
+                    } else if state.characters > state.limit, state.eligibilityProblem == nil {
                         Text("这份资料较长，可以选择片段后分批整理。").foregroundStyle(.secondary)
                         Button("选择片段并整理") { choosingSegments = true }.disabled(requesting)
                     }
@@ -63,6 +65,8 @@ struct MemoryExtractionSection: View {
                             Text("建议已保存到资料库，文字文件尚待恢复。重试不会再次请求模型。")
                                 .font(.callout).foregroundStyle(.secondary)
                             Button("重试保存") { start() }.disabled(requesting)
+                        } else if let eligibility = state.eligibilityProblem {
+                            Text(L(eligibility)).foregroundStyle(.secondary)
                         } else if state.characters > state.limit {
                             Text("长资料按片段整理，请先在上方选择范围。").font(.callout).foregroundStyle(.secondary)
                         } else if state.configured {

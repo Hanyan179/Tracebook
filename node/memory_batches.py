@@ -61,7 +61,8 @@ class MemoryBatches:
                 where+=' AND (sort_date<? OR (sort_date=? AND id<?))';args += [cursor[1],cursor[1],cursor[2]]
             rows=self.db.execute('SELECT id,kind,title,day,sort_date,length(trim(body)) AS text_size FROM library_items WHERE '+where+' ORDER BY sort_date DESC,id DESC LIMIT 41',args).fetchall()
             page=rows[:40]
-            return {'items':[{'id':r['id'],'kind':r['kind'],'title':r['title'],'date':r['day'],'textAvailable':r['text_size']>0} for r in page],
+            return {'items':[{'id':r['id'],'kind':r['kind'],'title':r['title'],'date':r['day'],'textAvailable':r['text_size']>0,
+                             'contentRole':self.s.documents.content_role(r['id']) if kind=='document' else None} for r in page],
                     'total':total,'nextCursor':encoded([signature,page[-1]['sort_date'],page[-1]['id']]) if len(rows)>40 else None}
 
     def references(self, values):
@@ -92,6 +93,8 @@ class MemoryBatches:
                 with self.s.lock:
                     row,text,version=self.s.memories.source(ref['kind'],ref['id'])
                     item.update(title=row['title'],date=row['day'],contentVersion=version,characters=len(text))
+                    eligibility = self.s.memory_extraction.eligibility_problem(ref['kind'], ref['id'])
+                    if eligibility:self.error(409, eligibility)
                 if ref.get('segment') and version!=ref['contentVersion']:
                     self.error(409,'原文已变化，请重新读取并选择片段。')
                 selected=self.s.memory_segments.select(text,version,ref.get('segment'))

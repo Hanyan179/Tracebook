@@ -119,6 +119,8 @@ class MemorySegments:
         rid=canonical_id(rid)
         with self.s.lock:
             row,text,version=self.s.memories.source(kind,rid)
+            eligibility = self.s.memory_extraction.eligibility_problem(kind, rid)
+            if eligibility:self.error(409, eligibility)
             if expected is not None and expected!=version:self.error(409,'原文已变化，请重新读取并选择片段。')
             title,date=row['title'],row['day']
         ranges=self.ranges(text,version)  # Unicode work must not block status/pause or source edits.

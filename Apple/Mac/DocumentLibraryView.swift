@@ -19,6 +19,8 @@ private struct DocumentPreview: Decodable, Identifiable, Sendable {
     let warnings: [Warning]
     let samples: [Sample]
     let pdfs: [PDFCoverage]?
+    let sourceRoles: [SourceRole]?
+    struct SourceRole: Decodable, Sendable { let name: String; let contentRole: String }
     struct PDFCoverage: Decodable, Sendable {
         let name: String
         let pages: Int
@@ -62,6 +64,7 @@ private struct DocumentPayload: Encodable, Sendable {
     var text: String?
     var data: String?
     var error: String?
+    var contentRole: String?
 }
 private struct DocumentPreparation: Decodable, Sendable {
     let id: String
@@ -88,6 +91,7 @@ struct DocumentLibraryView: View {
     @State private var preparation: DocumentPreparation?
     @State private var reread = 0
     @State private var cancelling = false
+    @State private var contentRole = DocumentContentRole.unknown
     private var savedPreparation: String { "documents.preparation." + workspace.endpoint }
 
     var body: some View {
@@ -103,6 +107,13 @@ struct DocumentLibraryView: View {
                 }
                 Text("原文件保持原位。同一份资料不会重复导入；文件变化会另存版本，保留已有内容和人工修改。资料不会自动发送给模型或成为本人记忆。")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                VStack(alignment: .leading, spacing: 6) {
+                    Picker("这批资料的性质", selection: $contentRole) {
+                        ForEach(DocumentContentRole.allCases, id: \.self) { role in Text(L(role.title)).tag(role) }
+                    }.pickerStyle(.menu).disabled(busy || preparingID != nil)
+                    Text("选择适用于本批所有文件的性质；混合资料请分批导入，无法确定时保留未确认。更正性质会另存版本。")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
                 if let problem { Text(L(problem)).foregroundStyle(.secondary).textSelection(.enabled) }
                 if let result { Text(verbatim: result).font(.callout) }
                 if busy { ProgressView().controlSize(.small) }
@@ -128,6 +139,7 @@ struct DocumentLibraryView: View {
                                     VStack(alignment: .leading, spacing: 6) {
                                         Text(verbatim: item.title).font(.body)
                                         Text(verbatim: item.date).font(.caption).foregroundStyle(.secondary)
+                                        Text(L(item.documentRole.title)).font(.caption).foregroundStyle(.secondary)
                                     }
                                     Spacer()
                                     Image(systemName: "chevron.right").foregroundStyle(.secondary)
@@ -164,7 +176,16 @@ struct DocumentLibraryView: View {
                         LabeledContent("可新增资料", value: String(value.added))
                         LabeledContent("重复内容", value: String(value.duplicates))
                         if value.redacted > 0 { Text(LF("%d 份资料中的常见凭证已隐藏。", value.redacted)) }
-                        ForEach(Array(value.titles.enumerated()), id: \.offset) { _, title in Text(verbatim: title).font(.caption) }
+                        if let roles = value.sourceRoles {
+                            ForEach(Array(roles.enumerated()), id: \.offset) { _, item in
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Text(verbatim: item.name)
+                                    Text(L((DocumentContentRole(rawValue: item.contentRole) ?? .unknown).title)).foregroundStyle(.secondary)
+                                }.font(.caption)
+                            }
+                        } else {
+                            ForEach(Array(value.titles.enumerated()), id: \.offset) { _, title in Text(verbatim: title).font(.caption) }
+                        }
                     }
                     if !value.warnings.isEmpty {
                         Section("未导入的文件") {
@@ -219,11 +240,13 @@ struct DocumentLibraryView: View {
         guard urls.count <= 100 else { problem = "每次请选择 1 至 100 份文字资料。";return }
         busy = true;problem = nil;result = nil
         let target = workspace.endpoint
+        let selectedRole = contentRole.rawValue
         Task {
             defer { if workspace.endpoint == target, preparingID == nil { busy = false } }
             do {
                 guard let client = workspace.client else { throw NodeFailure(message: "请先连接资料库。") }
-                let files = await Task.detached(priority: .userInitiated) { Self.readFiles(urls) }.value
+                var files = await Task.detached(priority: .userInitiated) { Self.readFiles(urls) }.value
+                for index in files.indices { files[index].contentRole = selectedRole }
                 guard client.endpoint == workspace.client?.endpoint else { throw NodeFailure(message: "资料库连接已变化，请重新选择文件。") }
                 let id = UUID().uuidString
                 struct Request: Encodable { let requestID: String; let files: [DocumentPayload] }

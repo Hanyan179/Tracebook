@@ -15,6 +15,12 @@ from pdf_documents import PDFError, extract_pdf
 NAMESPACE = uuid.UUID('2132fb96-e68f-4a7b-8bd2-697b876fcb0d')
 MAX_REQUEST = 16 * 1024 * 1024
 MAX_FILE = 2 * 1024 * 1024
+CONTENT_ROLES = {
+    'unknown': '性质未确认',
+    'user_text': '本人原文（导入时指定）',
+    'transcript': '转录文字（说话人未确认）',
+    'generated': '模型生成内容',
+}
 
 
 class DocumentImports:
@@ -132,6 +138,9 @@ class DocumentImports:
                 self.error(400, '资料信息格式不正确。')
             name = re.sub(r'[\x00-\x1f]', ' ', Path(str(value.get('name', ''))).name)[:160]
             text = value.get('text')
+            role = value.get('contentRole', 'unknown')
+            if not isinstance(role, str) or role not in CONTENT_ROLES:
+                self.error(400, '资料性质不受支持，请重新选择。')
             suffix = Path(name).suffix.lower()
             reason = value.get('error')
             details = {}
@@ -188,6 +197,10 @@ class DocumentImports:
             if suffix == '.pdf':hidden = details['redacted']
             else:text, hidden = redact(text.lstrip('\ufeff').replace('\r\n', '\n').replace('\r', '\n'))
             signature = hashlib.sha256((('pdf-v1\0'+details['originalFileSHA256']+'\0') if details else '').encode()+text.encode()).hexdigest()
+            # Preserve legacy IDs for unclassified imports. A different explicit
+            # classification is a new revision, never an in-place trust upgrade.
+            if role != 'unknown':
+                signature = hashlib.sha256(('document-role-v1\0'+role+'\0'+signature).encode()).hexdigest()
             rid = str(uuid.uuid5(NAMESPACE, signature)).upper()
             if rid in seen:
                 duplicate += 1
@@ -199,6 +212,7 @@ class DocumentImports:
                     'emptyPages': [p['number'] for p in details['pages'] if p['status'] == 'empty'],
                     'failedPages': [p['number'] for p in details['pages'] if p['status'] == 'unreadable'],
                     'parserWarnings': details['parserWarnings']})
+            if role != 'unknown':details = {**details, 'contentRole': role}
             source = value.get('sourcePath')
             source = source if isinstance(source, str) and 0 < len(source) <= 4096 else name
             moment = self.stamp()
@@ -215,13 +229,14 @@ class DocumentImports:
                 existing = bool(self.s.db.execute('SELECT 1 FROM documents WHERE id=?', (rid,)).fetchone())
             items.append({'id': rid, 'title': name, 'text': text, 'source': source, 'format': suffix.lstrip('.'),
                           'signature': signature, 'created_at': moment, 'dateBasis': date_basis,
-                          'redacted': hidden, 'existing': existing, 'details': details})
+                          'redacted': hidden, 'existing': existing, 'details': details, 'contentRole': role})
         rid = preparation_id or str(uuid.uuid4()).upper()
         report = {'id': rid, 'selected': len(files), 'accepted': len(items),
                   'added': sum(not i['existing'] for i in items),
                   'duplicates': duplicate+sum(i['existing'] for i in items),
                   'redacted': sum(i['redacted'] for i in items), 'warnings': warnings,
                   'titles': [i['title'] for i in items], 'pdfs': details_report,
+                  'sourceRoles': [{'name': i['title'], 'contentRole': i['contentRole']} for i in items],
                   'samples': [{'name': i['title'], 'text': i['text'][:400]} for i in items[:3]]}
         if fingerprint:report['requestHash'] = fingerprint
         data = json.dumps(items, ensure_ascii=False).encode()
@@ -267,20 +282,25 @@ class DocumentImports:
                     basis = '文件修改时间' if item['dateBasis'] == 'modified' else '导入时间（文件时间未知）'
                     body = '# '+item['title']+'\n\n来源：导入资料\n格式：'+item['format']+'\n'+basis+'：'+item['created_at']+'\n'
                     body += '作者：未确认。资料内容不自动成为本人事实或长期记忆。\n'
+                    role = item.get('contentRole', 'unknown')
+                    if role != 'unknown':
+                        body += '资料性质：'+CONTENT_ROLES[role]+'。此标记不代表内容已核实。\n'
+                        if role == 'generated':
+                            body += '记忆整理：不从模型生成内容提取本人事实，请回到原始来源核对。\n'
                     if previous:
                         body += '此前导入版本：['+previous+']('+previous+'.md)\n'
                         versions += 1
                     if item['redacted']:
                         body += '已隐藏识别到的常见凭证；原文件未修改。\n'
                     details = item.get('details', {})
-                    if details:
+                    if details.get('format') == 'pdf':
                         body += 'PDF 提取文字：保留文件页序；未识别图片中的文字，阅读顺序与表格可能需要校对。\n'
                         body += '原文件仍保留在选择的位置；本资料夹保存提取文字。\n'
                     body += '\n---\n\n'
-                    if details:
+                    if details.get('format') == 'pdf':
                         details = {**details, 'pages': [{**p, 'start': p['start']+len(body), 'end': p['end']+len(body)} for p in details['pages']]}
                     body += item['text']+'\n'
-                    if details:details['textVersion'] = hashlib.sha256(body.encode()).hexdigest()
+                    if details.get('format') == 'pdf':details['textVersion'] = hashlib.sha256(body.encode()).hexdigest()
                     output = self.s.export('documents/'+item['id']+'.md', body, item['signature'])
                     if output['state'] == 'conflict':
                         self.error(409, '资料目标已有人工内容，已保留，请先核对另存版本。')
@@ -315,10 +335,15 @@ class DocumentImports:
     def info(self, rid, version):
         row = self.s.db.execute('SELECT details FROM documents WHERE id=?', (rid,)).fetchone()
         details = json.loads(row['details']) if row else {}
-        if not details:return None
+        if details.get('format') != 'pdf':return None
         valid = details['textVersion'] == version
         return {**details, 'rangesValid': valid,
                 'pages': details['pages'] if valid else [{k:v for k,v in p.items() if k in ('number','status')} for p in details['pages']]}
+
+    def content_role(self, rid):
+        row = self.s.db.execute('SELECT details FROM documents WHERE id=?', (rid,)).fetchone()
+        role = json.loads(row['details']).get('contentRole', 'unknown') if row else 'unknown'
+        return role if role in CONTENT_ROLES else 'unknown'
 
     def listing(self, parameters):
         try:

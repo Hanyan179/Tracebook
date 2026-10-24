@@ -96,6 +96,8 @@ class Memories:
                 self.error(400, '来源格式不正确。')
             kind, rid = reference.get('kind'), canonical_id(reference.get('id'))
             row, body, version = self.source(kind, rid)
+            if kind == 'document' and self.s.documents.content_role(rid) == 'generated':
+                self.error(409, '这份资料已标为模型生成内容，不作为本人记忆的原始依据。请选择原始记录。')
             if not legacy and reference.get('contentVersion') != version:
                 self.error(409, '来源已变化，请重新读取原文后提出建议。')
             quote = body[:4000] if legacy else reference.get('quote')

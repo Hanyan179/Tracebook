@@ -186,8 +186,10 @@ class Knowledge:
                 'uri': 'library://' + row['kind'] + '/' + row['id']}
         if row['kind'] == 'document':
             result['documentInfo'] = self.s.documents.info(row['id'], result['contentVersion'])
+            result['contentRole'] = self.s.documents.content_role(row['id'])
         result['evidenceType']={'analysis':'model_analysis','memory':'user_confirmed','input':'local_user_input','document':'imported_document',
                                 'daily':'source_collection'}.get(row['kind'],'original_text')
+        if result.get('contentRole') == 'generated':result['evidenceType'] = 'model_generated_document'
         if row['kind']=='analysis':
             result['analysisFreshness']=self.s.analysis.status(row['id'])['freshness']
         return result
