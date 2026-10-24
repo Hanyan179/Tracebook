@@ -112,5 +112,9 @@ class ExchangeTests(unittest.TestCase):
             status,data=call('GET','/v1/export');self.assertEqual(status,200)
             with zipfile.ZipFile(io.BytesIO(data)) as archive:
                 self.assertEqual(len(json.loads(archive.read('manifest.json'))['notes']),1)
+            # Receiving Content-Length bytes does not mean the handler's finally
+            # block has finished. Wait on its lifecycle, not an arbitrary sleep.
+            with server.requests_condition:
+                self.assertTrue(server.requests_condition.wait_for(lambda: server.active_requests == 0, timeout=5))
             self.assertFalse(list(self.store.staging.glob('library-export-*')))
         finally:server.shutdown();server.server_close();worker.join()
