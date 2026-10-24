@@ -69,6 +69,14 @@ struct DocumentSourceInfo: Codable, Sendable {
     var parts: [DocumentPart]?
     var blocks: [DocumentBlock]?
     var warnings: [DocumentStructureWarning]?
+    var originalCopy: DocumentOriginalCopy?
+}
+
+struct DocumentOriginalCopy: Codable, Sendable {
+    let state: String
+    let problem: String?
+    let byteCount: Int?
+    let sha256: String?
 }
 
 struct DocumentPart: Codable, Sendable {

@@ -14,6 +14,8 @@ struct LibraryBackupReceipt: Decodable, Identifiable, Sendable {
     let documents: Int
     let notes: Int
     let memories: Int
+    let originalDocuments: Int?
+    let modifiedOriginalDocuments: Int?
     var date: String {
         ISO8601DateFormatter().date(from: createdAt)?.formatted(
             Date.FormatStyle(date: .abbreviated, time: .shortened).locale(AppLanguage.current.locale)) ?? createdAt
@@ -130,9 +132,9 @@ struct LibraryBackupSection: View {
     var body: some View {
         Section("备份与还原") {
             VStack(alignment: .leading, spacing: 10) {
-                Text("备份包含已接收原音、归档文字、记忆、来源记录和修订历史。外部来源目录与尚未留存的原始附件不包含在内。")
+                Text("备份包含已接收原音、归档文字、已保留的文档原件、记忆与修订历史。外部来源目录及未保留的附件不包含在内。")
                     .font(.callout).fixedSize(horizontal: false, vertical: true)
-                Text("备份未加密，请妥善保存。密钥、设备连接口令和外部读取授权不随备份迁移。")
+                Text("备份未加密，请妥善保存。应用的模型密钥、设备连接口令和外部读取授权不随备份迁移。")
                     .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 ViewThatFits(in: .horizontal) {
                     HStack { actions }
@@ -160,6 +162,12 @@ struct LibraryBackupSection: View {
                         backupValue("备份时间", item.receipt.date)
                         backupValue("原音", String(item.receipt.recordings))
                         backupValue("导入资料", String(item.receipt.documents))
+                        backupValue("文档原件副本", String(item.receipt.originalDocuments ?? 0))
+                        if let modified = item.receipt.modifiedOriginalDocuments, modified > 0 {
+                            backupValue("有改动的原件副本", String(modified))
+                            Text("这些副本与导入时的原件不同。恢复会保留修改后的文件，原件核对状态仍会提示差异。")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
                         backupValue("笔记", String(item.receipt.notes))
                         backupValue("记忆（含待确认与停用）", String(item.receipt.memories))
                         backupValue("文件大小（展开后）", item.receipt.bytes.formatted(.byteCount(style: .file).locale(AppLanguage.current.locale)))
@@ -230,7 +238,12 @@ struct LibraryBackupSection: View {
     }
     private func chooseBackup() {
         let panel = NSSavePanel(); panel.allowedContentTypes = [.zip]
-        panel.nameFieldStringValue = "Tracebook-\(Date.now.formatted(.iso8601.year().month().day().dateSeparator(.dash))).zip"
+        let date = DateFormatter()
+        date.locale = Locale(identifier: "en_US_POSIX")
+        date.calendar = Calendar(identifier: .gregorian)
+        date.timeZone = .current
+        date.dateFormat = "yyyy-MM-dd"
+        panel.nameFieldStringValue = "Tracebook-\(date.string(from: .now)).zip"
         panel.message = L("选择新的备份文件名。备份期间本机资料库会短暂停止，完成后重新打开。")
         guard panel.runModal() == .OK, let file = panel.url else { return }
         Task { await controller.create(at: file, workspace: workspace) }

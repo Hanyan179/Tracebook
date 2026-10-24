@@ -143,6 +143,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(202,store.documents.prepare(self.body_json(MAX_REQUEST)))
             if len(parts)==4 and parts[3]=='preparation' and self.command=='GET':
                 return self.send_json(200,store.documents.preparation(parts[2]))
+            if len(parts)==4 and parts[3]=='original' and self.command=='GET':
+                return self.send_json(200,store.documents.original(parts[2]))
             if len(parts)==4 and self.command=='POST':
                 self.body_json()
                 if parts[3]=='commit':return self.send_json(200,store.documents.commit(parts[2]))

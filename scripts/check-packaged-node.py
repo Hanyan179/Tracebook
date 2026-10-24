@@ -121,17 +121,22 @@ def main():
                 assert not preview['configured'] and preview['items'][0]['source']['excerpt'] == note['text']
                 assert request(answer_path + 'answer')['job'] is None
                 preparation=request('/v1/documents/prepare',{'requestID':str(uuid.uuid4()),'files':[
-                    {'name':'synthetic-package.pdf','data':base64.b64encode(synthetic_pdf()).decode()}]})
+                    {'name':'synthetic-package.pdf','data':base64.b64encode(synthetic_pdf()).decode(),'retainOriginal':True}]})
                 for _ in range(100):
                     state=request('/v1/documents/'+preparation['id']+'/preparation')
                     if state['state']!='preparing':break
                     time.sleep(.1)
                 assert state['state']=='ready' and state['preview']['pdfs'][0]['emptyPages']==[2]
                 assert request('/v1/documents/'+preparation['id']+'/commit',{})['added']==1
-                pdf=request('/v1/documents')['items'][0]
+                documents=request('/v1/documents')
+                assert documents['originalCopiesSupported']
+                pdf=documents['items'][0]
                 assert pdf['documentInfo']['rangesValid'] and pdf['documentInfo']['pageCount']==2
                 if sys.platform=='darwin':assert pdf['documentInfo']['parser']=='apple-pdfkit'
                 assert 'Synthetic PDF project evidence.' in request('/v1/sources/document/'+pdf['id'])['text']
+                assert pdf['documentInfo']['originalCopy']['state']=='available'
+                original=request('/v1/documents/'+pdf['id']+'/original')
+                assert base64.b64decode(original['data'])==synthetic_pdf()
                 print('Packaged node started; memory, segmentation, answer preview and isolated PDF import passed.')
             finally:
                 process.terminate()
@@ -149,6 +154,7 @@ def main():
         saved=backup_command('create','--data',root/'node','--destination',bundle_file)
         preview=backup_command('inspect','--file',bundle_file,'--scratch',root)
         assert preview['archiveSHA256']==saved['archiveSHA256']
+        assert preview['originalDocuments']==1 and preview['modifiedOriginalDocuments']==0
         restored=root/'restored'
         result=backup_command('restore','--file',bundle_file,'--destination',restored,
                               '--sha256',preview['archiveSHA256'],'--scratch',root)
@@ -159,6 +165,7 @@ def main():
             assert db.execute("SELECT value FROM settings WHERE key='memoryDeliveryPaused'").fetchone()[0]=='true'
         assert (restored/'Library/memory.md').read_bytes()==(root/'node/Library/memory.md').read_bytes()
         assert (restored/'Library/memories'/(cid+'.json')).read_bytes()==(root/'node/Library/memories'/(cid+'.json')).read_bytes()
+        assert (restored/'Library/originals/documents'/(pdf['id']+'.pdf')).read_bytes()==synthetic_pdf()
         print('Packaged backup create, inspect and independent restore passed; credentials excluded and automatic work paused.')
         location_cli=script.with_name('library_location_cli.py')
         def location_command(*arguments):

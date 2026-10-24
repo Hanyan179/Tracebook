@@ -226,6 +226,7 @@ struct KnowledgeSourceReader: View {
                     }
                     if let info = (currentSource ?? source).documentInfo { DocumentSourceNotice(info: info) }
                     DocumentRevisionNotice(source: currentSource ?? source, snapshot: currentSource == nil)
+                    DocumentOriginalNotice(workspace: workspace, source: currentSource ?? source)
                     if source.kind == "document" { DocumentContentNotice(role: (currentSource ?? source).documentRole) }
                     if loaded && text.isEmpty { Text("这条记录还没有文字。").foregroundStyle(.secondary) }
                     if let metadata = documentParts.header {

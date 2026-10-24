@@ -165,7 +165,7 @@ class DOCXImportTests(unittest.TestCase):
         self.assertEqual(preview['accepted'],1);self.assertEqual(preview['duplicates'],1)
         self.assertEqual(preview['docxDocuments'][0]['blocks'],2)
         self.assertEqual(self.store.documents.listing({})['count'],0)
-        report = self.store.documents.commit(preview['id']);self.assertEqual(report,{'added':1,'skipped':1,'versions':0})
+        report = self.store.documents.commit(preview['id']);self.assertEqual(report,{'added':1,'skipped':1,'versions':0,'originalsSaved':0})
         source = self.store.documents.listing({})['items'][0]
         current = self.store.knowledge.read_source('document',source['id'],['documents'],{})
         info = current['documentInfo'];self.assertEqual(info['format'],'docx');self.assertTrue(info['rangesValid'])

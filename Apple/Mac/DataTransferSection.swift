@@ -41,7 +41,7 @@ struct DataTransferSection: View {
                 Spacer()
                 Button("导出资料包") { chooseExport() }.disabled(busy || !workspace.connected)
             }
-            Text("包含转写、笔记、对话、每日记录与分析、记忆、提示词和原始导入文件；不包含原音和密钥。")
+            Text("包含转写、笔记、对话、每日记录与分析、记忆、提示词和聊天导入原文件；不包含原音、文档原件和应用密钥。")
                 .font(.caption).foregroundStyle(.secondary)
             if busy { ProgressView().controlSize(.small) }
             if let result { Text(L(result)).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }

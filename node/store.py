@@ -531,6 +531,14 @@ class Store:
             output.mkdir(parents=True, exist_ok=True)
             if output != self.output:
                 previous = self.output
+                from document_originals import OriginalError, read_original, retain_original
+                for row in self.db.execute('SELECT id,format,details FROM documents'):
+                    details = json.loads(row['details'])
+                    if details.get('original') is not None:
+                        try:
+                            raw = read_original(previous, row['id'], row['format'], details)
+                            retain_original(output, row['id'], row['format'], raw, details['original']['sha256'])
+                        except OriginalError as error:raise StoreError(409, str(error))
                 # Copy owned documents without overwriting anything in the chosen directory.
                 files = list(previous.glob('transcripts/*.md')) + list(previous.glob('daily/*.md')) + list(previous.glob('analysis/*.md'))
                 files += list(previous.glob('prompts/*.md')) + list(previous.glob('notes/*.md')) + list(previous.glob('organization/**/*.json'))

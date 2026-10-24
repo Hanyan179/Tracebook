@@ -6,6 +6,7 @@ struct DocumentPage: Decodable, Sendable {
     let items: [KnowledgeSource]
     let count: Int
     let nextOffset: Int?
+    let originalCopiesSupported: Bool?
 }
 
 private struct DocumentPreview: Decodable, Identifiable, Sendable {
@@ -21,6 +22,8 @@ private struct DocumentPreview: Decodable, Identifiable, Sendable {
     let pdfs: [PDFCoverage]?
     let docxDocuments: [DOCXCoverage]?
     let sourceRoles: [SourceRole]?
+    let originalCopies: [OriginalCopy]?
+    struct OriginalCopy: Decodable, Sendable { let name: String; let state: String; let bytes: Int }
     struct SourceRole: Decodable, Sendable { let name: String; let contentRole: String }
     struct PDFCoverage: Decodable, Sendable {
         let name: String
@@ -68,6 +71,7 @@ private struct DocumentImportReport: Decodable, Sendable {
     let added: Int
     let skipped: Int
     let versions: Int
+    let originalsSaved: Int?
 }
 private struct DocumentPayload: Encodable, Sendable {
     let name: String
@@ -77,6 +81,7 @@ private struct DocumentPayload: Encodable, Sendable {
     var data: String?
     var error: String?
     var contentRole: String?
+    var retainOriginal: Bool?
 }
 private struct DocumentPreparation: Decodable, Sendable {
     let id: String
@@ -104,6 +109,8 @@ struct DocumentLibraryView: View {
     @State private var reread = 0
     @State private var cancelling = false
     @State private var contentRole = DocumentContentRole.unknown
+    @State private var retainOriginal = false
+    @State private var originalsSupported: Bool?
     private var savedPreparation: String { "documents.preparation." + workspace.endpoint }
 
     var body: some View {
@@ -125,6 +132,18 @@ struct DocumentLibraryView: View {
                     }.pickerStyle(.menu).disabled(busy || preparingID != nil)
                     Text("选择适用于本批所有文件的性质；混合资料请分批导入，无法确定时保留未确认。更正性质会另存版本。")
                         .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("保留 PDF 和 DOCX 原文件副本", isOn: $retainOriginal)
+                        .disabled(busy || preparingID != nil || originalsSupported != true)
+                    if originalsSupported == false {
+                        Text("此资料库尚不支持保留原件副本，请更新电脑应用后重试。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    if retainOriginal {
+                        Text("原件副本保留文件内容与元数据，并纳入资料库备份；不会自动发给模型。")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 if let problem { Text(L(problem)).foregroundStyle(.secondary).textSelection(.enabled) }
                 if let result { Text(verbatim: result).font(.callout) }
@@ -178,6 +197,7 @@ struct DocumentLibraryView: View {
         }
         .onChange(of: workspace.endpoint) { _, _ in
             preparingID = nil;preparation = nil;preview = nil;busy = false
+            originalsSupported = nil;retainOriginal = false
             problem = "资料库连接已变化，请重新选择文件。"
         }
         .sheet(item: $selected) { KnowledgeSourceReader(workspace: workspace, source: $0).appLanguage() }
@@ -200,6 +220,7 @@ struct DocumentLibraryView: View {
                             ForEach(Array(value.titles.enumerated()), id: \.offset) { _, title in Text(verbatim: title).font(.caption) }
                         }
                     }
+                    originalCopyPreview(value.originalCopies ?? [])
                     if !value.warnings.isEmpty {
                         Section("未导入的文件") {
                             ForEach(Array(value.warnings.enumerated()), id: \.offset) { _, warning in
@@ -218,7 +239,7 @@ struct DocumentLibraryView: View {
                                     if pdf.parserWarnings { Text("解析器报告了格式问题，请对照原文件核查。") }
                                 }.font(.callout).fixedSize(horizontal: false, vertical: true)
                             }
-                            Text("保留文件页序，不识别图片中的文字。阅读顺序与表格可能需要校对；原文件留在原位，资料夹只保存提取文字。")
+                            Text("保留文件页序，不识别图片中的文字。阅读顺序与表格可能需要校对；原件副本按本次选择保存。")
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
                     }
@@ -230,7 +251,7 @@ struct DocumentLibraryView: View {
                                     DocumentStructureCoverage(parts: document.parts, blockCount: document.blocks, warnings: document.warnings)
                                 }.font(.callout)
                             }
-                            Text("原文件保持原位，资料夹仅保存提取文字。").font(.footnote).foregroundStyle(.secondary)
+                            Text("原文件保持原位；原件副本按本次选择保存。").font(.footnote).foregroundStyle(.secondary)
                         }
                     }
                     if !value.samples.isEmpty { Section("内容预览") {
@@ -254,6 +275,25 @@ struct DocumentLibraryView: View {
         }
     }
 
+    @ViewBuilder private func originalCopyPreview(_ originals: [DocumentPreview.OriginalCopy]) -> some View {
+        if !originals.isEmpty {
+            Section("原文件副本") {
+                ForEach(Array(originals.enumerated()), id: \.offset) { _, original in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(verbatim: original.name)
+                        Text(L(original.state == "blocked" ? "提取文字含已识别凭证，未保留原件副本。" : "确认导入后保留原件副本。"))
+                            .font(.caption).foregroundStyle(.secondary)
+                        if original.bytes > 0 {
+                            Text(Int64(original.bytes).formatted(.byteCount(style: .file).locale(AppLanguage.current.locale)))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                Text("原件未经文字脱敏处理，请核对所选文件是否适合保存在资料夹中。")
+                    .font(.footnote).foregroundStyle(.secondary)
+            }
+        }
+    }
     private func choose() {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
@@ -265,12 +305,16 @@ struct DocumentLibraryView: View {
         busy = true;problem = nil;result = nil
         let target = workspace.endpoint
         let selectedRole = contentRole.rawValue
+        let selectedOriginal = retainOriginal && originalsSupported == true
         Task {
             defer { if workspace.endpoint == target, preparingID == nil { busy = false } }
             do {
                 guard let client = workspace.client else { throw NodeFailure(message: "请先连接资料库。") }
                 var files = await Task.detached(priority: .userInitiated) { Self.readFiles(urls) }.value
-                for index in files.indices { files[index].contentRole = selectedRole }
+                for index in files.indices {
+                    files[index].contentRole = selectedRole
+                    files[index].retainOriginal = selectedOriginal
+                }
                 guard client.endpoint == workspace.client?.endpoint else { throw NodeFailure(message: "资料库连接已变化，请重新选择文件。") }
                 let id = UUID().uuidString
                 struct Request: Encodable { let requestID: String; let files: [DocumentPayload] }
@@ -364,6 +408,8 @@ struct DocumentLibraryView: View {
             guard client.endpoint == workspace.client?.endpoint else { return }
             items = offset == 0 ? page.items : items + page.items
             count = page.count;nextOffset = page.nextOffset
+            originalsSupported = page.originalCopiesSupported == true
+            if originalsSupported == false { retainOriginal = false }
         } catch { problem = error.localizedDescription }
     }
     private func commit(_ value: DocumentPreview) async {
@@ -376,6 +422,9 @@ struct DocumentLibraryView: View {
             UserDefaults.standard.removeObject(forKey: key)
             guard client.endpoint == workspace.client?.endpoint else { return }
             result = LF("新增 %d 份资料，跳过 %d 份重复内容，其中 %d 份为更新版本。", report.added, report.skipped, report.versions)
+            if let originals = report.originalsSaved, originals > 0 {
+                result = (result ?? "") + " " + LF("已保留 %d 份原件副本。", originals)
+            }
             preview = nil
             await load();await workspace.libraryChanged()
         } catch { problem = error.localizedDescription }

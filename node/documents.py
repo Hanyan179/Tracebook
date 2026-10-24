@@ -12,6 +12,7 @@ import time
 from local_sources import redact
 from pdf_documents import PDFError, extract_pdf
 from docx_documents import DOCXError, extract_docx
+from document_originals import OriginalError, retain_original, read_original, original_state
 
 NAMESPACE = uuid.UUID('2132fb96-e68f-4a7b-8bd2-697b876fcb0d')
 MAX_REQUEST = 16 * 1024 * 1024
@@ -24,7 +25,7 @@ CONTENT_ROLES = {
 }
 
 
-def archive_header(item, previous):
+def archive_header(item, previous, legacy_original_notice=False):
     """The exact app-written prefix, shared by imports and conservative indexing."""
     basis = '文件修改时间' if item['dateBasis'] == 'modified' else '导入时间（文件时间未知）'
     body = '# '+item['title']+'\n\n来源：导入资料\n格式：'+item['format']+'\n'+basis+'：'+item['created_at']+'\n'
@@ -39,11 +40,13 @@ def archive_header(item, previous):
     details = item.get('details', {})
     if details.get('format') == 'pdf':
         body += 'PDF 提取文字：保留文件页序；未识别图片中的文字，阅读顺序与表格可能需要校对。\n'
-        body += '原文件仍保留在选择的位置；本资料夹保存提取文字。\n'
+        body += ('原文件仍保留在选择的位置；本资料夹保存提取文字。\n' if legacy_original_notice else
+                 '原文件保持原位；此页为提取文字，原件副本状态请在应用中核对。\n')
     elif details.get('format') == 'docx':
         body += 'DOCX 提取文字：按文档结构读取正文、表格与附注，编号表示提取顺序，不是原文件页码。\n'
         body += '样式、自动编号和版式未还原；表格、修订、域结果及遗漏内容请对照原文件。\n'
-        body += '批注与附注不代表本人陈述；原文件保持原位，资料夹仅保存提取文字。\n'
+        body += ('批注与附注不代表本人陈述；原文件保持原位，资料夹仅保存提取文字。\n' if legacy_original_notice else
+                 '批注与附注不代表本人陈述；原文件保持原位，原件副本状态请在应用中核对。\n')
     return body+'\n---\n\n'
 
 
@@ -170,6 +173,9 @@ class DocumentImports:
             suffix = Path(name).suffix.lower()
             reason = value.get('error')
             details = {}
+            raw_original = None
+            retain = value.get('retainOriginal', False)
+            if type(retain) is not bool:self.error(400, '请选择是否保留原文件副本。')
             if preparation_id:
                 with self.s.lock, self.s.db:
                     self.s.db.execute("UPDATE document_previews SET report=? WHERE id=? AND state='preparing'",
@@ -182,6 +188,7 @@ class DocumentImports:
                     try:raw_pdf = base64.b64decode(encoded, validate=True)
                     except (binascii.Error, ValueError):raise PDFError('invalid_pdf')
                     total += len(raw_pdf)
+                    raw_original = raw_pdf
                     if total > 12 * 1024 * 1024:self.error(413, '本批资料超过 12 MB，请分批导入。')
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:raise PDFError('not_processed')
@@ -214,6 +221,7 @@ class DocumentImports:
                     try:raw_docx = base64.b64decode(encoded, validate=True)
                     except (binascii.Error, ValueError):raise DOCXError('invalid_docx')
                     total += len(raw_docx)
+                    raw_original = raw_docx
                     if total > 12 * 1024 * 1024:self.error(413, '本批资料超过 12 MB，请分批导入。')
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:raise DOCXError('not_processed')
@@ -270,6 +278,10 @@ class DocumentImports:
             rid = str(uuid.uuid5(NAMESPACE, signature)).upper()
             if rid in seen:
                 duplicate += 1
+                if retain and raw_original:
+                    prior = next(item for item in items if item['id'] == rid)
+                    if hidden:prior['originalBlocked'] = True
+                    else:prior['originalData'] = base64.b64encode(raw_original).decode()
                 continue
             seen.add(rid)
             if details.get('format') == 'pdf':
@@ -298,7 +310,9 @@ class DocumentImports:
                 existing = bool(self.s.db.execute('SELECT 1 FROM documents WHERE id=?', (rid,)).fetchone())
             items.append({'id': rid, 'title': name, 'text': text, 'source': source, 'format': suffix.lstrip('.'),
                           'signature': signature, 'created_at': moment, 'dateBasis': date_basis,
-                          'redacted': hidden, 'existing': existing, 'details': details, 'contentRole': role})
+                          'redacted': hidden, 'existing': existing, 'details': details, 'contentRole': role,
+                          'originalData': base64.b64encode(raw_original).decode() if retain and raw_original and not hidden else None,
+                          'originalBlocked': bool(retain and raw_original and hidden)})
         rid = preparation_id or str(uuid.uuid4()).upper()
         report = {'id': rid, 'selected': len(files), 'accepted': len(items),
                   'added': sum(not i['existing'] for i in items),
@@ -306,6 +320,9 @@ class DocumentImports:
                   'redacted': sum(i['redacted'] for i in items), 'warnings': warnings,
                   'titles': [i['title'] for i in items], 'pdfs': details_report,
                   'docxDocuments': docx_report,
+                  'originalCopies': [{'name': i['title'], 'state': 'blocked' if i['originalBlocked'] else 'selected',
+                                      'bytes': len(base64.b64decode(i['originalData'])) if i['originalData'] else 0}
+                                     for i in items if i['originalData'] or i['originalBlocked']],
                   'sourceRoles': [{'name': i['title'], 'contentRole': i['contentRole']} for i in items],
                   'samples': [{'name': i['title'], 'text': i['text'][:400]} for i in items[:3]]}
         if fingerprint:report['requestHash'] = fingerprint
@@ -327,7 +344,7 @@ class DocumentImports:
                 self.error(404, '找不到这次资料预览。')
             if row['state'] == 'complete':
                 saved = json.loads(row['report'])
-                return {key: saved[key] for key in ('added', 'skipped', 'versions')}
+                return {key: saved[key] for key in ('added', 'skipped', 'versions', 'originalsSaved') if key in saved}
             if row['state'] != 'preview':self.error(409, '资料预览尚未就绪，请重新选择文件。')
             if (dt.datetime.now(dt.timezone.utc)-dt.datetime.fromisoformat(row['created_at'])).total_seconds() > 1800:
                 self.error(409, '预览已过期，请重新选择资料。')
@@ -339,15 +356,23 @@ class DocumentImports:
             # Within-batch duplicates were removed during preview. Include them
             # in the final result as well as entries already present at commit.
             original_report = json.loads(row['report'])
-            added = versions = 0
+            added = versions = originals_saved = 0
             skipped = max(0, original_report.get('duplicates', 0) - sum(bool(i.get('existing')) for i in items))
             for item in items:
                 path_hash = hashlib.sha256(item['source'].encode()).hexdigest()
                 old = self.s.db.execute('SELECT document_id FROM document_locations WHERE path_hash=?', (path_hash,)).fetchone()
                 previous = old[0] if old and old[0] != item['id'] else None
-                exists = self.s.db.execute('SELECT 1 FROM documents WHERE id=?', (item['id'],)).fetchone()
+                exists = self.s.db.execute('SELECT details FROM documents WHERE id=?', (item['id'],)).fetchone()
                 if exists:
                     skipped += 1
+                    if item.get('originalData'):
+                        details = json.loads(exists['details'])
+                        if details.get('originalFileSHA256') != item['details'].get('originalFileSHA256'):
+                            self.error(409, '原件与已导入资料不一致，请重新选择文件。')
+                        original = self._retain_original(item);originals_saved += 1
+                        with self.s.db:
+                            self.s.db.execute('UPDATE documents SET details=? WHERE id=?',
+                                (json.dumps({**details, 'original': original}), item['id']))
                 else:
                     body = archive_header(item, previous)
                     if previous:versions += 1
@@ -361,6 +386,8 @@ class DocumentImports:
                     output = self.s.export('documents/'+item['id']+'.md', body, item['signature'])
                     if output['state'] == 'conflict':
                         self.error(409, '资料目标已有人工内容，已保留，请先核对另存版本。')
+                    if item.get('originalData'):
+                        details = {**details, 'original': self._retain_original(item)};originals_saved += 1
                     with self.s.db:
                         self.s.db.execute('INSERT INTO documents VALUES (?,?,?,?,?,?,?,?,?,?)',
                             (item['id'], item['title'], item['source'], item['format'], item['signature'],
@@ -369,7 +396,7 @@ class DocumentImports:
                 with self.s.db:
                     self.s.db.execute('INSERT OR REPLACE INTO document_locations VALUES (?,?)', (path_hash, item['id']))
                 self.s.catalog.index_document(item['id'])
-            report = {'added': added, 'skipped': skipped, 'versions': versions}
+            report = {'added': added, 'skipped': skipped, 'versions': versions, 'originalsSaved': originals_saved}
             stored_report = dict(report)
             if original_report.get('requestHash'):
                 stored_report.update(requestHash=original_report['requestHash'], selected=original_report['selected'])
@@ -389,16 +416,36 @@ class DocumentImports:
                 self.s.db.execute("UPDATE document_previews SET state='cancelled' WHERE id=?", (rid,))
         return {'cancelled': True}
 
+    def _retain_original(self, item):
+        try:
+            raw = base64.b64decode(item['originalData'], validate=True)
+            return retain_original(self.s.output, item['id'], item['format'], raw,
+                                   item['details']['originalFileSHA256'])
+        except (ValueError, binascii.Error, OriginalError) as error:
+            self.error(409, str(error) if isinstance(error, OriginalError) else '原件内容与预览不一致，请重新选择文件。')
+
     def info(self, rid, version):
         row = self.s.db.execute('SELECT details FROM documents WHERE id=?', (rid,)).fetchone()
         details = json.loads(row['details']) if row else {}
         if details.get('format') not in ('pdf', 'docx'):return None
         valid = details['textVersion'] == version
+        details = {**details, 'originalCopy': original_state(self.s.output, rid, details['format'], details)}
         if details['format'] == 'docx':
             return {**details, 'rangesValid': valid, 'blocks': details['blocks'] if valid else
                     [{k:v for k,v in b.items() if k not in ('start', 'end')} for b in details['blocks']]}
         return {**details, 'rangesValid': valid,
                 'pages': details['pages'] if valid else [{k:v for k,v in p.items() if k in ('number','status')} for p in details['pages']]}
+
+    def original(self, identifier):
+        from store import canonical_id
+        with self.s.lock:
+            rid = canonical_id(identifier)
+            row = self.s.db.execute('SELECT title,format,details FROM documents WHERE id=?', (rid,)).fetchone()
+            if not row:self.error(404, '找不到这份资料。')
+            try:raw = read_original(self.s.output, rid, row['format'], json.loads(row['details']))
+            except OriginalError as error:self.error(409, str(error))
+            return {'name': row['title'], 'format': row['format'], 'byteCount': len(raw),
+                    'sha256': hashlib.sha256(raw).hexdigest(), 'data': base64.b64encode(raw).decode()}
 
     def content_role(self, rid):
         row = self.s.db.execute('SELECT details FROM documents WHERE id=?', (rid,)).fetchone()
@@ -417,8 +464,10 @@ class DocumentImports:
         role = details.get('contentRole', 'unknown')
         if role not in CONTENT_ROLES:return 0
         for basis in ('modified', 'imported'):
-            prefix = archive_header({**dict(item), 'details': details, 'contentRole': role, 'dateBasis': basis}, item['previous_id'])
-            if body.startswith(prefix):return len(prefix)
+            for legacy in (False, True):
+                prefix = archive_header({**dict(item), 'details': details, 'contentRole': role, 'dateBasis': basis},
+                                        item['previous_id'], legacy_original_notice=legacy)
+                if body.startswith(prefix):return len(prefix)
         return 0
 
     def revision(self, identifier):
@@ -443,4 +492,5 @@ class DocumentImports:
                 item = self.s.knowledge.source_data(source, source['body'])
                 items.append(item)
             return {'items': items, 'count': self.s.db.execute('SELECT COUNT(*) FROM documents').fetchone()[0],
+                    'originalCopiesSupported': True,
                     'nextOffset': offset+40 if len(rows)>40 else None}

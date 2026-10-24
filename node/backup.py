@@ -19,9 +19,10 @@ import unicodedata
 import uuid
 import zipfile
 from zoneinfo import ZoneInfo
+from document_originals import OriginalError, original_metadata, original_name, original_directory
 
 FORMAT = 'tracebook-library-backup'
-VERSION = 1
+VERSION = 2
 MAX_FILES = 100000
 MAX_TOTAL = 256 * 1024 ** 3
 MAX_MANIFEST = 16 * 1024 ** 2
@@ -82,6 +83,9 @@ def safe_name(name):
 
 def library_file(relative):
     p = safe_name(relative)
+    if len(p.parts) == 3 and p.parts[:2] == ('originals', 'documents'):
+        try:return original_name(p.stem, p.suffix.lstrip('.')) == p.name
+        except OriginalError:return False
     return relative in MEMORY_FILES or (len(p.parts) > 1 and p.parts[0] in LIBRARY_ROOTS
         and p.suffix in ('.md', '.json'))
 
@@ -142,10 +146,18 @@ def selected_rows(db, table, output):
     return db.execute('SELECT * FROM '+table+' ORDER BY rowid')
 
 
+def retained_originals(db):
+    for rid, extension, raw_details in db.execute('SELECT id,format,details FROM documents'):
+        details = parse_json(raw_details)
+        try:value = original_metadata(rid, extension, details)
+        except OriginalError as error:raise BackupError(str(error))
+        if value is not None:yield rid, extension, details
+
+
 def inventory(directory, output, db):
     found = []
     require(output.is_dir() and not output.is_symlink(), '资料文件夹不可用，未创建备份。')
-    for name in sorted(LIBRARY_ROOTS | MEMORY_FILES):
+    for name in sorted(LIBRARY_ROOTS | MEMORY_FILES | {'originals'}):
         start = output/name
         if not start.exists() and not start.is_symlink():continue
         paths = [start]
@@ -172,6 +184,10 @@ def inventory(directory, output, db):
                 '已导入的原始聊天文件缺失，未创建备份。')
         found.append(('node/imports/'+path.name, path, fingerprint(path)))
     names = {name for name, _, _ in found}
+    expected_originals = {'library/originals/documents/' + original_name(rid, extension)
+                          for rid, extension, _ in retained_originals(db)}
+    require({name for name in names if name.startswith('library/originals/')} == expected_originals,
+            '原件副本缺失或尚未完成登记，请先完成导入并核对资料夹后再备份。')
     for table, folder in [('notes','notes'), ('documents','documents'), ('recordings','transcripts')]:
         for row in db.execute('SELECT id FROM '+table):
             require('library/'+folder+'/'+row[0]+'.md' in names, '部分已归档文字缺失，未创建备份，请先核对资料文件夹。')
@@ -208,6 +224,7 @@ def create_backup(directory, destination, progress=lambda _:None):
                 'sourceOutputDirectory':str(output), 'tables':{}, 'files':[], 'includesCredentials':False,
                 'includesAudio':True, 'encrypted':False, 'externalSourcesIncluded':False,
                 'externalDocumentCount':db.execute('SELECT COUNT(*) FROM documents').fetchone()[0],
+                'originalDocuments':sum(1 for _ in retained_originals(db)),
                 'unconfirmedImportsIncluded':False}
             with destination.open('xb') as target:
                 os.chmod(destination, 0o600);created = (destination.stat().st_dev, destination.stat().st_ino)
@@ -231,6 +248,11 @@ def create_backup(directory, destination, progress=lambda _:None):
                         manifest['files'].append({'path':name,'bytes':size,'sha256':h.hexdigest()})
                         progress({'phase':'copying','completed':index+1,'total':len(files)})
                     require(inventory(directory,output,db)==files, '备份期间文件清单发生变化，请重新创建备份。')
+                    file_info = {item['path']: item for item in manifest['files']}
+                    manifest['modifiedOriginalDocuments'] = sum(
+                        file_info['library/originals/documents/' + original_name(rid, extension)]['sha256'] != details['original']['sha256']
+                        or file_info['library/originals/documents/' + original_name(rid, extension)]['bytes'] != details['original']['byteCount']
+                        for rid, extension, details in retained_originals(db))
                     encoded=json.dumps(manifest,ensure_ascii=False,separators=(',',':')).encode()
                     require(len(encoded)<=MAX_MANIFEST, '备份清单过大，请减少单个资料库中的文件数量。')
                     archive.writestr('manifest.json',encoded)
@@ -277,7 +299,7 @@ def inspect_backup(file, scratch, expected_hash=None, progress=lambda _:None):
         require('manifest.json' in by_name and by_name['manifest.json'].file_size<=MAX_MANIFEST, '找不到有效的备份清单。')
         manifest=parse_json(archive.read('manifest.json'))
         require(isinstance(manifest,dict) and manifest.get('format')==FORMAT
-                and type(manifest.get('version')) is int and manifest['version']==VERSION,
+                and type(manifest.get('version')) is int and manifest['version'] in (1, VERSION),
                 '这不是当前版本支持的迹库备份。')
         require(str(uuid.UUID(manifest.get('id',''))).upper()==manifest['id']
                 and dt.datetime.fromisoformat(manifest.get('createdAt','').replace('Z','+00:00')).tzinfo is not None,
@@ -308,11 +330,31 @@ def inspect_backup(file, scratch, expected_hash=None, progress=lambda _:None):
         for table in TABLES:
             count=sum(1 for _ in read_table(archive,table,expected[table]))
             require(count==manifest['tables'][table]['rows'], '备份中的资料数量与清单不一致。')
+        originals = {}
+        for values in read_table(archive, 'documents', expected['documents']):
+            row = dict(zip(expected['documents'], values));details = parse_json(row['details'])
+            try:metadata = original_metadata(row['id'], row['format'], details)
+            except OriginalError as error:raise BackupError(str(error))
+            if metadata is not None:
+                originals['library/originals/documents/' + original_name(row['id'], row['format'])] = metadata
+        require(manifest['version'] != 1 or not originals, '原件副本需要新版备份格式。')
+        require(manifest['version'] == 1 or (type(manifest.get('originalDocuments')) is int
+                and manifest['originalDocuments'] == len(originals)), '备份中的原件副本与资料登记不一致。')
+        require({name for name in by_name if name.startswith('library/originals/')} == set(originals),
+                '备份中的原件副本与资料登记不一致。')
+        file_info = {item['path']: item for item in manifest['files']}
+        modified_originals = sum(file_info[name]['sha256'] != metadata['sha256']
+                                 or file_info[name]['bytes'] != metadata['byteCount'] for name, metadata in originals.items())
+        require(type(manifest.get('modifiedOriginalDocuments', 0)) is int
+                and manifest.get('modifiedOriginalDocuments', 0) == modified_originals,
+                '备份中的原件改动数量与文件不一致。')
         require(fingerprint(file)==before, '备份文件在读取期间发生变化，请重新选择。')
     return {'id':manifest['id'],'createdAt':manifest['createdAt'],'archiveSHA256':digest,'files':len(manifest['files']),
             'bytes':total,'recordings':manifest['tables']['recordings']['rows'],'documents':manifest['tables']['documents']['rows'],
             'notes':manifest['tables']['notes']['rows'],'memories':manifest['tables']['candidates']['rows'],
-            'externalDocumentCount':manifest.get('externalDocumentCount',0),'includesCredentials':False,'encrypted':False}
+            'externalDocumentCount':manifest.get('externalDocumentCount',0),'originalDocuments':len(originals),
+            'modifiedOriginalDocuments':modified_originals,
+            'includesCredentials':False,'encrypted':False}
 
 
 def read_table(archive, table, columns):
@@ -387,6 +429,12 @@ def verify_restored(directory, output, db, restored=True):
     for table,folder in [('notes','notes'),('documents','documents'),('recordings','transcripts')]:
         for rid, in db.execute('SELECT id FROM '+table):
             require(str(uuid.UUID(rid)).upper()==rid and (output/folder/(rid+'.md')).is_file(), '恢复后的文字资料缺失。')
+    for rid, extension, details in retained_originals(db):
+        try:
+            with original_directory(output) as folder:
+                value = os.stat(original_name(rid, extension), dir_fd=folder, follow_symlinks=False)
+                require(stat.S_ISREG(value.st_mode), '原件副本不是普通文件，未创建备份。')
+        except OSError:raise BackupError('原件副本缺失或不可读取，请核对资料夹后再备份。')
     inputs=db.execute('SELECT i.id,i.source_id,s.provider FROM local_inputs i LEFT JOIN local_sources s ON i.source_id=s.id')
     for rid,source_id,provider in inputs:
         require(provider in ('codex','claude') and str(uuid.UUID(rid)).upper()==rid
