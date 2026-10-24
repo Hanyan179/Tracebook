@@ -215,6 +215,7 @@ struct NoteEditor: View {
                 }
                 .confirmationDialog("放弃未保存的修改？", isPresented: $discard, titleVisibility: .visible) { Button("放弃修改", role: .destructive) { dismiss() } }
         }.interactiveDismissDisabled(dirty).task { await load() }
+            .protectsUnsavedEdits(in: workspace, editing: dirty || saving)
         #if os(macOS)
         .frame(minWidth: 640, idealWidth: 800, minHeight: 540, idealHeight: 700)
         #endif

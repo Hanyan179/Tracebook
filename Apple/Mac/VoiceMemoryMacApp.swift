@@ -16,6 +16,7 @@ struct VoiceMemoryMacApp: App {
 final class MacAppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         LibraryBackupController.shared.cancel()
+        LibraryLocationController.shared.cancel()
         LocalNodeController.shared.stop()
     }
 }
@@ -85,6 +86,22 @@ struct MacWorkspaceView: View {
         } detail: {
             NavigationStack(path: $navigationPath) {
                 Group {
+                    if useLocal && !workspace.connected && !workspace.hasUnfinishedEdits && !local.starting && local.problem != nil
+                        && (local.hasRememberedLocation || local.selectionProblem != nil) {
+                        ContentUnavailableView {
+                            Label("无法打开资料库", systemImage: "externaldrive.badge.exclamationmark")
+                        } description: {
+                            Text(L(local.problem ?? "资料库暂未重新连接，请在侧栏重试。"))
+                            if local.hasRememberedLocation || local.isRestoredLibrary {
+                                Text(verbatim: local.dataDirectory.path).font(.caption).textSelection(.enabled)
+                            }
+                        } actions: {
+                            Button("重新打开") { Task { await local.start(workspace: workspace) } }
+                            Button("选择或还原资料库") {
+                                UserDefaults.standard.set("数据与隐私", forKey: "settings.section"); openSettings()
+                            }
+                        }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
                     switch section ?? .recordings {
                     case .overview: MacOverview(workspace: workspace, showNotes: { selectedNote = $0; section = .notes }, showMemory: { section = .memory }, showDaily: { section = .daily })
                     case .notes: NotesLibrary(workspace: workspace, initialSelection: selectedNote)
@@ -95,16 +112,17 @@ struct MacWorkspaceView: View {
                     case .daily: MacLibraryBrowser(store: workspace, kind: .daily)
                     case .memory: MacLibraryBrowser(store: workspace, kind: .memory)
                     }
+                    }
                 }.navigationTitle(L((section ?? .recordings).title))
                     .libraryDestinations(store: workspace)
                     .background(AppPalette.canvas)
             }.id((section?.rawValue ?? "") + language + local.dataDirectory.path)
                 .safeAreaInset(edge: .top) {
-                    if local.receivingPaused {
+                    if local.receivingPaused && workspace.connected {
                         HStack(spacing: 12) {
-                            Label("恢复副本 · 接收已暂停", systemImage: "pause.circle")
+                            Label(L(local.isRestoredLibrary ? "恢复副本 · 接收已暂停" : "资料库 · 接收已暂停"), systemImage: "pause.circle")
                             Spacer(minLength: 8)
-                            Button("核对恢复设置") {
+                            Button("核对资料库设置") {
                                 UserDefaults.standard.set("数据与隐私", forKey: "settings.section"); openSettings()
                             }
                         }.font(.callout).padding(12).background(AppPalette.surface)

@@ -52,6 +52,7 @@ struct ConversationView: View {
             }
             composer
         }.background(AppPalette.canvas)
+            .protectsUnsavedEdits(in: workspace, editing: !draft.isEmpty || chat.sending)
             .task(id: workspace.endpoint + String(workspace.connected)) { if workspace.connected { await chat.load(client: workspace.client) } }
             .sheet(item: $source) { source in
                 if let excerpt = source.excerpt, !excerpt.isEmpty, let start = source.excerptStart {

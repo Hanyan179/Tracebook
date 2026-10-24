@@ -3,6 +3,7 @@
 from __future__ import annotations
 import argparse
 import base64
+import faulthandler
 import fcntl
 import hmac
 import ipaddress
@@ -491,7 +492,13 @@ def main():
         fcntl.flock(instance_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
         raise SystemExit('This data directory already has a running Voice Memory node.')
-    store = Store(args.data, args.output)
+    # A blocked local file read must leave a useful startup diagnostic. Tracebacks
+    # contain code locations only, never document text, request bodies or keys.
+    faulthandler.dump_traceback_later(10, repeat=False)
+    try:
+        store = Store(args.data, args.output)
+    finally:
+        faulthandler.cancel_dump_traceback_later()
     server = Server((args.host, args.port), store, load_token(store.data))
     store.local_sources.resume_jobs()
     stopped = threading.Event()

@@ -52,6 +52,11 @@ jobs:
           git diff --exit-code -- VoiceMemory.xcodeproj
       - name: Test core
         run: swift test
+      - name: Check library selection persistence
+        run: |
+          mkdir -p DerivedData/Checks
+          swiftc -parse-as-library Apple/Mac/LibraryLaunchPreferences.swift scripts/check-library-preferences.swift -o DerivedData/Checks/library-preferences
+          DerivedData/Checks/library-preferences
       - name: Build Mac without personal signing
         run: >-
           xcodebuild -project VoiceMemory.xcodeproj -scheme VoiceMemoryMac

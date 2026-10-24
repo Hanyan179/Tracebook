@@ -2,6 +2,7 @@
 """Boot the actual app-bundled node and exercise a synthetic memory round trip."""
 import argparse
 import base64
+import hashlib
 import json
 from pathlib import Path
 import socket
@@ -131,6 +132,22 @@ def main():
         assert (restored/'Library/memory.md').read_bytes()==(root/'node/Library/memory.md').read_bytes()
         assert (restored/'Library/memories'/(cid+'.json')).read_bytes()==(root/'node/Library/memories'/(cid+'.json')).read_bytes()
         print('Packaged backup create, inspect and independent restore passed; credentials excluded and automatic work paused.')
+        location_cli=script.with_name('library_location_cli.py')
+        def location_command(*arguments):
+            result=subprocess.run([sys.executable,'-B',str(location_cli),*map(str,arguments)],
+                                  capture_output=True,text=True,timeout=30)
+            assert result.returncode==0, 'Packaged library selection failed: '+result.stdout[:1000]
+            reply=json.loads(result.stdout);assert reply['ok'];return reply
+        def text_hashes():
+            return {str(path.relative_to(restored/'Library')):hashlib.sha256(path.read_bytes()).hexdigest()
+                    for path in (restored/'Library').rglob('*') if path.is_file()}
+        original_files=text_hashes()
+        location=location_command('inspect','--data',restored)
+        selected=location_command('prepare','--data',restored,'--snapshot',location['snapshot'])
+        assert selected['nodeID']==location['nodeID']
+        assert selected['outputDirectory']==str(restored/'Library')
+        assert text_hashes()==original_files
+        print('Packaged existing-library preview and selection passed; identity and text files preserved.')
 
 
 if __name__ == '__main__':

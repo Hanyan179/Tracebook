@@ -29,48 +29,23 @@ final class LibraryBackupController: ObservableObject {
     @Published private(set) var problem: String?
     @Published private(set) var result: String?
     @Published private(set) var savedFile: URL?
-    private var process: Process?
-    private var cancelled = false
+    @Published private(set) var feedbackLibrary = ""
+    private let command = LocalNodeCommand()
     private let local = LocalNodeController.shared
 
     private func begin(_ phase: String) {
-        busy = true; self.phase = phase; problem = nil; result = nil; savedFile = nil; cancelled = false
+        busy = true; self.phase = phase; problem = nil; result = nil; savedFile = nil; command.reset()
     }
-    private func end() { busy = false; cancellable = false; process = nil }
+    private func end() { busy = false; cancellable = false; feedbackLibrary = local.dataDirectory.path }
     func cancel() {
-        guard cancellable, let process, process.isRunning else { return }
-        cancelled = true; cancellable = false; phase = "正在取消并保留原资料"
-        process.terminate()
+        guard cancellable, command.isRunning else { return }
+        cancellable = false; phase = "正在取消并保留原资料"; command.cancel()
     }
     private func execute(_ arguments: [String]) async throws -> LibraryBackupReceipt {
-        guard let script = Bundle.main.url(forResource: "backup_cli", withExtension: "py") else {
-            throw NodeFailure(message: "应用中缺少备份工具，请使用包含此功能的完整版本。")
-        }
-        if cancelled { throw NodeFailure(message: "操作已取消，当前资料库保持不变。") }
-        let child = Process(), output = Pipe()
-        child.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-        child.arguments = [script.path] + arguments
-        child.environment = ProcessInfo.processInfo.environment.merging(["PYTHONDONTWRITEBYTECODE": "1"]) { _, new in new }
-        child.standardOutput = output; child.standardError = FileHandle.nullDevice
-        try child.run(); process = child; cancellable = true
-        let (status, data) = await Task.detached(priority: .utility) {
-            let data = output.fileHandleForReading.readDataToEndOfFile()
-            child.waitUntilExit()
-            return (child.terminationStatus, data)
-        }.value
-        cancellable = false; process = nil
-        if cancelled { throw NodeFailure(message: "操作已取消，当前资料库保持不变。") }
-        struct Reply: Decodable { let ok: Bool; let error: String? }
-        guard data.count <= 1024 * 1024, let reply = try? JSONDecoder().decode(Reply.self, from: data) else {
-            throw NodeFailure(message: "备份操作未能完成，原资料库保留。请重新检查。")
-        }
-        guard status == 0, reply.ok else {
-            throw NodeFailure(message: reply.error ?? "备份操作未能完成，原资料库保留。请重新检查。")
-        }
-        return try JSONDecoder().decode(LibraryBackupReceipt.self, from: data)
+        try await command.run("backup_cli", arguments: arguments, as: LibraryBackupReceipt.self) { cancellable = $0 }
     }
     private func scratch() throws -> URL {
-        let url = local.baseDirectory.appendingPathComponent("BackupWork")
+        let url = local.recoveryDirectory.appendingPathComponent("BackupWork")
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         return url
     }
@@ -99,19 +74,27 @@ final class LibraryBackupController: ObservableObject {
         do { return try await execute(["inspect", "--file", file.path, "--scratch", try scratch().path]) }
         catch { problem = error.localizedDescription; return nil }
     }
-    func restore(_ file: URL, receipt: LibraryBackupReceipt, workspace: NodeWorkspaceStore) async -> Bool {
+    func restore(_ file: URL, receipt: LibraryBackupReceipt, localRecovery: Bool, workspace: NodeWorkspaceStore) async -> Bool {
         guard !busy else { return false }
         begin("正在恢复到独立副本"); defer { end() }
         let access = file.startAccessingSecurityScopedResource()
         defer { if access { file.stopAccessingSecurityScopedResource() } }
         do {
-            let parent = local.baseDirectory.appendingPathComponent("RestoredLibraries")
+            guard localRecovery || !local.needsLocalRecoveryDirectory else {
+                throw NodeFailure(message: "原资料库位置已不可用，请重新选择备份，核对新的恢复位置。")
+            }
+            let parent = localRecovery ? local.recoveryDirectory : local.baseDirectory.appendingPathComponent("RestoredLibraries")
             try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             let destination = parent.appendingPathComponent(UUID().uuidString)
             _ = try await execute(["restore", "--file", file.path, "--destination", destination.path,
                                    "--sha256", receipt.archiveSHA256, "--scratch", try scratch().path])
             phase = "正在打开恢复副本"
-            do { try await local.activateRestored(destination, workspace: workspace) }
+            do {
+                if localRecovery {
+                    let checked = try await command.run("library_location_cli", arguments: ["inspect", "--data", destination.path], as: LibraryLocationPreview.self)
+                    try await local.openExistingLibrary(checked, selectedURL: destination, workspace: workspace)
+                } else { try await local.activateRestored(destination, workspace: workspace) }
+            }
             catch {
                 savedFile = destination
                 throw error
@@ -128,15 +111,13 @@ final class LibraryBackupController: ObservableObject {
             result = "已返回原资料库，恢复副本仍保留。"
         } catch { problem = error.localizedDescription }
     }
-    func resumeReceiving() {
-        do { try local.resumeReceiving(); result = "已恢复接收。模型任务仍需逐项核对后启用。" }
-        catch { problem = error.localizedDescription }
-    }
+
 }
 
 private struct BackupPreview: Identifiable {
     let file: URL
     let receipt: LibraryBackupReceipt
+    let localRecovery: Bool
     var id: String { receipt.id }
 }
 
@@ -144,8 +125,8 @@ struct LibraryBackupSection: View {
     @ObservedObject var workspace: NodeWorkspaceStore
     @ObservedObject private var local = LocalNodeController.shared
     @ObservedObject private var controller = LibraryBackupController.shared
+    @ObservedObject private var location = LibraryLocationController.shared
     @State private var preview: BackupPreview?
-    @State private var resumeConfirmation = false
     var body: some View {
         Section("备份与还原") {
             VStack(alignment: .leading, spacing: 10) {
@@ -166,21 +147,12 @@ struct LibraryBackupSection: View {
                 VStack(alignment: .leading, spacing: 10) {
                     Label("当前使用恢复副本", systemImage: "externaldrive.badge.checkmark").font(.headline)
                     Text(verbatim: local.dataDirectory.path).font(.caption).textSelection(.enabled)
-                    if local.receivingPaused {
-                        Text("接收已暂停。请先核对资料；继续接收会使用此前选择的同步资料夹和本机保留的原音。")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Button("恢复接收…") { resumeConfirmation = true }.disabled(controller.busy)
-                    }
                     Button("返回原资料库") { Task { await controller.returnToOriginal(workspace: workspace) } }
-                        .disabled(controller.busy)
+                        .disabled(controller.busy || location.busy || workspace.hasUnfinishedEdits)
                 }
             }
             progressAndResult
         }
-        .confirmationDialog("继续向恢复副本接收资料？", isPresented: $resumeConfirmation, titleVisibility: .visible) {
-            Button("恢复接收") { controller.resumeReceiving() }
-            Button("取消", role: .cancel) { }
-        } message: { Text("将使用此前的同步资料夹和本机保留的原音。模型整理和转写不会因此自动启用。") }
         .sheet(item: $preview) { item in
             NavigationStack {
                 Form {
@@ -193,14 +165,23 @@ struct LibraryBackupSection: View {
                         backupValue("文件大小（展开后）", item.receipt.bytes.formatted(.byteCount(style: .file).locale(AppLanguage.current.locale)))
                     }
                     Section("恢复方式") {
-                        Text("恢复到这台电脑上的独立副本，原资料库继续保留。打开副本后可以随时返回原资料库。")
+                        Text("恢复到这台电脑上的独立副本，原资料库继续保留。原位置可用时可以重新打开。")
+                        if item.localRecovery {
+                            Text("原资料库位置不可用，这次恢复会保存在本机独立目录，并记住新位置。")
+                            Text(verbatim: local.recoveryDirectory.path).font(.caption).textSelection(.enabled)
+                        }
                         Text("新副本暂停接收和自动整理；外部来源须重新选择，手机和外部读取方须重新连接。")
                         Text("只恢复备份中已留存的资料，外部目录与原始附件不会自动下载。")
                     }
                 }.formStyle(.grouped)
                     .safeAreaInset(edge: .top, spacing: 0) {
-                        if controller.busy || controller.problem != nil {
-                            VStack(alignment: .leading, spacing: 8) { progressAndResult }
+                        if controller.busy || controller.problem != nil || workspace.hasUnfinishedEdits {
+                            VStack(alignment: .leading, spacing: 8) {
+                                if workspace.hasUnfinishedEdits {
+                                    Text("还有未完成的编辑。请先保存或复制内容，并关闭编辑页面，再切换或备份资料库。")
+                                }
+                                progressAndResult
+                            }
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(16).background(AppPalette.surface)
                         }
@@ -212,8 +193,8 @@ struct LibraryBackupSection: View {
                         }
                         ToolbarItem(placement: .confirmationAction) {
                             Button("恢复并打开副本") {
-                                Task { if await controller.restore(item.file, receipt: item.receipt, workspace: workspace) { preview = nil } }
-                            }.disabled(controller.busy || controller.problem != nil || (local.running && !local.managesProcess))
+                                Task { if await controller.restore(item.file, receipt: item.receipt, localRecovery: item.localRecovery, workspace: workspace) { preview = nil } }
+                            }.disabled(controller.busy || controller.problem != nil || (local.running && !local.managesProcess) || workspace.hasUnfinishedEdits)
                         }
                     }
             }.frame(minWidth: 500, idealWidth: 580, minHeight: 560, idealHeight: 650)
@@ -221,8 +202,8 @@ struct LibraryBackupSection: View {
         }
     }
     @ViewBuilder private var actions: some View {
-        Button("创建备份…") { chooseBackup() }.disabled(controller.busy || local.starting || (local.running && !local.managesProcess))
-        Button("选择备份还原…") { chooseRestore() }.disabled(controller.busy || local.starting)
+        Button("创建备份…") { chooseBackup() }.disabled(controller.busy || location.busy || local.starting || !workspace.connected || !local.managesProcess || workspace.hasUnfinishedEdits)
+        Button("选择备份还原…") { chooseRestore() }.disabled(controller.busy || location.busy || local.starting)
     }
     private func backupValue(_ label: String, _ value: String) -> some View {
         LabeledContent(L(label), value: value)
@@ -239,10 +220,12 @@ struct LibraryBackupSection: View {
                 if controller.cancellable { Button("停止") { controller.cancel() } }
             }.accessibilityElement(children: .contain)
         }
-        if let problem = controller.problem { Text(L(problem)).font(.callout).foregroundStyle(.secondary).textSelection(.enabled).id(problem) }
-        if let result = controller.result { Text(L(result)).font(.callout).textSelection(.enabled).id(result) }
-        if let file = controller.savedFile {
-            Button("显示保存位置") { NSWorkspace.shared.activateFileViewerSelecting([file]) }
+        if controller.feedbackLibrary == local.dataDirectory.path {
+            if let problem = controller.problem { Text(L(problem)).font(.callout).foregroundStyle(.secondary).textSelection(.enabled).id(problem) }
+            if let result = controller.result { Text(L(result)).font(.callout).textSelection(.enabled).id(result) }
+            if let file = controller.savedFile {
+                Button("显示保存位置") { NSWorkspace.shared.activateFileViewerSelecting([file]) }
+            }
         }
     }
     private func chooseBackup() {
@@ -256,6 +239,6 @@ struct LibraryBackupSection: View {
         let panel = NSOpenPanel(); panel.allowedContentTypes = [.zip]; panel.allowsMultipleSelection = false
         panel.message = L("选择通过“创建备份”保存的文件。便携文字导出包不能用于还原。")
         guard panel.runModal() == .OK, let file = panel.url else { return }
-        Task { if let receipt = await controller.inspect(file) { preview = BackupPreview(file: file, receipt: receipt) } }
+        Task { if let receipt = await controller.inspect(file) { preview = BackupPreview(file: file, receipt: receipt, localRecovery: local.needsLocalRecoveryDirectory) } }
     }
 }

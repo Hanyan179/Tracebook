@@ -87,6 +87,13 @@ struct MacSettingsView: View {
     private var data: some View {
         Form {
             Section { SettingsPageTitle(title: "数据与隐私", subtitle: "资料保存在你选择的位置。") }
+            if workspace.hasUnfinishedEdits {
+                Section {
+                    Label("还有未完成的编辑。请先保存或复制内容，并关闭编辑页面，再切换或备份资料库。", systemImage: "pencil.line")
+                        .font(.callout)
+                }
+            }
+            LibraryLocationSection(workspace: workspace)
             Section("保存与归档") {
                 Text(verbatim: workspace.status?.outputDirectory ?? L("尚未连接资料库"))
                     .font(.callout).textSelection(.enabled).id(workspace.status?.outputDirectory)

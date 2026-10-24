@@ -291,6 +291,7 @@ private struct MemoryEditSheet: View {
                 }
         }.onAppear { text = candidate.text }.onChange(of: text) { _, _ in requestID = UUID() }
             .interactiveDismissDisabled(dirty || busy)
+            .protectsUnsavedEdits(in: workspace, editing: dirty || busy)
         #if os(macOS)
         .frame(minWidth: 560, idealWidth: 680, minHeight: 420)
         #endif
@@ -411,6 +412,7 @@ struct MemoryProposalSheet: View {
             .onChange(of: Array(text.unicodeScalars)) { _, _ in requestID = UUID() }
             .onChange(of: Array(quote.unicodeScalars)) { _, _ in requestID = UUID(); updateMatches() }
             .interactiveDismissDisabled(dirty || busy)
+            .protectsUnsavedEdits(in: workspace, editing: dirty || busy)
         #if os(macOS)
         .frame(minWidth: 580, idealWidth: 720, minHeight: 540)
         #endif

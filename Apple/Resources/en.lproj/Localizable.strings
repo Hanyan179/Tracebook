@@ -1905,7 +1905,7 @@
 "找不到可备份的本机资料库。" = "No local library is available to back up.";
 "找不到有效的备份清单。" = "No valid backup manifest was found.";
 "接收已暂停" = "Receiving paused";
-"接收已暂停。请先核对资料；继续接收会使用此前选择的同步资料夹和本机保留的原音。" = "Receiving is paused. Review the restored data first. Resuming uses the previous sync folder and audio retained on this Mac.";
+"接收已暂停。请先核对资料；继续接收会使用此前选择的同步资料夹和本机保留的原音。" = "Receiving is paused. Review this library first. Resuming uses the previous sync folder and audio retained on this Mac.";
 "操作已取消，当前资料库保持不变。" = "Cancelled. The current library is unchanged.";
 "文件大小（展开后）" = "Uncompressed size";
 "新副本暂停接收和自动整理；外部来源须重新选择，手机和外部读取方须重新连接。" = "Receiving and automatic processing are paused in the new copy. Select external sources again and reconnect phones and external readers.";
@@ -1952,3 +1952,84 @@
 
 "资料库选择未能保存。资料仍保留，请核对目录权限后重试。" = "The library selection could not be saved. Data is retained. Check folder permissions and retry.";
 "切换未完成，已重新打开此前的资料库。原目录与恢复副本均保留。" = "The switch did not finish. The previous library was reopened. The original folder and restored copy are both retained.";
+
+"上次选择的资料库身份或文字位置已变化，请重新选择并核对。" = "The selected library identity or text location has changed. Select and review it again.";
+"先暂停接收、自动转写、模型整理和来源扫描。核对后可分别继续，已有文字与人工修改保留。" = "Receiving, automatic transcription, model processing, and source scans will pause. Review and resume each separately. Existing text and manual edits are preserved.";
+"切换资料库后，请核对范围与服务再继续。" = "Review the scope and service before continuing after switching libraries.";
+"另一窗口正在保存资料库选择，请稍后重试。" = "Another window is saving the library selection. Try again shortly.";
+"可以选择已有资料库，并记住下次打开的位置。" = "Choose an existing library and remember it for the next launch.";
+"可以重新连接存储位置、重新选择资料库，或使用下方备份还原。" = "Reconnect the storage location, select the library again, or restore a backup below.";
+"启动资料库" = "Library at startup";
+"已保存的资料库位置暂不可用，请连接存储位置或重新选择。原目录仍保留。" = "The saved library location is unavailable. Connect its storage or select it again. The original folder is preserved.";
+"已保存的资料库选择不可读取，请重新选择。原目录仍保留。" = "The saved library selection cannot be read. Select it again. The original folder is preserved.";
+"已记住位置，重新打开应用会回到这个资料库。" = "Location saved. Reopening the app returns to this library.";
+"已记住这个资料库。重新打开应用会回到这里；接收与自动处理已暂停，核对后再继续。" = "Library location saved for future launches. Receiving and automatic processing are paused for review.";
+"待确认记忆" = "Memories awaiting review";
+"所选资料库" = "Selected library";
+"所选资料库或文字位置不可用，请重新核对。" = "The selected library or text location is unavailable. Review it again.";
+"所选资料库未能打开，原目录仍保留。" = "The selected library could not be opened. The original folder is preserved.";
+"打开后" = "After opening";
+"打开并记住" = "Open and remember";
+"找不到所选资料库，请连接存储位置或重新选择。" = "The selected library cannot be found. Connect its storage or select it again.";
+"文字资料夹暂不可用，请连接存储位置后重试，或从备份还原。" = "The text folder is unavailable. Connect its storage and retry, or restore a backup.";
+"无法保存资料库选择，请核对保存位置的权限。" = "The library selection could not be saved. Check permissions for the settings location.";
+"本机资料工具暂不可用，请使用完整版本并稍后重试。" = "The local library tool is unavailable. Use a complete app build and try again.";
+"本机资料操作未完成，原资料保留。请重新检查。" = "The local library operation did not finish. Original data is preserved. Check again.";
+"核对启动资料库" = "Review startup library";
+"核对此资料库" = "Review this library";
+"核对资料库设置" = "Review library settings";
+"正在切换并记住资料库" = "Switching and remembering the library";
+"正在核对所选资料库" = "Checking the selected library";
+"继续向当前资料库接收资料？" = "Resume receiving into this library?";
+"记住所选资料库及文字位置，下次启动继续使用。此前的资料库保留，不合并资料。" = "Remember this library and its text location for future launches. The previous library is preserved; contents are not merged.";
+"资料库 · 接收已暂停" = "Library · Receiving paused";
+"资料库中的文字保存位置无效，请先核对原资料。" = "The text location stored in the library is invalid. Review the original data first.";
+"资料库位置或访问授权已变化，请重新选择并核对。" = "The library location or access permission has changed. Select and review it again.";
+"资料库包含不支持的数据结构。" = "The library contains an unsupported data structure.";
+"资料库包含原音、记忆和历史；文字归档目录另列在下方。切换不会合并或删除此前的资料。" = "The library contains audio, memories, and history. The text archive folder is listed separately below. Switching does not merge or delete previous data.";
+"资料库包含当前版本不支持的自动操作，未打开。请使用备份还原。" = "The library contains automatic database operations this version does not support. It was not opened. Restore a backup instead.";
+"资料库文件不可读取或超过当前检查范围。" = "The library file cannot be read or exceeds the current inspection limit.";
+"资料库文件在检查期间被替换，请重新选择。" = "The library file was replaced during inspection. Select it again.";
+"资料库暂时无法检查。请保留原目录，核对权限或从备份还原。" = "The library cannot be inspected. Keep the original folder, check permissions, or restore a backup.";
+"资料库检查未通过，请保留原目录并从备份还原。" = "Library checks failed. Keep the original folder and restore a backup.";
+"资料库缺少必要的位置或身份信息。" = "The library is missing required location or identity information.";
+"资料库身份或文字位置在核对后发生变化，请重新选择。" = "The library identity or text location changed after review. Select it again.";
+"资料库选择已被另一处修改，请重新打开应用后核对。" = "The library selection was changed elsewhere. Reopen the app and review it.";
+"资料库选择文件异常，未覆盖。请保留原文件并检查权限。" = "The library selection file is invalid and was not replaced. Preserve it and check permissions.";
+"这不是当前版本可识别的迹库资料库。" = "This is not a Tracebook library recognized by this version.";
+"这里没有可打开的迹库资料库。普通文字文件请从资料导入入口加入。" = "No Tracebook library can be opened here. Add ordinary text files through document import.";
+"选择启动资料库…" = "Choose startup library…";
+"选择已有迹库资料库的文件夹。普通文档请使用资料导入，备份压缩包请使用备份还原。" = "Choose an existing Tracebook library folder. Use document import for ordinary files and Restore from backup for backup archives.";
+"原资料库位置已不可用，请重新选择备份，核对新的恢复位置。" = "The original library location is unavailable. Select the backup again and review the new restore location.";
+"恢复到这台电脑上的独立副本，原资料库继续保留。原位置可用时可以重新打开。" = "Restore to a separate copy on this Mac and preserve the original library. You can reopen the original when its location is available.";
+"原资料库位置不可用，这次恢复会保存在本机独立目录，并记住新位置。" = "The original location is unavailable. This restore will use a separate local folder and remember the new location.";
+
+"记住位置、保留原库；接收与自动处理先暂停。" = "Remember this location and keep the previous library. Receiving and automatic processing will pause.";
+
+"切换资料库后，请核对并重新写入记忆文件。" = "Review the selected library, then retry writing its memory files.";
+
+"无法打开资料库" = "Cannot open library";
+"重新打开" = "Reopen";
+"选择或还原资料库" = "Choose or restore a library";
+
+"还有未完成的编辑。请先保存或复制内容，并关闭编辑页面，再切换或备份资料库。" = "An edit is still unfinished. Save or copy its contents and close the editor before switching or backing up the library.";
+"请先连接并核对资料库，草稿仍保留。" = "Connect and verify the library first. Your draft is retained.";
+"资料库已变化，草稿仍保留。请回到原资料库核对。" = "The library has changed. Your draft is retained. Return to its original library to review it.";
+"查看尚未绑定资料库的旧草稿" = "Review an unassigned legacy draft";
+"旧草稿原件仍保留。请核对所属资料库，再复制需要的内容到当前编辑区。" = "The original legacy draft is retained. Check which library it belongs to, then copy any needed text into the current editor.";
+"复制旧草稿" = "Copy legacy draft";
+"旧版草稿暂时无法读取，原件仍保留。" = "The legacy draft cannot be read. Its original file is retained.";
+"草稿无法保存在本机。请保存或复制内容后再离开。" = "The draft could not be saved locally. Save or copy its contents before leaving.";
+"本机草稿文件暂时无法读取，原件仍保留。" = "The local draft file cannot be read. Its original file is retained.";
+
+"文字资料夹的位置记录不完整，请重新选择资料库。" = "The text folder location is incomplete. Select the library again.";
+
+"文字资料夹位于资料库目录之外，请重新选择资料库并授权文字位置。" = "The text folder is outside the library folder. Select the library again and allow access to its text folder.";
+
+"文字资料夹位置或访问授权已变化，请重新选择并核对。" = "The text folder location or access has changed. Select it again and review the location.";
+
+"授权文字资料夹" = "Allow text folder access";
+
+"文字资料夹位于资料库目录之外，请选择并授权已显示的位置。" = "The text folder is outside the library folder. Select the displayed location to allow access.";
+
+"未授权所选资料库的文字位置，当前资料库保持不变。" = "Access to the selected library’s text folder was not granted. The current library is unchanged.";

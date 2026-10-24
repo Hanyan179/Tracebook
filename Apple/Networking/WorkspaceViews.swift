@@ -1,5 +1,10 @@
 import SwiftUI
 import CryptoKit
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 struct WorkspaceHomeView: View {
     @ObservedObject var store: NodeWorkspaceStore
@@ -223,66 +228,110 @@ struct NodeDocumentEditor: View {
     @State private var saving = false
     @State private var error: String?
     @State private var discard = false
+    @State private var draftContext: EditorDraftContext?
+    @State private var legacyDraft: EditorDraft?
+    @State private var legacyProblem: String?
     private var dirty: Bool { text != savedText }
-    private var draftURL: URL {
-        let key = SHA256.hash(data: Data((store.endpoint + "/" + path).utf8)).map { String(format: "%02x", $0) }.joined()
-        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("WorkspaceDrafts").appendingPathComponent(key + ".json")
-    }
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text(LocalizedStringKey(hint)).font(.subheadline).foregroundStyle(.secondary)
-            if let error { Text(L(error)).font(.footnote).foregroundStyle(.orange) }
-            if loaded {
-                TextEditor(text: $text).font(.body).frame(minHeight: 260)
-                    .accessibilityLabel(L(title))
-                    .disabled(saving)
-                    .padding(10).background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 14))
-                HStack {
-                    Text(L(dirty ? "未提交的修改会保留为本机草稿" : "已保存"))
-                        .font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Button(L(saving ? "保存中" : "保存")) {
-                        saving = true
-                        Task {
-                            do {
-                                let doc = try await store.saveDocument(path, text: text, etag: etag)
-                                etag = doc.etag; savedText = doc.text; error = nil
-                                try? FileManager.default.removeItem(at: draftURL)
-                            } catch { self.error = error.localizedDescription; persistDraft() }
-                            saving = false
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(LocalizedStringKey(hint)).font(.subheadline).foregroundStyle(.secondary)
+                    if let error { Text(L(error)).font(.footnote).foregroundStyle(.orange) }
+                    if loaded {
+                        TextEditor(text: $text).font(.body).frame(minHeight: 260)
+                            .accessibilityLabel(L(title))
+                            .disabled(saving)
+                            .padding(10).background(.quaternary.opacity(0.2), in: RoundedRectangle(cornerRadius: 14))
+                        HStack {
+                            Text(L(dirty ? "未提交的修改会保留为本机草稿" : "已保存"))
+                                .font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            Button(L(saving ? "保存中" : "保存")) {
+                                saving = true
+                                Task {
+                                    do {
+                                        guard let context = draftContext, let client = store.client else {
+                                            throw NodeFailure(message: "请先连接并核对资料库，草稿仍保留。")
+                                        }
+                                        let revision = store.connectionRevision
+                                        let identity = try await client.read("v1/status", as: NodeStatus.self)
+                                        guard revision == store.connectionRevision, context.endpoint == store.endpoint, context.nodeID == identity.nodeID else {
+                                            throw NodeFailure(message: "资料库已变化，草稿仍保留。请回到原资料库核对。")
+                                        }
+                                        let doc = try await store.saveDocument(path, text: text, etag: etag)
+                                        etag = doc.etag; savedText = doc.text; error = nil
+                                        removeDraft()
+                                    } catch { self.error = error.localizedDescription; persistDraft() }
+                                    saving = false
+                                }
+                            }.buttonStyle(FilledButtonStyle()).disabled(!dirty || saving)
                         }
-                    }.buttonStyle(FilledButtonStyle()).disabled(!dirty || saving)
-                }
-                Button("放弃本机草稿并重新读取") { discard = true }.font(.caption)
-            } else if error != nil {
-                Button("重新读取") { Task { await load() } }
-            } else { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
-        }.padding(24).navigationTitle(L(title))
-            .task(id: path) { await load() }
+                        Button("放弃本机草稿并重新读取") { discard = true }.font(.caption)
+                        if let legacyDraft {
+                            DisclosureGroup("查看尚未绑定资料库的旧草稿") {
+                                VStack(alignment: .leading, spacing: 10) {
+                                    Text("旧草稿原件仍保留。请核对所属资料库，再复制需要的内容到当前编辑区。").font(.caption)
+                                    ScrollView { Text(verbatim: legacyDraft.text).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                                        .frame(maxHeight: 220)
+                                    Button("复制旧草稿") {
+                                        #if os(macOS)
+                                        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(legacyDraft.text, forType: .string)
+                                        #else
+                                        UIPasteboard.general.string = legacyDraft.text
+                                        #endif
+                                    }
+                                }.padding(.top, 8)
+                            }
+                        }
+                        if let legacyProblem { Text(L(legacyProblem)).font(.caption).foregroundStyle(.secondary) }
+                    } else if error != nil {
+                        Button("重新读取") { Task { await load() } }
+                    } else { ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity) }
+                }.frame(minHeight: max(0, geometry.size.height - 48), alignment: .top).padding(24)
+            }
+        }.navigationTitle(L(title))
+            .task(id: path + "|" + store.endpoint + "|" + (store.status?.nodeID ?? "")) {
+                if loaded && dirty { persistDraft() }
+                else { await load() }
+            }
             .onChange(of: text) { _, _ in if loaded { persistDraft() } }
             .onDisappear { persistDraft() }
+            .protectsUnsavedEdits(in: store, editing: dirty || saving)
             .confirmationDialog("放弃尚未提交的本机修改？", isPresented: $discard) {
                 Button("重新读取", role: .destructive) {
-                    try? FileManager.default.removeItem(at: draftURL)
+                    removeDraft()
                     loaded = false
                     Task { await load() }
                 }
             }
     }
     private func load() async {
+        let endpoint = store.endpoint.isEmpty ? (UserDefaults.standard.string(forKey: "node.endpoint") ?? "") : store.endpoint
+        let revision = store.connectionRevision
+        loaded = false
         do {
+            guard let client = store.client else { throw NodeFailure(message: "请先连接并核对资料库，草稿仍保留。") }
+            let identity = try await client.read("v1/status", as: NodeStatus.self)
+            guard !Task.isCancelled, revision == store.connectionRevision else { return }
+            let context = EditorDraftContext(endpoint: endpoint, nodeID: identity.nodeID, path: path)
+            draftContext = context
             let doc = try await store.document(path)
+            guard !Task.isCancelled, revision == store.connectionRevision else { return }
             savedText = doc.text; etag = doc.etag; text = doc.text
-            if let data = try? Data(contentsOf: draftURL), let draft = try? JSONDecoder().decode(EditorDraft.self, from: data) {
+            if let draft = try context.readDraft(context.url) {
                 text = draft.text; etag = draft.etag
                 error = draft.etag == doc.etag ? "已恢复本机未提交草稿。" : "文件已更新，你的草稿仍保留。请先核对版本。"
             } else { error = nil }
+            try? context.rememberIdentity()
+            do { legacyDraft = try context.readDraft(context.legacyURL); legacyProblem = nil }
+            catch { legacyDraft = nil; legacyProblem = "旧版草稿暂时无法读取，原件仍保留。" }
             loaded = true
         } catch {
+            guard !Task.isCancelled, revision == store.connectionRevision else { return }
             self.error = error.localizedDescription
-            if let data = try? Data(contentsOf: draftURL),
-               let draft = try? JSONDecoder().decode(EditorDraft.self, from: data) {
+            if draftContext == nil { draftContext = EditorDraftContext.cached(endpoint: endpoint, path: path) }
+            if let context = draftContext, let draft = try? context.readDraft(context.url) {
                 text = draft.text; etag = draft.etag; savedText = draft.savedText ?? ""
                 loaded = true
                 self.error = "节点暂不可用，已恢复本机草稿。恢复连接后可以保存。"
@@ -290,9 +339,57 @@ struct NodeDocumentEditor: View {
         }
     }
     private func persistDraft() {
-        guard loaded else { return }
-        guard dirty else { try? FileManager.default.removeItem(at: draftURL); return }
-        try? FileManager.default.createDirectory(at: draftURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? JSONEncoder().encode(EditorDraft(text: text, etag: etag, savedText: savedText)).write(to: draftURL, options: .atomic)
+        guard loaded, let context = draftContext else { return }
+        guard dirty else { removeDraft(); return }
+        do {
+            try FileManager.default.createDirectory(at: context.url.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            try JSONEncoder().encode(EditorDraft(text: text, etag: etag, savedText: savedText)).write(to: context.url, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: context.url.path)
+        } catch { self.error = "草稿无法保存在本机。请保存或复制内容后再离开。" }
+    }
+    private func removeDraft() {
+        if let context = draftContext { try? FileManager.default.removeItem(at: context.url) }
+    }
+}
+
+private struct EditorDraftContext {
+    let endpoint: String
+    let nodeID: String
+    let path: String
+    private static var root: URL {
+        #if DEBUG
+        if let client = ProcessInfo.processInfo.environment["VOICE_MEMORY_CLIENT_DATA"] {
+            return URL(fileURLWithPath: client).appendingPathComponent("WorkspaceDrafts")
+        }
+        #endif
+        return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("WorkspaceDrafts")
+    }
+    private static func hash(_ text: String) -> String {
+        SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
+    }
+    var url: URL { Self.root.appendingPathComponent(Self.hash("v2\0" + endpoint + "\0" + nodeID + "\0" + path) + ".json") }
+    var legacyURL: URL { Self.root.appendingPathComponent(Self.hash(endpoint + "/" + path) + ".json") }
+    private var identityURL: URL { Self.root.appendingPathComponent("identity-" + Self.hash(endpoint) + ".json") }
+    func rememberIdentity() throws {
+        try FileManager.default.createDirectory(at: Self.root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try JSONEncoder().encode(nodeID).write(to: identityURL, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: identityURL.path)
+    }
+    static func cached(endpoint: String, path: String) -> Self? {
+        let probe = Self(endpoint: endpoint, nodeID: "", path: path)
+        guard let values = try? probe.identityURL.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey]),
+              values.isRegularFile == true, values.isSymbolicLink != true, (values.fileSize ?? 0) < 4096,
+              let data = try? Data(contentsOf: probe.identityURL),
+              let id = try? JSONDecoder().decode(String.self, from: data), UUID(uuidString: id) != nil else { return nil }
+        return Self(endpoint: endpoint, nodeID: id, path: path)
+    }
+    func readDraft(_ location: URL) throws -> EditorDraft? {
+        guard FileManager.default.fileExists(atPath: location.path) else { return nil }
+        let values = try location.resourceValues(forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .fileSizeKey])
+        guard values.isRegularFile == true, values.isSymbolicLink != true, (values.fileSize ?? 0) <= 4 * 1024 * 1024 else {
+            throw NodeFailure(message: "本机草稿文件暂时无法读取，原件仍保留。")
+        }
+        do { return try JSONDecoder().decode(EditorDraft.self, from: Data(contentsOf: location)) }
+        catch { throw NodeFailure(message: "本机草稿文件暂时无法读取，原件仍保留。") }
     }
 }

@@ -84,6 +84,14 @@ final class NodeWorkspaceStore: ObservableObject {
     @Published var memoryNotice: String?
     @Published private(set) var loading = false
     @Published private(set) var downloadingID: UUID?
+    @Published private(set) var unfinishedEditors = Set<UUID>()
+    var hasUnfinishedEdits: Bool { !unfinishedEditors.isEmpty }
+    var connectionRevision: UUID { configurationRevision }
+    func trackEditor(_ identifier: UUID, unfinished: Bool) {
+        guard unfinishedEditors.contains(identifier) != unfinished else { return }
+        if unfinished { unfinishedEditors.insert(identifier) }
+        else { unfinishedEditors.remove(identifier) }
+    }
     let playback: AudioPlayback
     var canPlay: () -> Bool = { true }
     private var audioCache: [UUID: URL] = [:]
@@ -110,6 +118,9 @@ final class NodeWorkspaceStore: ObservableObject {
         }
     }
     func configure(endpoint: String, token: String) throws {
+        guard !hasUnfinishedEdits else {
+            throw NodeFailure(message: "还有未完成的编辑。请先保存或复制内容，并关闭编辑页面，再切换或备份资料库。")
+        }
         let url = try NodeEndpoint.validate(endpoint)
         if !token.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             try ConnectionSecret.save(token.trimmingCharacters(in: .whitespacesAndNewlines))
