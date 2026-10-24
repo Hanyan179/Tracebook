@@ -34,7 +34,7 @@ struct CaptureMethodsScreen: View {
         switch method {
         case .phone: return recorder.permissionDenied ? "麦克风权限已关闭" : recorder.ready ? "可直接使用" : "首次使用需允许麦克风"
         case .file: return "从文件导入"
-        case .watch: return watch.installed ? "手表应用已安装 · 设置手势" : "需要配对手表并安装应用"
+        case .watch: return watch.installed ? "手表应用已安装 · 打开试录" : "需要配对手表并安装应用"
         default: return preferences.configured.contains(method.rawValue) ? "已确认设置" : "需要配置快捷指令"
         }
     }
@@ -87,7 +87,7 @@ struct MethodSetupContent: View {
                 } else if !recorder.ready {
                     Button { Task { await recorder.prepare() } } label: {
                         Label("允许使用麦克风", systemImage: "mic")
-                    }.buttonStyle(.bordered).controlSize(.large)
+                    }.buttonStyle(.bordered).controlSize(.large).disabled(recorder.busy)
                 } else {
                     Label("麦克风已准备好", systemImage: "checkmark.circle.fill")
                         .font(.footnote).foregroundStyle(PhoneStyle.accent)
@@ -103,8 +103,10 @@ struct MethodSetupContent: View {
                 Label(L(watch.installed ? "手表应用已安装" : (watch.paired ? "请先在手表安装声记" : "尚未检测到配对手表")),
                       systemImage: "applewatch")
                     .font(.footnote).foregroundStyle(.secondary)
-                Text("辅助触控会替代系统双指互点。首次设置后，请从表盘试录一次。")
+                Text("原生互点两下需要支持的手表和可见的录音按钮；在表盘上互点不会直接启动迹库录音。辅助触控是另一套系统设置，不能视为已经绑定。")
                     .font(.footnote).foregroundStyle(.secondary)
+                Text("手表跟随手机中选择的应用语言，连接后更新。").font(.footnote).foregroundStyle(.secondary)
+                if let problem = watch.preferenceProblem { Text(L(problem)).font(.footnote).foregroundStyle(.secondary) }
             }
         }
     }

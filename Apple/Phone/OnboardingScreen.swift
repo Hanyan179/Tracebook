@@ -40,7 +40,7 @@ struct OnboardingScreen: View {
                         }
                         Spacer()
                         Text("\(step + 1) / \(stepCount)").font(.caption.monospacedDigit()).foregroundStyle(AppPalette.muted)
-                    }.accessibilityLabel("第 \(step + 1) 步，共 \(stepCount) 步")
+                    }.accessibilityLabel(LF("第 %d 步，共 %d 步", step + 1, stepCount))
                     switch step {
                     case 0: chooseMethod
                     case 1: if method == .file { tryCapture } else { configureMethod }
@@ -83,7 +83,7 @@ struct OnboardingScreen: View {
             .alert("暂时无法完成", isPresented: Binding(get: { recorder.problem != nil },
                                                      set: { if !$0 { recorder.problem = nil } })) {
                 Button("知道了") { recorder.problem = nil }
-            } message: { Text(recorder.problem ?? "") }
+            } message: { Text(L(recorder.problem ?? "")) }
     }
 
     private var chooseMethod: some View {
@@ -122,7 +122,7 @@ struct OnboardingScreen: View {
                                                   lineWidth: method == item ? 1.5 : 1)
                             }
                     }.buttonStyle(.plain)
-                        .accessibilityLabel("\(item.title)，\(item.subtitle)")
+                        .accessibilityLabel(LF("%@，%@", L(item.title), L(item.subtitle)))
                         .accessibilityAddTraits(method == item ? [.isSelected] : [])
                         .accessibilityIdentifier("capture.method.\(item.rawValue)")
                 }
@@ -145,7 +145,7 @@ struct OnboardingScreen: View {
             Text(L(newRecording == nil ? "留下第一段声音。" : "第一段声音，\n已经留下。"))
                 .font(.largeTitle.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
             if method == .watch {
-                Text("回到手表表盘，试着捏合两下。录完后在手表回听。")
+                Text("在手表打开迹库，点击开始录音。支持互点两下的手表，也可在按钮可见时试用手势；录完后回听检查。")
                     .foregroundStyle(AppPalette.muted)
                 Image(systemName: "applewatch").font(.system(size: 76, weight: .ultraLight))
                     .frame(maxWidth: .infinity).padding(.vertical, 40)
@@ -162,7 +162,7 @@ struct OnboardingScreen: View {
                     RecordControl {
                         Task {
                             if !recorder.ready { await recorder.prepare() }
-                            if recorder.ready { recorder.toggleFromButton() }
+                            if recorder.ready, !Task.isCancelled { recorder.toggleFromButton() }
                         }
                     }
                     Text(L(recorder.active == nil ? "点击开始" : "点击保存"))

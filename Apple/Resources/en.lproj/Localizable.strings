@@ -2055,3 +2055,38 @@
 "资料性质不受支持，请重新选择。" = "This content type is not supported. Choose it again.";
 "这份资料已标为模型生成内容，不用于提取本人记忆。请选择原始记录或本人原文。" = "This source is marked as model-generated content and cannot be used to extract personal memories. Choose original records or your own writing.";
 "这份资料已标为模型生成内容，不作为本人记忆的原始依据。请选择原始记录。" = "This source is marked as model-generated content and cannot serve as original evidence for a personal memory. Choose the original records.";
+
+"请先打开迹库，允许使用麦克风。" = "Open Tracebook and allow microphone access first.";
+"请解锁当前设备后重试。" = "Unlock this device and try again.";
+"请在手表上运行这个快捷指令，录音不会在手机上开始。" = "Run this shortcut on your watch. It will not start recording on your phone.";
+"上一个录音操作正在完成，请稍后重试。" = "The previous recording action is still finishing. Try again shortly.";
+"录音操作未完成：%@" = "Recording action could not finish: %@";
+"请在系统设置中允许麦克风访问。" = "Allow microphone access in system settings.";
+
+"录音时长 %d 秒" = "Recording duration: %d seconds";
+"语言设置尚未发送到手表，连接恢复后会重试。" = "The language setting has not been sent to your watch yet. It will retry when the connection returns.";
+"抬腕记录，手势可选" = "Record from your wrist, with optional gestures";
+"在手表打开迹库，允许麦克风访问" = "Open Tracebook on your watch and allow microphone access";
+"点击开始录音，再点一次停止并保存" = "Tap to start recording, then tap again to stop and save";
+"支持互点两下的手表，录音按钮可见时也可用手势操作" = "On watches that support double tap, you can also use the gesture while the recording button is visible";
+"也可以在手表运行“切换手表录音”快捷指令" = "You can also run the “Toggle watch recording” shortcut on your watch";
+"手表应用已安装 · 打开试录" = "Watch app installed · Open it to try recording";
+"原生互点两下需要支持的手表和可见的录音按钮；在表盘上互点不会直接启动迹库录音。辅助触控是另一套系统设置，不能视为已经绑定。" = "Native double tap needs a supported watch and a visible recording button. Double tapping on the watch face does not directly start Tracebook. AssistiveTouch is a separate system setting and is not automatically configured.";
+"手表跟随手机中选择的应用语言，连接后更新。" = "Your watch follows the app language selected on your phone when connected.";
+"在手表打开迹库，点击开始录音。支持互点两下的手表，也可在按钮可见时试用手势；录完后回听检查。" = "Open Tracebook on your watch and tap to record. On supported watches, try double tap while the button is visible. Play the saved audio back to check it.";
+"系统中断了录音，已保留可读取的原音。" = "The system interrupted recording. Readable original audio has been retained.";
+"音频服务已重置，请回听已保存内容。" = "The audio service reset. Play back the saved audio to check it.";
+"暂时无法继续录音，可以先保存已录内容。" = "Recording cannot resume right now. You can save what has already been captured.";
+"设备剩余空间不足，请先腾出一些空间。" = "Your device is low on storage. Free some space before recording.";
+"系统未启动麦克风" = "The system did not start the microphone.";
+"这次没有录到有效声音，请重新试录。" = "No readable audio was captured. Try recording again.";
+"录音已停止，未能确认有效音频。原文件已保留，请重新试录。" = "Recording stopped, but readable audio could not be confirmed. The original file is retained. Try recording again.";
+"上次录音未正常结束，已恢复可读取原音。请回听检查。" = "The previous recording did not finish normally. Readable original audio was recovered. Play it back to check it.";
+"未能确认可读取的音频，原文件保留。" = "Readable audio could not be confirmed. The original file is retained.";
+"录音写入中断，请检查设备可用空间并回听原音。" = "Audio writing was interrupted. Check available storage and play back the original audio.";
+"录音已由系统停止，请回听确认。" = "The system stopped recording. Play the audio back to check it.";
+
+"第 %d 步，共 %d 步" = "Step %d of %d";
+"%@，%@" = "%@, %@";
+
+"原音已保存" = "Original audio saved";

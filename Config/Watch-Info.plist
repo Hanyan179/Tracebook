@@ -13,6 +13,6 @@
     <key>WKApplication</key><true/>
     <key>WKRunsIndependentlyOfCompanionApp</key><true/>
     <key>WKCompanionAppBundleIdentifier</key><string>$(VOICE_MEMORY_BUNDLE_PREFIX)</string>
-    <key>NSMicrophoneUsageDescription</key><string>当你捏合或点击开始时，在手表本机记录声音，并保存原音供回听。</string>
+    <key>NSMicrophoneUsageDescription</key><string>开始录音时使用麦克风，原音保存在手表供回听。</string>
     <key>UIBackgroundModes</key><array><string>audio</string></array>
 </dict></plist>

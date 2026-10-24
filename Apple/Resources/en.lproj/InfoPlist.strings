@@ -1,0 +1,2 @@
+"NSMicrophoneUsageDescription" = "Use the microphone when you start a recording. Original audio stays on this device for playback.";
+"NSLocalNetworkUsageDescription" = "Connect to the computer you choose to sync recordings and read your library.";

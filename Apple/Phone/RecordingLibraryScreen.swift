@@ -43,7 +43,7 @@ struct RecordingLibraryScreen: View {
                     Button {
                         Task {
                             if !recorder.ready { await recorder.prepare() }
-                            if recorder.ready { recorder.toggleFromButton() }
+                            if recorder.ready, !Task.isCancelled { recorder.toggleFromButton() }
                         }
                     } label: {
                         HStack(spacing: 12) {

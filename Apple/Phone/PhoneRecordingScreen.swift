@@ -17,6 +17,7 @@ struct PhoneRecordingScreen: View {
             Text(recorder.elapsed.timeLabel)
                 .font(.system(size: 64, weight: .light, design: .rounded)).monospacedDigit()
                 .minimumScaleFactor(0.6).lineLimit(1)
+                .accessibilityLabel(LF("录音时长 %d 秒", Int(recorder.elapsed)))
             HStack(spacing: 5) {
                 ForEach(0..<25) { index in
                     Capsule().fill(PhoneStyle.ink.opacity(recorder.capturing ? 0.85 : 0.25))
@@ -45,6 +46,10 @@ struct PhoneRecordingScreen: View {
             .padding(.horizontal, 26).padding(.bottom, 40)
         }
         }.background(PhoneStyle.canvas).interactiveDismissDisabled(recorder.active != nil)
+            .alert("暂时无法完成", isPresented: Binding(get: { recorder.problem != nil },
+                                                     set: { if !$0 { recorder.problem = nil } })) {
+                Button("知道了") { recorder.problem = nil }
+            } message: { Text(L(recorder.problem ?? "")) }
     }
 }
 

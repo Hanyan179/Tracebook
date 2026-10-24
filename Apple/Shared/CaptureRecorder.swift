@@ -28,6 +28,7 @@ final class CaptureRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate
     private var recorder: AVAudioRecorder?
     private var timer: Timer?
     private var gate = TriggerGate()
+    private var pauseGate = TriggerGate()
     private var subscriptions = Set<AnyCancellable>()
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "VoiceMemory", category: "Capture")
     var permissionDenied: Bool { AVAudioApplication.shared.recordPermission == .denied }
@@ -55,7 +56,18 @@ final class CaptureRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate
     }
 
     func prepare() async {
+        guard !busy else { return }
+        busy = true
+        defer { busy = false }
         ready = await AVAudioApplication.requestRecordPermission()
+        // The permission callback can arrive before the scene becomes active.
+        // Wait briefly for that transition; never start capture in the background.
+        if ready {
+            for _ in 0..<20 where !foreground {
+                do { try await Task.sleep(for: .milliseconds(100)) }
+                catch { return }
+            }
+        }
         message = ready ? nil : "请在系统设置中允许麦克风访问。"
         if !ready { problem = message }
     }
@@ -77,9 +89,9 @@ final class CaptureRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate
     }
 
     func togglePause() {
-        guard let recorder, var recording = active, gate.begin() else { return }
+        guard !busy, let recorder, var recording = active, pauseGate.begin() else { return }
         busy = true
-        defer { busy = false; gate.complete() }
+        defer { busy = false; pauseGate.complete() }
         do {
             if paused {
                 try AVAudioSession.sharedInstance().setActive(true)
@@ -127,7 +139,7 @@ final class CaptureRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate
     }
 
     private func toggle(origin: String) throws {
-        guard gate.begin() else { throw RecordingIntentError.busy }
+        guard !busy, gate.begin() else { throw RecordingIntentError.busy }
         busy = true
         defer { busy = false; gate.complete() }
         do {
@@ -142,7 +154,8 @@ final class CaptureRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate
     }
 
     private func start(origin: String) throws {
-        guard foreground, ready else { throw RecordingIntentError.notPrepared }
+        guard foreground else { throw RecordingIntentError.notForeground }
+        guard ready else { throw RecordingIntentError.notPrepared }
         playback.stop()
         let capacity = try? library.root.deletingLastPathComponent()
             .resourceValues(forKeys: [.volumeAvailableCapacityKey]).volumeAvailableCapacity

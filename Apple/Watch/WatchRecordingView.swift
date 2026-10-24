@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WatchRecordingView: View {
     @EnvironmentObject private var recorder: CaptureRecorder
+    @AppStorage("app.language") private var language = AppLanguage.system.rawValue
     private let accent = Color.white
     var body: some View {
         NavigationStack {
@@ -17,7 +18,7 @@ struct WatchRecordingView: View {
                     Text(recorder.elapsed.formattedTime)
                         .font(.system(size: 37, weight: .light, design: .rounded))
                         .monospacedDigit().minimumScaleFactor(0.6).lineLimit(1)
-                        .accessibilityLabel("录音时长 \(Int(recorder.elapsed)) 秒")
+                        .accessibilityLabel(LF("录音时长 %d 秒", Int(recorder.elapsed)))
                     HStack(alignment: .center, spacing: 4) {
                         ForEach(0..<19) { index in
                             Capsule().fill(recorder.active == nil ? accent.opacity(0.35) : accent)
@@ -27,6 +28,7 @@ struct WatchRecordingView: View {
                     if !recorder.ready {
                         Button("允许麦克风") { Task { await recorder.prepare() } }
                             .tint(accent).foregroundStyle(.black).buttonStyle(.borderedProminent)
+                            .disabled(recorder.busy)
                     } else {
                         Button(action: recorder.toggleFromButton) {
                             Label(L(recorder.active == nil ? "开始录音" : (recorder.capturing || recorder.paused ? "停止并保存" : "重试保存")),
@@ -44,7 +46,7 @@ struct WatchRecordingView: View {
                         }.buttonStyle(.bordered).disabled(recorder.busy)
                     }
                     if let message = recorder.message {
-                        Text(message).font(.caption2).foregroundStyle(.secondary)
+                        Text(L(message)).font(.caption2).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     } else {
                         Text(L(recorder.active == nil ? "留下一段声音" : "声音保存在手表"))
@@ -63,7 +65,7 @@ struct WatchRecordingView: View {
             }
             .navigationBarHidden(true)
             .containerBackground(.black, for: .navigation)
-        }
+        }.environment(\.locale, (AppLanguage(rawValue: language) ?? .system).locale)
     }
     private func barHeight(_ index: Int) -> CGFloat {
         guard recorder.capturing else { return CGFloat(4 + (index % 4)) }
@@ -72,6 +74,7 @@ struct WatchRecordingView: View {
 }
 
 private struct WatchLibraryView: View {
+    @AppStorage("app.language") private var language = AppLanguage.system.rawValue
     @EnvironmentObject private var recorder: CaptureRecorder
     @EnvironmentObject private var playback: AudioPlayback
     @EnvironmentObject private var transfer: WatchTransferBridge
@@ -88,7 +91,7 @@ private struct WatchLibraryView: View {
                         Text(recording.statusLabel)
                     }.font(.caption2).foregroundStyle(.secondary)
                     if let note = recording.note {
-                        Text(note).font(.caption2).foregroundStyle(.secondary)
+                        Text(L(note)).font(.caption2).foregroundStyle(.secondary)
                     }
                     if recording.isPlayable {
                         Text(L(transfer.label(for: recording.id))).font(.caption2).foregroundStyle(.secondary)
@@ -117,6 +120,7 @@ private struct WatchLibraryView: View {
                 }.navigationTitle(L("已删除"))
             }
         }.navigationTitle(L("原音"))
+            .environment(\.locale, (AppLanguage(rawValue: language) ?? .system).locale)
             .onDisappear { playback.stop() }
     }
 }

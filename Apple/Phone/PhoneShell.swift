@@ -89,12 +89,13 @@ struct SetupView: View {
             if id != nil, preferences.onboarded { tab = 0; recordingPresented = true }
             if id == nil { recordingPresented = false }
         }
-        .alert("暂时无法完成", isPresented: Binding(get: { recorder.problem != nil && preferences.onboarded },
+        .alert("暂时无法完成", isPresented: Binding(get: { recorder.problem != nil && preferences.onboarded && !recordingPresented },
                                                  set: { if !$0 { recorder.problem = nil } })) {
             Button("知道了") { recorder.problem = nil }
-        } message: { Text(recorder.problem ?? "") }
+        } message: { Text(L(recorder.problem ?? "")) }
         .onAppear { workspace.canPlay = { CaptureRecorder.shared.active == nil } }
         .onChange(of: language) { _, _ in
+            watch.refresh()
             Task {
                 if route == SyncRoute.direct.rawValue { await workspace.refresh() }
                 await folder.refresh()

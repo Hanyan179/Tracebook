@@ -1,0 +1,2 @@
+"NSMicrophoneUsageDescription" = "开始录音时使用麦克风，原音保存在当前设备供回听。";
+"NSLocalNetworkUsageDescription" = "连接你选择的电脑，同步录音并读取你的资料库。";

@@ -9,6 +9,7 @@ final class WatchTransferBridge: NSObject, ObservableObject, WCSessionDelegate {
     @Published private(set) var installed = false
     @Published private(set) var jobs: [TransferJob] = []
     @Published private(set) var problem: String?
+    @Published private(set) var preferenceProblem: String?
     private let journal: TransferJournal
     private var subscriptions = Set<AnyCancellable>()
     private var preparing = Set<UUID>()
@@ -44,13 +45,33 @@ final class WatchTransferBridge: NSObject, ObservableObject, WCSessionDelegate {
         #if os(iOS)
         paired = WCSession.default.isPaired
         installed = WCSession.default.isWatchAppInstalled
+        if paired && installed { sendLanguagePreference() }
         recoverIncoming()
         #else
         installed = WCSession.default.isCompanionAppInstalled
         paired = installed
+        applyLanguagePreference(WCSession.default.receivedApplicationContext["appLanguage"] as? String)
         enqueueSaved()
         #endif
     }
+    #if os(iOS)
+    private func sendLanguagePreference() {
+        let language = AppLanguage.current.rawValue
+        guard WCSession.default.applicationContext["appLanguage"] as? String != language else { return }
+        do {
+            try WCSession.default.updateApplicationContext(["appLanguage": language])
+            preferenceProblem = nil
+        } catch {
+            preferenceProblem = "语言设置尚未发送到手表，连接恢复后会重试。"
+        }
+    }
+    #else
+    private func applyLanguagePreference(_ value: String?) {
+        guard let value, AppLanguage(rawValue: value) != nil,
+              UserDefaults.standard.string(forKey: "app.language") != value else { return }
+        UserDefaults.standard.set(value, forKey: "app.language")
+    }
+    #endif
     func label(for id: UUID) -> String {
         guard let job = jobs.first(where: { $0.recordingID == id }) else { return "保存在手表" }
         switch job.state {
@@ -134,6 +155,12 @@ final class WatchTransferBridge: NSObject, ObservableObject, WCSessionDelegate {
     #endif
     nonisolated func session(_ session: WCSession, activationDidCompleteWith activationState: WCSessionActivationState, error: Error?) {
         Task { @MainActor in self.refresh() }
+    }
+    nonisolated func session(_ session: WCSession, didReceiveApplicationContext applicationContext: [String: Any]) {
+        #if os(watchOS)
+        let language = applicationContext["appLanguage"] as? String
+        Task { @MainActor in self.applyLanguagePreference(language) }
+        #endif
     }
     nonisolated func session(_ session: WCSession, didFinish fileTransfer: WCSessionFileTransfer, error: Error?) {
         let id = fileTransfer.file.metadata?["recordingID"] as? String

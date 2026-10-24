@@ -67,10 +67,18 @@ enum RecordingIntentError: Error, LocalizedError, CustomLocalizedStringResourceC
         switch self {
         case .watchRequired: "请在手表上运行这个快捷指令，录音不会在手机上开始。"
         case .notForeground: "请解锁当前设备后重试。"
-        case .notPrepared: "请先打开声记，允许使用麦克风。"
+        case .notPrepared: "请先打开迹库，允许使用麦克风。"
         case .busy: "上一个录音操作正在完成，请稍后重试。"
         case .captureFailed(let message): "录音操作未完成：\(message)"
         }
     }
-    var errorDescription: String? { String(localized: localizedStringResource) }
+    var errorDescription: String? {
+        switch self {
+        case .watchRequired: L("请在手表上运行这个快捷指令，录音不会在手机上开始。")
+        case .notForeground: L("请解锁当前设备后重试。")
+        case .notPrepared: L("请先打开迹库，允许使用麦克风。")
+        case .busy: L("上一个录音操作正在完成，请稍后重试。")
+        case .captureFailed(let message): LF("录音操作未完成：%@", L(message))
+        }
+    }
 }

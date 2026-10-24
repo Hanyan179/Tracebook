@@ -32,6 +32,13 @@ ui_languages = [
 ]
 ui_resource = add("ui-localizations", "PBXVariantGroup", children=ui_languages,
                   name="Localizable.strings", sourceTree="<group>")
+info_languages = [
+    add(f"info-{language}", "PBXFileReference", lastKnownFileType="text.plist.strings",
+        name=language, path=f"Apple/Resources/{language}.lproj/InfoPlist.strings", sourceTree="SOURCE_ROOT")
+    for language in ["zh-Hans", "en"]
+]
+info_resource = add("info-localizations", "PBXVariantGroup", children=info_languages,
+                    name="InfoPlist.strings", sourceTree="<group>")
 shortcut_languages = [
     add(f"shortcuts-{language}", "PBXFileReference", lastKnownFileType="text.plist.strings",
         name=language, path=f"Apple/Resources/{language}.lproj/AppShortcuts.strings", sourceTree="SOURCE_ROOT")
@@ -95,6 +102,7 @@ for name, files, sdk, plist, bundle in [
                               fileRef=watch_shortcut_resource if sdk == "watchos" else shortcut_resource)]
     resource_files.append(add(name + "brandresource", "PBXBuildFile", fileRef=brand_resource))
     resource_files.append(add(name + "uiresource", "PBXBuildFile", fileRef=ui_resource))
+    resource_files.append(add(name + "inforesource", "PBXBuildFile", fileRef=info_resource))
     resource_files.append(add(name + "iconresource", "PBXBuildFile", fileRef=icon_resources[sdk]))
     phases = [
         add(name + "sources", "PBXSourcesBuildPhase", buildActionMask="2147483647",
@@ -170,7 +178,7 @@ copy = add("watchembed", "PBXCopyFilesBuildPhase", buildActionMask="2147483647",
 objects[targets["VoiceMemory"]]["dependencies"] = [dependency]
 objects[targets["VoiceMemory"]]["buildPhases"].append(copy)
 product_group = add("products", "PBXGroup", children=list(products.values()), name="Products", sourceTree="<group>")
-group = add("root", "PBXGroup", children=[config, ui_resource, shortcut_resource, watch_shortcut_resource, brand_resource] + list(icon_resources.values()) + sorted(refs.values()) + node_resources + [product_group], sourceTree="<group>")
+group = add("root", "PBXGroup", children=[config, ui_resource, info_resource, shortcut_resource, watch_shortcut_resource, brand_resource] + list(icon_resources.values()) + sorted(refs.values()) + node_resources + [product_group], sourceTree="<group>")
 project_configs = [
     add("project" + mode, "XCBuildConfiguration", buildSettings={}, name=mode)
     for mode in ["Debug", "Release"]
