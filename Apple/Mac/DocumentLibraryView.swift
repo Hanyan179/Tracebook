@@ -152,11 +152,7 @@ struct DocumentLibraryView: View {
                                         Text(verbatim: item.title).font(.body)
                                         Text(verbatim: item.date).font(.caption).foregroundStyle(.secondary)
                                         Text(L(item.documentRole.title)).font(.caption).foregroundStyle(.secondary)
-                                        if let revision = item.documentRevision,
-                                           revision.previousID != nil || revision.isLatestImport == false {
-                                            Text(L(revision.isLatestImport == true ? "此文件最近导入的版本" : "此文件的较早导入版本"))
-                                                .font(.caption).foregroundStyle(.secondary)
-                                        }
+                                        DocumentRevisionNotice(source: item)
                                     }
                                     Spacer()
                                     Image(systemName: "chevron.right").foregroundStyle(.secondary)

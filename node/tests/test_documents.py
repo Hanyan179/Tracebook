@@ -162,6 +162,56 @@ class DocumentImportTests(unittest.TestCase):
         result=self.store.knowledge.query({'query':'orchard','scopes':['documents']})
         self.assertEqual(result['sources'],[]);self.assertFalse(result['coverage']['hasMore'])
 
+    def test_search_and_source_versions_follow_location_without_rewriting_history(self):
+        item=self.item('Orchard earlier material.','orchard.md');self.import_files([item])
+        cid=self.store.knowledge.create_conversation()['id']
+        turn=self.store.knowledge.ask(cid,{'query':'Orchard','scopes':['documents'],'requestID':str(uuid.uuid4())})
+        original=turn['response']['sources'][0];old_id=original['id']
+        self.assertTrue(original['documentRevision']['isLatestImport'])
+        self.assertIsNone(original['documentRevision']['previousID'])
+        saved=dict(self.store.db.execute('SELECT * FROM conversation_turns WHERE id=?',(turn['id'],)).fetchone())
+        old_path=self.store.output/'documents'/(old_id+'.md');old_bytes=old_path.read_bytes()
+        item['text']='Orchard newer material.';self.import_files([item])
+        results=self.store.knowledge.query({'query':'Orchard','scopes':['documents']})['sources']
+        current=next(s for s in results if s['id']!=old_id);old=next(s for s in results if s['id']==old_id)
+        self.assertFalse(old['documentRevision']['isLatestImport']);self.assertTrue(current['documentRevision']['isLatestImport'])
+        self.assertEqual(current['documentRevision']['previousID'],old_id)
+        listing={s['id']:s for s in self.store.documents.listing({})['items']}
+        for source in results:
+            read=self.store.knowledge.read_source('document',source['id'],['documents'],{})
+            self.assertEqual(source['documentRevision'],read['documentRevision'])
+            self.assertEqual(source['documentRevision'],listing[source['id']]['documentRevision'])
+            self.assertNotIn('/synthetic',json.dumps(source))
+        self.assertEqual(old_bytes,old_path.read_bytes())
+        self.assertEqual(original['contentVersion'],old['contentVersion'])
+        self.assertEqual(saved,dict(self.store.db.execute('SELECT * FROM conversation_turns WHERE id=?',(turn['id'],)).fetchone()))
+        checked=self.store.answers.checked_source(original)
+        self.assertEqual(checked['id'],old_id);self.assertEqual(checked['contentVersion'],original['contentVersion'])
+        with self.assertRaises(StoreError):self.store.knowledge.read_source('document',old_id,['notes'],{})
+
+    def test_same_title_in_distinct_locations_does_not_infer_a_version_relationship(self):
+        first=self.item('Orchard first folder.','same.md');second=self.item('Orchard second folder.','same.md')
+        second['sourcePath']='/synthetic/another/same.md';self.import_files([first,second])
+        sources=self.store.knowledge.query({'query':'Orchard','scopes':['documents']})['sources']
+        self.assertEqual(len(sources),2);self.assertEqual(len({s['id'] for s in sources}),2)
+        for source in sources:
+            self.assertTrue(source['documentRevision']['isLatestImport'])
+            self.assertIsNone(source['documentRevision']['previousID'])
+            self.assertIsNotNone(source['documentRevision']['importedAt'])
+
+    def test_missing_location_is_unknown_and_reimport_can_reselect_an_existing_version(self):
+        item=self.item('Orchard earlier.','orchard.md');self.import_files([item])
+        old=self.store.documents.listing({})['items'][0]['id']
+        item['text']='Orchard later.';self.import_files([item])
+        newer=next(s['id'] for s in self.store.documents.listing({})['items'] if s['id']!=old)
+        item['text']='Orchard earlier.';_,report=self.import_files([item]);self.assertEqual(report['added'],0)
+        self.assertTrue(self.store.documents.revision(old)['isLatestImport'])
+        self.assertFalse(self.store.documents.revision(newer)['isLatestImport'])
+        self.store.db.execute('DELETE FROM document_locations');self.store.db.commit()
+        source=self.store.knowledge.query({'query':'Orchard','scopes':['documents']})['sources'][0]
+        self.assertIsNone(source['documentRevision']['isLatestImport'])
+        self.assertIsNone(self.store.documents.revision(str(uuid.uuid4())))
+
     def test_output_move_restart_and_tampered_preview(self):
         self.import_files([self.item()])
         path=next((self.store.output/'documents').glob('*.md'));body=path.read_text()

@@ -2127,3 +2127,9 @@
 "部分附注未发现对应引用标记，可能不是当前正文的一部分。" = "Some notes have no matching reference marker and may not belong to the current body text.";
 "此文件最近导入的版本" = "Latest imported version of this file";
 "此文件的较早导入版本" = "Earlier imported version of this file";
+
+"归档编号 %@" = "Archive %@";
+"导入版本关系未记录" = "Import version relationship was not recorded";
+"检索时最新导入" = "Latest import at search time";
+"检索时的较早导入版本" = "Earlier import at search time";
+"导入于 %@" = "Imported %@";

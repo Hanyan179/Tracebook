@@ -63,6 +63,7 @@ struct SourcePassageReader: View {
                             if !context.before.isEmpty { Text(verbatim: context.before).textSelection(.enabled).lineSpacing(4) }
                         }
                         VStack(alignment: .leading, spacing: 10) {
+                            DocumentRevisionNotice(source: currentSource ?? source, snapshot: currentSource == nil)
                             if source.kind == "document" { DocumentContentNotice(role: (currentSource ?? source).documentRole) }
                             if let info = currentSource?.documentInfo {
                                 DocumentSourceNotice(info: info, quoteStart: context == nil ? nil : quoteStart,

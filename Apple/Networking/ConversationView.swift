@@ -111,6 +111,7 @@ struct ConversationView: View {
                                 Label(item.title, systemImage: item.symbol).font(.subheadline.weight(.semibold)).lineLimit(2)
                                 Spacer(); Image(systemName: "arrow.up.right").font(.caption)
                             }
+                            DocumentRevisionNotice(source: item, snapshot: true)
                             if !item.textAvailable || readableExcerpt(item.excerpt ?? "").trimmingCharacters(in: .whitespacesAndNewlines) != item.title {
                                 Text(verbatim: item.textAvailable ? readableExcerpt(item.excerpt ?? "") : L("这条记录还没有文字。"))
                                     .font(.body).lineSpacing(5).lineLimit(7).foregroundStyle(.secondary)
@@ -224,6 +225,7 @@ struct KnowledgeSourceReader: View {
                         Label(L(notice), systemImage: "info.circle").font(.callout).foregroundStyle(.secondary)
                     }
                     if let info = (currentSource ?? source).documentInfo { DocumentSourceNotice(info: info) }
+                    DocumentRevisionNotice(source: currentSource ?? source, snapshot: currentSource == nil)
                     if source.kind == "document" { DocumentContentNotice(role: (currentSource ?? source).documentRole) }
                     if loaded && text.isEmpty { Text("这条记录还没有文字。").foregroundStyle(.secondary) }
                     if let metadata = documentParts.header {

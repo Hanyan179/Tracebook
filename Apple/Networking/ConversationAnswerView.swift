@@ -182,9 +182,11 @@ private struct AnswerScopeSheet: View {
                                 }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                             }.buttonStyle(.plain)
                                 .disabled(busy || !usable(value) || (selection.count >= 8 && !selection.contains(value.identity)))
-                                .accessibilityLabel(LF("选择片段：%@", value.title))
+                                .accessibilityLabel(LF("选择片段：%@", value.title) + (value.kind == "document" ? ", " + value.documentArchiveLabel + ", " + (value.documentRevisionLabel(snapshot: true) ?? "") : ""))
                                 .accessibilityValue(L(selection.contains(value.identity) ? "已选择" : "未选择"))
+                                .accessibilityIdentifier("answer.source." + value.identity)
                             Text(L(value.kindTitle) + " · " + value.date).font(.caption).foregroundStyle(.secondary)
+                            DocumentRevisionNotice(source: value, snapshot: true)
                             if let notice = value.analysisNotice { Text(L(notice)).font(.footnote).foregroundStyle(.secondary) }
                             if usable(value) {
                                 Text(verbatim: value.excerpt ?? "").font(.callout).foregroundStyle(.secondary).lineLimit(2)
@@ -219,7 +221,14 @@ private struct AnswerScopeSheet: View {
                             #endif
                         }
                         ForEach(plan.items) { item in
-                            if let issue = item.problem {
+                            if let source = item.source {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    Label(source.title, systemImage: source.symbol).font(.callout)
+                                    if source.kind == "document" {
+                                        Text(source.documentArchiveLabel).font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }
+                            } else if let issue = item.problem {
                                 Text(verbatim: (item.title ?? item.source?.title ?? "") + "\n" + L(issue))
                                     .font(.callout).foregroundStyle(.secondary)
                             }

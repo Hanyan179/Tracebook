@@ -1,5 +1,27 @@
 import SwiftUI
 
+struct DocumentRevisionNotice: View {
+    let source: KnowledgeSource
+    var snapshot = false
+    var body: some View {
+        if source.kind == "document" {
+            VStack(alignment: .leading, spacing: 4) {
+                if let label = source.documentRevisionLabel(snapshot: snapshot) {
+                    Label(label, systemImage: "doc.badge.clock")
+                }
+                if let raw = source.documentRevision?.importedAt,
+                   let date = ISO8601DateFormatter().date(from: raw) {
+                    Text(LF("导入于 %@", date.formatted(.dateTime.year().month().day().hour().minute().second().locale(AppLanguage.current.locale))) + " · " + source.documentArchiveLabel)
+                } else {
+                    Text(source.documentArchiveLabel)
+                }
+            }.font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityElement(children: .combine)
+        }
+    }
+}
+
 enum DocumentContentRole: String, CaseIterable, Codable, Sendable {
     case unknown, user_text, transcript, generated
     var title: String {

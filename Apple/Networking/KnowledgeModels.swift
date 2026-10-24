@@ -22,6 +22,13 @@ struct KnowledgeSource: Codable, Identifiable, Sendable {
     var contentRole: String?
     var documentRole: DocumentContentRole { DocumentContentRole(rawValue: contentRole ?? "unknown") ?? .unknown }
     var identity: String { kind + "/" + id }
+    var documentArchiveLabel: String { LF("归档编号 %@", String(id.prefix(8))) }
+    func documentRevisionLabel(snapshot: Bool) -> String? {
+        guard kind == "document" else { return nil }
+        guard let latest = documentRevision?.isLatestImport else { return L("导入版本关系未记录") }
+        if snapshot { return L(latest ? "检索时最新导入" : "检索时的较早导入版本") }
+        return L(latest ? "此文件最近导入的版本" : "此文件的较早导入版本")
+    }
     var symbol: String { switch kind { case "document": "doc.text"; case "input": "keyboard"; case "note": "note.text"; case "analysis": "sparkles"; case "daily": "calendar"; case "memory": "bookmark"; default: "waveform" } }
     var kindTitle: String { switch kind { case "document": "导入资料"; case "input": "本地输入"; case "note": "笔记"; case "analysis": "AI 每日分析"; case "daily": "每日记录"; case "memory": "长期记忆"; default: "原音文字" } }
     var analysisNotice: String? {

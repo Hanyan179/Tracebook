@@ -421,22 +421,26 @@ class DocumentImports:
             if body.startswith(prefix):return len(prefix)
         return 0
 
+    def revision(self, identifier):
+        row = self.s.db.execute('SELECT previous_id,imported_at,source_path FROM documents WHERE id=?', (identifier,)).fetchone()
+        if not row:return None
+        location = self.s.db.execute('SELECT document_id FROM document_locations WHERE path_hash=?',
+            (hashlib.sha256(row['source_path'].encode()).hexdigest(),)).fetchone()
+        return {'previousID': row['previous_id'], 'importedAt': row['imported_at'],
+                'isLatestImport': location[0] == identifier if location else None}
+
     def listing(self, parameters):
         try:
             offset = max(0, int(parameters.get('offset', 0)))
         except (ValueError, TypeError):
             self.error(400, '读取位置不正确。')
         with self.s.lock:
-            rows = self.s.db.execute('SELECT id,previous_id,imported_at,source_path FROM documents ORDER BY imported_at DESC,id DESC LIMIT 41 OFFSET ?', (offset,)).fetchall()
+            rows = self.s.db.execute('SELECT id FROM documents ORDER BY imported_at DESC,id DESC LIMIT 41 OFFSET ?', (offset,)).fetchall()
             items = []
             for row in rows[:40]:
                 self.s.catalog.index_document(row['id'])
                 source = self.s.db.execute("SELECT * FROM library_items WHERE kind='document' AND id=?", (row['id'],)).fetchone()
                 item = self.s.knowledge.source_data(source, source['body'])
-                location = self.s.db.execute('SELECT document_id FROM document_locations WHERE path_hash=?',
-                    (hashlib.sha256(row['source_path'].encode()).hexdigest(),)).fetchone()
-                item['documentRevision'] = {'previousID': row['previous_id'], 'importedAt': row['imported_at'],
-                                            'isLatestImport': location[0] == row['id'] if location else None}
                 items.append(item)
             return {'items': items, 'count': self.s.db.execute('SELECT COUNT(*) FROM documents').fetchone()[0],
                     'nextOffset': offset+40 if len(rows)>40 else None}
