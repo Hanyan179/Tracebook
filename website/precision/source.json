@@ -1,0 +1,5 @@
+{
+  "audio": {"id": "DEMO_AUDIO", "kind": "recording", "version": 1, "date": "10/21", "time": "09:10", "duration": "00:42", "title_zh": "散步时的一个念头", "title_en": "A thought from a walk", "text": null},
+  "note": {"id": "NOTE_ID", "kind": "note", "version": 1, "date": "10/21", "time": "10:35", "title_zh": "秋季产品演示", "title_en": "Autumn product demo", "quote_zh": "演示先给出原文，再展示整理结果。", "quote_en": "Show the original before the organized result."},
+  "review": {"date": "10/22", "time": "07:30", "source_day": "10/21"}
+}
