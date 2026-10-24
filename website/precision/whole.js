@@ -7,7 +7,11 @@ const ContinuationDemo = (() => {
     if(state!=='unselected')out.push('',data.memory['text_'+lang],'','quote: '+lines[data.memory.quote_index],'source: '+n.kind+'/'+n.id,'content_version: '+n.version);
     out.push('',en?'Synthetic webpage example, not a client export, audio file or backup.':'网页合成示例，不是客户端导出、原音文件或备份包。','');return out.join('\n');
   }
-  return {download};
+  function revealTop(current,choiceTop,decisionBottom,height){
+    const lower=decisionBottom-height+32,upper=choiceTop-24;
+    return Math.max(0,lower<=upper?Math.max(lower,Math.min(current,upper)):upper);
+  }
+  return {download,revealTop};
 })();
 if(typeof module!=='undefined')module.exports=ContinuationDemo;
 (() => {
@@ -65,7 +69,7 @@ if(typeof module!=='undefined')module.exports=ContinuationDemo;
     document.querySelectorAll('[data-memory-badge]').forEach(b=>{b.textContent=b.dataset[state];b.dataset.memoryState=state;});
     document.querySelector('[data-export-status]').textContent=status.dataset[state];document.querySelector('[data-export-memory]').textContent=chosen?data.memory['text_'+lang]:(lang==='zh'?'仅保留完整原文，尚未选择记忆。':'Full original only. No memory selected.');
   }
-  choice.addEventListener('click',()=>{if(memoryState==='unselected'){memory('candidate');requestAnimationFrame(()=>{decision.scrollIntoView({behavior:reduced.matches?'instant':'smooth',block:'center'});status.focus({preventScroll:true});});}});
+  choice.addEventListener('click',()=>{if(memoryState==='unselected'){memory('candidate');requestAnimationFrame(()=>{const c=choice.getBoundingClientRect(),d=decision.getBoundingClientRect(),bottom=d.bottom??d.top+d.height;scrollTo({top:ContinuationDemo.revealTop(scrollY,scrollY+c.top,scrollY+bottom,innerHeight),behavior:reduced.matches?'instant':'smooth'});status.focus({preventScroll:true});});}});
   action.addEventListener('click',()=>{if(memoryState==='unselected')return;memory(memoryState==='candidate'?'confirmed':memoryState==='confirmed'?'inactive':'confirmed');});
   reset.addEventListener('click',()=>{memory('unselected');choice.focus({preventScroll:true});});
   document.querySelector('.memory-route').addEventListener('click',e=>{e.preventDefault();history.pushState(null,'','#memory');memorySection.scrollIntoView({behavior:reduced.matches?'instant':'smooth',block:'start'});choice.focus({preventScroll:true});});
