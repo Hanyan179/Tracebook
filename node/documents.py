@@ -10,7 +10,7 @@ import uuid
 import threading
 import time
 from local_sources import redact
-from pdf_documents import PDFError, extract_pdf
+from pdf_documents import PDFError, extract_pdf, ocr_available
 from docx_documents import DOCXError, extract_docx
 from document_originals import OriginalError, retain_original, read_original, original_state
 
@@ -39,7 +39,10 @@ def archive_header(item, previous, legacy_original_notice=False):
     if item['redacted']:body += '已隐藏识别到的常见凭证；原文件未修改。\n'
     details = item.get('details', {})
     if details.get('format') == 'pdf':
-        body += 'PDF 提取文字：保留文件页序；未识别图片中的文字，阅读顺序与表格可能需要校对。\n'
+        if details.get('ocrRequested'):
+            body += 'PDF 提取文字：保留文件页序；对无文字层的页尝试本机文字识别，结果可能有错漏，请对照原件核对。\n'
+            body += '已有文字层的页未识别其中的图片；复杂版式、阅读顺序、表格与手写内容可能有遗漏。\n'
+        else:body += 'PDF 提取文字：保留文件页序；未识别图片中的文字，阅读顺序与表格可能需要校对。\n'
         body += ('原文件仍保留在选择的位置；本资料夹保存提取文字。\n' if legacy_original_notice else
                  '原文件保持原位；此页为提取文字，原件副本状态请在应用中核对。\n')
     elif details.get('format') == 'docx':
@@ -160,7 +163,7 @@ class DocumentImports:
         details_report = []
         docx_report = []
         fingerprint = hashlib.sha256(json.dumps(files, sort_keys=True, ensure_ascii=False).encode()).hexdigest() if preparation_id else None
-        deadline = time.monotonic() + 40
+        deadline = time.monotonic() + 90
         for index, value in enumerate(files):
             if cancel and cancel.is_set():raise PDFError('cancelled')
             if not isinstance(value, dict):
@@ -176,6 +179,8 @@ class DocumentImports:
             raw_original = None
             retain = value.get('retainOriginal', False)
             if type(retain) is not bool:self.error(400, '请选择是否保留原文件副本。')
+            recognize_scans = value.get('recognizeScans', False)
+            if type(recognize_scans) is not bool:self.error(400, '请选择是否识别扫描页。')
             if preparation_id:
                 with self.s.lock, self.s.db:
                     self.s.db.execute("UPDATE document_previews SET report=? WHERE id=? AND state='preparing'",
@@ -192,8 +197,10 @@ class DocumentImports:
                     if total > 12 * 1024 * 1024:self.error(413, '本批资料超过 12 MB，请分批导入。')
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:raise PDFError('not_processed')
-                    extracted = extract_pdf(raw_pdf, self.s.data/'document-previews', cancel, seconds=min(10, remaining))
+                    extracted = extract_pdf(raw_pdf, self.s.data/'document-previews', cancel,
+                        seconds=min(60 if recognize_scans else 10, remaining), recognize_scans=recognize_scans)
                     if not any(page['status'] == 'text' for page in extracted['pages']):
+                        if recognize_scans:raise PDFError('ocr_no_text')
                         raise PDFError('invalid_pdf' if any(p['status'] == 'unreadable' for p in extracted['pages']) else 'no_text')
                     parts = [];pages = [];position = 0;hidden = False
                     for page in extracted['pages']:
@@ -201,14 +208,22 @@ class DocumentImports:
                         passage, redacted = redact(page['text']);hidden = hidden or redacted
                         if page['status'] != 'text':
                             passage = '此页未提取到文字，请核对原文件。' if page['status'] == 'empty' else '此页解析失败，请核对原文件。'
+                            if page.get('ocrStatus') == 'limit':passage = '此页尚未识别：已达本次识别上限，请拆分文件后重试。'
+                            elif page.get('ocrStatus') == 'no_text':passage = '本机识别未找到文字，请核对原文件。'
+                            elif page.get('ocrStatus') == 'failed':passage = '此页本机文字识别失败，请核对原文件。'
                         parts.append(heading+passage+'\n\n')
                         pages.append({'number': page['number'], 'status': page['status'],
                                       'start': position+len(heading), 'end': position+len(heading)+len(passage)})
+                        pages[-1].update({k: page[k] for k in ('method', 'ocrStatus') if k in page})
                         position += len(parts[-1])
                     text = ''.join(parts)
                     details = {'format': 'pdf', 'parser': extracted.get('parser', 'unknown'), 'pages': pages,
                         'pageCount': len(pages), 'originalFileSHA256': hashlib.sha256(raw_pdf).hexdigest(),
                         'parserWarnings': extracted['parserWarnings'], 'redacted': bool(hidden)}
+                    # Enabling OCR for an all-text PDF must not invent a second
+                    # archive or claim recognized content when no page was tried.
+                    if recognize_scans and any('ocrStatus' in page for page in extracted['pages']):
+                        details.update(ocrRequested=True, ocrEngine=extracted.get('ocrEngine', 'unknown'))
                     if len(text.encode()) > MAX_FILE:raise PDFError('text_limit')
                 except PDFError as error:
                     if str(error) == 'cancelled':raise
@@ -263,6 +278,7 @@ class DocumentImports:
                 allowed = ('unsupported', 'too_large', 'encrypted', 'invalid_pdf', 'page_limit', 'text_limit',
                            'no_text', 'parser_limit', 'parser_timeout', 'parser_unavailable', 'parser_busy', 'not_processed', 'batch_limit',
                            'invalid_docx', 'encrypted_docx', 'unsupported_docx')
+                allowed += ('ocr_unavailable', 'ocr_no_text')
                 warnings.append({'name': name, 'reason': reason if reason in allowed else 'unreadable'})
                 continue
             if suffix not in ('.pdf', '.docx'):total += len(text.encode())
@@ -271,6 +287,9 @@ class DocumentImports:
             if suffix in ('.pdf', '.docx'):hidden = details['redacted']
             else:text, hidden = redact(text.lstrip('\ufeff').replace('\r\n', '\n').replace('\r', '\n'))
             signature = hashlib.sha256(((details['format']+'-v1\0'+details['originalFileSHA256']+'\0') if details else '').encode()+text.encode()).hexdigest()
+            if details.get('ocrRequested'):
+                coverage = [(p.get('method'), p.get('ocrStatus')) for p in details['pages']]
+                signature = hashlib.sha256(('pdf-ocr-v1\0'+signature+'\0'+json.dumps(coverage)).encode()).hexdigest()
             # Preserve legacy IDs for unclassified imports. A different explicit
             # classification is a new revision, never an in-place trust upgrade.
             if role != 'unknown':
@@ -290,6 +309,10 @@ class DocumentImports:
                     'emptyPages': [p['number'] for p in details['pages'] if p['status'] == 'empty'],
                     'failedPages': [p['number'] for p in details['pages'] if p['status'] == 'unreadable'],
                     'parserWarnings': details['parserWarnings']})
+                if details.get('ocrRequested'):
+                    details_report[-1].update(ocrRequested=True,
+                        ocrPages=[p['number'] for p in details['pages'] if p.get('method') == 'ocr'],
+                        ocrSkippedPages=[p['number'] for p in details['pages'] if p.get('ocrStatus') == 'limit'])
             elif details.get('format') == 'docx':
                 docx_report.append({'name': name, 'paragraphs': details['paragraphCount'], 'tables': details['tableCount'],
                                     'parts': details['parts'], 'blocks': len(details['blocks']), 'warnings': details['warnings']})
@@ -434,7 +457,7 @@ class DocumentImports:
             return {**details, 'rangesValid': valid, 'blocks': details['blocks'] if valid else
                     [{k:v for k,v in b.items() if k not in ('start', 'end')} for b in details['blocks']]}
         return {**details, 'rangesValid': valid,
-                'pages': details['pages'] if valid else [{k:v for k,v in p.items() if k in ('number','status')} for p in details['pages']]}
+                'pages': details['pages'] if valid else [{k:v for k,v in p.items() if k not in ('start','end')} for p in details['pages']]}
 
     def original(self, identifier):
         from store import canonical_id
@@ -493,4 +516,5 @@ class DocumentImports:
                 items.append(item)
             return {'items': items, 'count': self.s.db.execute('SELECT COUNT(*) FROM documents').fetchone()[0],
                     'originalCopiesSupported': True,
+                    'pdfOCRSupported': ocr_available(),
                     'nextOffset': offset+40 if len(rows)>40 else None}

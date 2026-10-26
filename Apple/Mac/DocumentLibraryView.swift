@@ -7,6 +7,7 @@ struct DocumentPage: Decodable, Sendable {
     let count: Int
     let nextOffset: Int?
     let originalCopiesSupported: Bool?
+    let pdfOCRSupported: Bool?
 }
 
 private struct DocumentPreview: Decodable, Identifiable, Sendable {
@@ -32,6 +33,9 @@ private struct DocumentPreview: Decodable, Identifiable, Sendable {
         let emptyPages: [Int]
         let failedPages: [Int]
         let parserWarnings: Bool
+        let ocrRequested: Bool?
+        let ocrPages: [Int]?
+        let ocrSkippedPages: [Int]?
     }
     struct DOCXCoverage: Decodable, Sendable {
         let name: String
@@ -56,6 +60,8 @@ private struct DocumentPreview: Decodable, Identifiable, Sendable {
             case "page_limit": "PDF 最多 200 页，请拆分后导入"
             case "text_limit": "提取文字过大，请拆分文件后导入"
             case "no_text": "未提取到文字，可能为空白页或扫描件"
+            case "ocr_unavailable": "此资料库不支持本机文字识别，请连接更新后的 Mac 应用。"
+            case "ocr_no_text": "本次识别未提取到文字，请核对原件或拆分文件后重试。"
             case "parser_timeout": "解析超时，请拆分文件后重试"
             case "parser_limit": "解析超过资源限制，请拆分文件后重试"
             case "parser_unavailable": "资料解析组件不可用，请更新电脑应用"
@@ -82,6 +88,7 @@ private struct DocumentPayload: Encodable, Sendable {
     var error: String?
     var contentRole: String?
     var retainOriginal: Bool?
+    var recognizeScans: Bool?
 }
 private struct DocumentPreparation: Decodable, Sendable {
     let id: String
@@ -111,6 +118,8 @@ struct DocumentLibraryView: View {
     @State private var contentRole = DocumentContentRole.unknown
     @State private var retainOriginal = false
     @State private var originalsSupported: Bool?
+    @State private var recognizeScans = false
+    @State private var ocrSupported: Bool?
     private var savedPreparation: String { "documents.preparation." + workspace.endpoint }
 
     var body: some View {
@@ -142,6 +151,17 @@ struct DocumentLibraryView: View {
                     }
                     if retainOriginal {
                         Text("原件副本保留文件内容与元数据，并纳入资料库备份；不会自动发给模型。")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("识别 PDF 扫描页中的文字", isOn: $recognizeScans)
+                        .disabled(busy || preparingID != nil || ocrSupported != true)
+                    if recognizeScans {
+                        Text("在电脑本机处理中英文；每份最多尝试 10 个无文字层页面。已有文字页中的图片不会识别，结果需对照原件校对。")
+                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    } else if ocrSupported == false {
+                        Text("此资料库不支持本机文字识别，请连接更新后的 Mac 应用。")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -236,10 +256,13 @@ struct DocumentLibraryView: View {
                                     Text(LF("共 %d 页，其中 %d 页提取到文字。", pdf.pages, pdf.textPages))
                                     if !pdf.emptyPages.isEmpty { Text(LF("未提取到文字的页：%@", pdf.emptyPages.map(String.init).joined(separator: ", "))) }
                                     if !pdf.failedPages.isEmpty { Text(LF("解析失败的页：%@", pdf.failedPages.map(String.init).joined(separator: ", "))) }
+                                    if pdf.ocrRequested == true {
+                                        DocumentOCRCoverage(pages: pdf.ocrPages ?? [], skipped: pdf.ocrSkippedPages ?? [])
+                                    }
                                     if pdf.parserWarnings { Text("解析器报告了格式问题，请对照原文件核查。") }
                                 }.font(.callout).fixedSize(horizontal: false, vertical: true)
                             }
-                            Text("保留文件页序，不识别图片中的文字。阅读顺序与表格可能需要校对；原件副本按本次选择保存。")
+                            Text("保留文件页序；阅读顺序、表格与遗漏内容请对照原件。原件副本按本次选择保存。")
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
                     }
@@ -298,7 +321,7 @@ struct DocumentLibraryView: View {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.allowedContentTypes = [.pdf, .plainText, UTType(filenameExtension: "docx") ?? .data, UTType(filenameExtension: "md") ?? .plainText, UTType(filenameExtension: "markdown") ?? .plainText]
-        panel.message = L("选择 DOCX、PDF、Markdown 或 TXT，每份最多 2 MB；PDF 最多 200 页。不识别图片中的文字。")
+        panel.message = L("选择 DOCX、PDF、Markdown 或 TXT，每份最多 2 MB；PDF 最多 200 页。扫描页识别按本次选择处理。")
         guard panel.runModal() == .OK else { return }
         let urls = panel.urls
         guard urls.count <= 100 else { problem = "每次请选择 1 至 100 份文字资料。";return }
@@ -306,6 +329,7 @@ struct DocumentLibraryView: View {
         let target = workspace.endpoint
         let selectedRole = contentRole.rawValue
         let selectedOriginal = retainOriginal && originalsSupported == true
+        let selectedOCR = recognizeScans && ocrSupported == true
         Task {
             defer { if workspace.endpoint == target, preparingID == nil { busy = false } }
             do {
@@ -314,6 +338,7 @@ struct DocumentLibraryView: View {
                 for index in files.indices {
                     files[index].contentRole = selectedRole
                     files[index].retainOriginal = selectedOriginal
+                    files[index].recognizeScans = selectedOCR
                 }
                 guard client.endpoint == workspace.client?.endpoint else { throw NodeFailure(message: "资料库连接已变化，请重新选择文件。") }
                 let id = UUID().uuidString
@@ -409,6 +434,7 @@ struct DocumentLibraryView: View {
             items = offset == 0 ? page.items : items + page.items
             count = page.count;nextOffset = page.nextOffset
             originalsSupported = page.originalCopiesSupported == true
+            ocrSupported = page.pdfOCRSupported == true
             if originalsSupported == false { retainOriginal = false }
         } catch { problem = error.localizedDescription }
     }

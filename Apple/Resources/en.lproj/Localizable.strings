@@ -2404,3 +2404,16 @@
 "已核对新版本" = "Reviewed updated versions";
 "处理转写" = "Transcript options";
 "转写文件暂时无法读写。请检查资料夹连接和权限，再继续核对；已保存的备份仍保留。" = "Transcript files cannot be read or written right now. Check folder access and storage, then continue the review. Saved backups are kept.";
+
+// On-device scanned PDF recognition.
+"请选择是否识别扫描页。" = "Choose whether to recognize scanned pages.";
+"此资料库不支持本机文字识别，请连接更新后的 Mac 应用。" = "This library does not support on-device text recognition. Connect to an updated Mac app.";
+"本次识别未提取到文字，请核对原件或拆分文件后重试。" = "No text was recognized in this attempt. Check the original or split the file and try again.";
+"识别 PDF 扫描页中的文字" = "Recognize text in scanned PDF pages";
+"在电脑本机处理中英文；每份最多尝试 10 个无文字层页面。已有文字页中的图片不会识别，结果需对照原件校对。" = "Processes Chinese and English on this Mac. Tries up to 10 pages without embedded text per file. Images on pages with text are not processed. Check the results against the original.";
+"保留文件页序；阅读顺序、表格与遗漏内容请对照原件。原件副本按本次选择保存。" = "Page order is retained. Check reading order, tables and omissions against the original. Original copies follow your selection for this import.";
+"选择 DOCX、PDF、Markdown 或 TXT，每份最多 2 MB；PDF 最多 200 页。扫描页识别按本次选择处理。" = "Choose DOCX, PDF, Markdown or TXT, up to 2 MB each; PDFs up to 200 pages. Scanned pages follow your text-recognition choice.";
+"含本机识别结果，请对照原件核对。" = "Includes on-device recognition results. Check against the original.";
+"本机识别出文字的页：%@" = "Pages with recognized text: %@";
+"达到本次识别上限，尚未识别的页：%@" = "Recognition limit reached. Pages not yet recognized: %@";
+"仅识别无文字层的页面；已有文字页中的图片未处理。中英文识别可能有错漏，复杂版式、手写与表格请核对原件。" = "Only pages without embedded text were recognized; images on existing text pages were not processed. Chinese and English results may have errors or omissions. Check complex layouts, handwriting and tables against the original.";

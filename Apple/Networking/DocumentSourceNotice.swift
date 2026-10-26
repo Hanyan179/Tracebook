@@ -60,6 +60,8 @@ struct DocumentSourceInfo: Codable, Sendable {
         let status: String
         let start: Int?
         let end: Int?
+        var method: String?
+        var ocrStatus: String?
     }
     let format: String
     let pageCount: Int?
@@ -70,6 +72,7 @@ struct DocumentSourceInfo: Codable, Sendable {
     var blocks: [DocumentBlock]?
     var warnings: [DocumentStructureWarning]?
     var originalCopy: DocumentOriginalCopy?
+    var ocrRequested: Bool?
 }
 
 struct DocumentOriginalCopy: Codable, Sendable {
@@ -184,6 +187,10 @@ struct DocumentSourceNotice: View {
     }
     private var pdfNotice: some View {
         VStack(alignment: .leading, spacing: 8) {
+            if info.ocrRequested == true {
+                Label("含本机识别结果，请对照原件核对。", systemImage: "text.viewfinder")
+                    .font(.callout).fixedSize(horizontal: false, vertical: true)
+            }
             if !citedPages.isEmpty {
                 Label(LF("PDF 页码：%@", citedPages.map(String.init).joined(separator: ", ")), systemImage: "doc.text")
                     .font(.callout.weight(.medium))
@@ -193,7 +200,10 @@ struct DocumentSourceNotice: View {
                     Text(LF("共 %d 页，其中 %d 页提取到文字。", info.pageCount ?? 0, (info.pages ?? []).filter { $0.status == "text" }.count))
                     let missing = (info.pages ?? []).filter { $0.status != "text" }.map(\.number)
                     if !missing.isEmpty { Text(LF("请核对未提取到文字或解析失败的页：%@", missing.map(String.init).joined(separator: ", "))) }
-                    Text("此处是提取文字，未识别图片中的文字；阅读顺序与表格请对照原文件。")
+                    if info.ocrRequested == true {
+                        DocumentOCRCoverage(pages: (info.pages ?? []).filter { $0.method == "ocr" }.map(\.number),
+                                            skipped: (info.pages ?? []).filter { $0.ocrStatus == "limit" }.map(\.number))
+                    } else { Text("此处是提取文字，未识别图片中的文字；阅读顺序与表格请对照原文件。") }
                     if info.parserWarnings { Text("解析器报告了格式问题，请对照原文件核查。") }
                     if !info.rangesValid { Text("这份文字已被修改，原页码位置无法继续核对。") }
                 }.font(.footnote).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -203,5 +213,17 @@ struct DocumentSourceNotice: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }.font(.callout)
         }.frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct DocumentOCRCoverage: View {
+    let pages: [Int]
+    let skipped: [Int]
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if !pages.isEmpty { Text(LF("本机识别出文字的页：%@", pages.map(String.init).joined(separator: ", "))) }
+            if !skipped.isEmpty { Text(LF("达到本次识别上限，尚未识别的页：%@", skipped.map(String.init).joined(separator: ", "))) }
+            Text("仅识别无文字层的页面；已有文字页中的图片未处理。中英文识别可能有错漏，复杂版式、手写与表格请核对原件。")
+        }.fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
     }
 }

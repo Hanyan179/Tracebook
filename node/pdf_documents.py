@@ -15,6 +15,10 @@ SLOTS = threading.BoundedSemaphore(1)
 ERRORS = {'parser_unavailable', 'encrypted', 'page_limit', 'text_limit', 'parser_limit', 'invalid_pdf'}
 
 
+def ocr_available():
+    return sys.platform == 'darwin'
+
+
 class PDFError(Exception):
     pass
 
@@ -67,10 +71,11 @@ def supervise(command, folder, cancel, seconds=10, memory_limit=MAX_RSS):
         process.stdin.close()
 
 
-def extract_pdf(data, scratch, cancel=None, seconds=10):
+def extract_pdf(data, scratch, cancel=None, seconds=10, recognize_scans=False):
     if not isinstance(data, bytes) or not data:raise PDFError('invalid_pdf')
     if len(data) > MAX_FILE:raise PDFError('too_large')
     if not data.startswith(b'%PDF-'):raise PDFError('invalid_pdf')
+    if recognize_scans and not ocr_available():raise PDFError('ocr_unavailable')
     cancel = cancel or threading.Event()
     if not SLOTS.acquire(blocking=False):raise PDFError('parser_busy')
     try:
@@ -78,9 +83,12 @@ def extract_pdf(data, scratch, cancel=None, seconds=10):
         with tempfile.TemporaryDirectory(prefix='.pdf-', dir=scratch) as temporary:
             folder = Path(temporary).resolve();file = folder / 'input.pdf'
             file.write_bytes(data);file.chmod(0o600)
-            value = supervise(worker_command(folder), folder, cancel, seconds)
+            command = worker_command(folder)
+            if recognize_scans:command.append('--recognize-scans')
+            value = supervise(command, folder, cancel, seconds, 1024*1024*1024 if recognize_scans else MAX_RSS)
         if not isinstance(value, dict):raise PDFError('invalid_pdf')
         if 'error' in value:raise PDFError(value['error'] if value['error'] in ERRORS else 'invalid_pdf')
+        if recognize_scans and value.get('ocrRequested') is not True:raise PDFError('ocr_unavailable')
         pages = value.get('pages')
         if (not isinstance(pages, list) or not 1 <= len(pages) <= 200
                 or value.get('pageCount') != len(pages)):raise PDFError('invalid_pdf')
@@ -89,6 +97,12 @@ def extract_pdf(data, scratch, cancel=None, seconds=10):
             if (not isinstance(page, dict) or page.get('number') != number
                     or page.get('status') not in ('text', 'empty', 'unreadable')
                     or not isinstance(page.get('text'), str) or '\0' in page['text']):raise PDFError('invalid_pdf')
+            if page.get('method') not in (None, 'ocr') or page.get('ocrStatus') not in (None, 'recognized', 'no_text', 'failed', 'limit'):
+                raise PDFError('invalid_pdf')
+            if (page.get('method') == 'ocr') != (page.get('ocrStatus') == 'recognized'):
+                raise PDFError('invalid_pdf')
+            if page.get('method') == 'ocr' and (not recognize_scans or page['status'] != 'text' or not page['text'].strip()):
+                raise PDFError('invalid_pdf')
             total += len(page['text'].encode())
         if total > MAX_FILE:raise PDFError('text_limit')
         return value
