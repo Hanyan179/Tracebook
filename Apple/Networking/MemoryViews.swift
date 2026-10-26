@@ -63,6 +63,7 @@ struct MemoryContentView: View {
     @State private var error: String?
     @State private var source: MemoryEvidence?
     @State private var comparing = false
+    @State private var modelReview: MemoryReviewReference?
     @State private var related: NodeCandidate?
     private var value: NodeCandidate { current ?? initial }
     var body: some View {
@@ -103,6 +104,29 @@ struct MemoryContentView: View {
                     Button("重新读取") { Task { await load() } }
                 }
                 Divider()
+                if let reviews = value.modelReviews, !reviews.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("模型核对记录").font(.headline)
+                        ForEach(reviews) { review in
+                            Button { modelReview = review } label: {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(L(review.title))
+                                    Text(verbatim: review.model).font(.caption).foregroundStyle(.secondary)
+                                    if let date = review.date {
+                                        Text(date, format: .dateTime.year().month().day().hour().minute())
+                                            .font(.caption).foregroundStyle(.secondary)
+                                    }
+                                }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            }.buttonStyle(.plain)
+                        }
+                        Text("模型核对只是建议；人工处理记录单独保留。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                        if value.modelReviewsTruncated == true {
+                            Text("更早的模型核对保存在记忆修订文件中。").font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
+                    Divider()
+                }
                 if let relations = value.relations, !relations.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("记忆处理记录").font(.headline)
@@ -183,6 +207,7 @@ struct MemoryContentView: View {
                 }.appLanguage()
             }
             .sheet(item: $related) { item in MemoryDetail(store: workspace, candidate: item).appLanguage() }
+            .sheet(item: $modelReview) { item in MemoryModelReviewView(workspace: workspace, reviewID: item.id).appLanguage() }
     }
     @ViewBuilder private var stateActions: some View {
         switch value.state {

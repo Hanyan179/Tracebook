@@ -22,6 +22,7 @@ from documents import DocumentImports
 from memories import Memories
 from memory_files import MemoryFiles
 from memory_extraction import MemoryExtraction
+from memory_reviews import MemoryReviews
 from memory_segments import MemorySegments
 from memory_batches import MemoryBatches
 from answers import Answers
@@ -130,6 +131,7 @@ class Store:
         self.documents = DocumentImports(self)
         self.memory_files = MemoryFiles(self)
         self.memories = Memories(self)
+        self.memory_reviews = MemoryReviews(self)
         self.catalog = Catalog(self)
         self.memories.migrate()
         self.knowledge = Knowledge(self)
@@ -158,7 +160,8 @@ class Store:
         sources_closed = self.local_sources.close()
         speech_closed = self.transcription.close()
         memories_closed = self.memory_extraction.close()
-        if sources_closed and speech_closed and memories_closed and batches_closed and answers_closed and documents_closed:
+        reviews_closed = self.memory_reviews.close()
+        if sources_closed and speech_closed and memories_closed and reviews_closed and batches_closed and answers_closed and documents_closed:
             self.db.close()
             return True
         return False

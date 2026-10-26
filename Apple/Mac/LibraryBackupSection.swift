@@ -14,6 +14,7 @@ struct LibraryBackupReceipt: Decodable, Identifiable, Sendable {
     let documents: Int
     let notes: Int
     let memories: Int
+    let modelReviews: Int?
     let originalDocuments: Int?
     let modifiedOriginalDocuments: Int?
     var date: String {
@@ -170,6 +171,9 @@ struct LibraryBackupSection: View {
                         }
                         backupValue("笔记", String(item.receipt.notes))
                         backupValue("记忆（含待确认与停用）", String(item.receipt.memories))
+                        if let reviews = item.receipt.modelReviews, reviews > 0 {
+                            backupValue("模型核对记录", String(reviews))
+                        }
                         backupValue("文件大小（展开后）", item.receipt.bytes.formatted(.byteCount(style: .file).locale(AppLanguage.current.locale)))
                     }
                     Section("恢复方式") {

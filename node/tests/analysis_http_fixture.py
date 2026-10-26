@@ -55,7 +55,15 @@ class LocalModelFixture:
                 code = {'unauthorized': 401, 'rate_limit': 429, 'unavailable': 503,
                         'redirect': 307}.get(mode, 200)
                 content = json.loads(body['messages'][1]['content'])
-                if 'question' in content and 'sources' in content:
+                if 'memories' in content:
+                    # Protocol-only fixture; no semantic judgment or real model inference.
+                    result={'relation':'conflict','reason':control.get('text','合成核对：请检查新旧安排。'),
+                            'citations':[{'evidence':side['evidence'][0]['key'],
+                                          'quote':side['evidence'][0]['quote'] if mode!='bad_citation' else 'not-supplied'}
+                                         for side in content['memories']]}
+                    if mode=='empty':result={'relation':'uncertain','reason':'合成核对：依据不足。','citations':[]}
+                    if mode=='uncited':result['citations']=result['citations'][:1]
+                elif 'question' in content and 'sources' in content:
                     source=content['sources'][0]
                     quote=source['text'][:min(200,len(source['text']))]
                     result={'status':'answered','statements':[{

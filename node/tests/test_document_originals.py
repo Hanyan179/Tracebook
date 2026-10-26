@@ -177,7 +177,9 @@ class DocumentOriginalTests(unittest.TestCase):
         try:self.assertEqual(base64.b64decode(restored.documents.original(source['id'])['data']), raw)
         finally:restored.close()
         with zipfile.ZipFile(archive) as z:entries = {n: z.read(n) for n in z.namelist()}
-        manifest = json.loads(entries['manifest.json']);self.assertEqual(manifest['version'], 2)
+        manifest = json.loads(entries['manifest.json']);self.assertEqual(manifest['version'], 3)
+        manifest['tables'].pop('memory_reviews');entries.pop('tables/memory_reviews.jsonl')
+        manifest['files'] = [item for item in manifest['files'] if item['path'] != 'tables/memory_reviews.jsonl']
         manifest['version'] = 1;entries['manifest.json'] = json.dumps(manifest).encode()
         fake = self.root/'invalid-legacy.zip'
         with zipfile.ZipFile(fake, 'w') as z:
@@ -190,6 +192,8 @@ class DocumentOriginalTests(unittest.TestCase):
         item, _ = self.item(retain=False);self.save(item);archive, _ = self.backup()
         with zipfile.ZipFile(archive) as z:entries = {n: z.read(n) for n in z.namelist()}
         manifest = json.loads(entries['manifest.json']);manifest['version'] = 1;manifest.pop('originalDocuments')
+        manifest['tables'].pop('memory_reviews');entries.pop('tables/memory_reviews.jsonl')
+        manifest['files'] = [item for item in manifest['files'] if item['path'] != 'tables/memory_reviews.jsonl']
         entries['manifest.json'] = json.dumps(manifest).encode();legacy = self.root/'legacy.zip'
         with zipfile.ZipFile(legacy, 'w') as z:
             for name, value in entries.items():z.writestr(name, value)

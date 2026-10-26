@@ -219,6 +219,9 @@ class Memories:
             links = self.relations(cid, limit=21)
             result['relations'] = links[:20]
             result['relationsTruncated'] = len(links) > 20
+            reviews = self.s.memory_reviews.saved(cid, limit=21, summaries=True)
+            result['modelReviews'] = reviews[:20]
+            result['modelReviewsTruncated'] = len(reviews) > 20
             for evidence in result['evidence']:
                 try:
                     _, _, version = self.source(evidence['kind'], evidence['id'])
@@ -418,7 +421,10 @@ class Memories:
             versions = [dict(r) for r in self.db.execute('SELECT revision,action,document,created_at FROM memory_versions WHERE id=? ORDER BY revision', (row['id'],))]
             for version in versions:
                 version['document'] = json.loads(version['document'])
-            text = json.dumps({'schemaVersion': 1, 'id': row['id'], 'versions': versions,
-                               'relations': self.relations(row['id'])}, ensure_ascii=False, indent=2) + '\n'
+            document = {'schemaVersion': 1, 'id': row['id'], 'versions': versions,
+                        'relations': self.relations(row['id'])}
+            reviews = self.s.memory_reviews.saved(row['id'])
+            if reviews:document['modelReviews'] = reviews
+            text = json.dumps(document, ensure_ascii=False, indent=2) + '\n'
             results.append(self.s.export('memories/' + row['id'] + '.json', text, hashlib.sha256(text.encode()).hexdigest()))
         return results

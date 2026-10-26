@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from document_originals import OriginalError, original_metadata, original_name, original_directory
 
 FORMAT = 'tracebook-library-backup'
-VERSION = 2
+VERSION = 3
 MAX_FILES = 100000
 MAX_TOTAL = 256 * 1024 ** 3
 MAX_MANIFEST = 16 * 1024 ** 2
@@ -33,7 +33,7 @@ TABLES = (
     'memory_details', 'memory_versions', 'memory_operations', 'memory_relations', 'memory_delivery',
     'memory_file_operations', 'import_batches', 'note_origins', 'conversations', 'conversation_turns',
     'library_categories', 'library_items', 'library_tags', 'daily_analysis', 'memory_extractions',
-    'memory_batches', 'memory_batch_items', 'answer_jobs', 'speech_jobs', 'speech_parts',
+    'memory_batches', 'memory_batch_items', 'answer_jobs', 'speech_jobs', 'speech_parts', 'memory_reviews',
 )
 SETTINGS = {'nodeID', 'timeZone', 'outputDirectory', 'dailyEnabled', 'dailyTime', 'dailyLastRun',
             'analysisEnabled', 'speechAutomatic', 'speechAfter', 'memoryDeliveryPaused'}
@@ -299,16 +299,19 @@ def inspect_backup(file, scratch, expected_hash=None, progress=lambda _:None):
         require('manifest.json' in by_name and by_name['manifest.json'].file_size<=MAX_MANIFEST, '找不到有效的备份清单。')
         manifest=parse_json(archive.read('manifest.json'))
         require(isinstance(manifest,dict) and manifest.get('format')==FORMAT
-                and type(manifest.get('version')) is int and manifest['version'] in (1, VERSION),
+                and type(manifest.get('version')) is int and manifest['version'] in (1, 2, VERSION),
                 '这不是当前版本支持的迹库备份。')
         require(str(uuid.UUID(manifest.get('id',''))).upper()==manifest['id']
                 and dt.datetime.fromisoformat(manifest.get('createdAt','').replace('Z','+00:00')).tzinfo is not None,
                 '备份编号或时间无效。')
+        tables = TABLES if manifest['version'] >= 3 else tuple(t for t in TABLES if t != 'memory_reviews')
         require(isinstance(manifest.get('files'),list) and isinstance(manifest.get('tables'),dict)
-                and set(manifest['tables'])==set(TABLES), '备份资料结构不完整。')
+                and set(manifest['tables'])==set(tables), '备份资料结构不完整。')
+        require({name for name in by_name if name.startswith('tables/')} == {'tables/'+table+'.jsonl' for table in tables},
+                '备份包含未登记的资料表。')
         require(isinstance(manifest.get('sourceOutputDirectory'),str), '备份缺少原资料夹信息。')
         expected=current_schema(scratch)
-        for table in TABLES:
+        for table in tables:
             spec=manifest['tables'][table]
             require(isinstance(spec,dict) and spec.get('columns')==expected[table]
                     and type(spec.get('rows')) is int and spec['rows']>=0
@@ -327,7 +330,7 @@ def inspect_backup(file, scratch, expected_hash=None, progress=lambda _:None):
                     size+=len(block);require(size<=item['bytes'], '备份解压内容超过清单大小。');h.update(block)
             require(size==item['bytes'] and h.hexdigest()==item['sha256'], '备份文件校验失败，未恢复任何资料。')
             progress({'phase':'verifying','completed':index+1,'total':len(manifest['files'])})
-        for table in TABLES:
+        for table in tables:
             count=sum(1 for _ in read_table(archive,table,expected[table]))
             require(count==manifest['tables'][table]['rows'], '备份中的资料数量与清单不一致。')
         originals = {}
@@ -352,6 +355,7 @@ def inspect_backup(file, scratch, expected_hash=None, progress=lambda _:None):
     return {'id':manifest['id'],'createdAt':manifest['createdAt'],'archiveSHA256':digest,'files':len(manifest['files']),
             'bytes':total,'recordings':manifest['tables']['recordings']['rows'],'documents':manifest['tables']['documents']['rows'],
             'notes':manifest['tables']['notes']['rows'],'memories':manifest['tables']['candidates']['rows'],
+            'modelReviews':manifest['tables'].get('memory_reviews',{}).get('rows',0),
             'externalDocumentCount':manifest.get('externalDocumentCount',0),'originalDocuments':len(originals),
             'modifiedOriginalDocuments':modified_originals,
             'includesCredentials':False,'encrypted':False}
@@ -400,7 +404,7 @@ def mapped_row(table, columns, row, output, directory, old_output):
     if table=='memory_batches' and value['status'] in ('running','pausing','queued'):
         value['status']='paused';value['problem']='从备份恢复后，请核对范围再继续。'
     if table=='memory_batch_items' and value['status']=='running':value['status']='queued'
-    if table in ('memory_extractions','answer_jobs','daily_analysis') and value['status'] in ('running','queued'):
+    if table in ('memory_extractions','answer_jobs','daily_analysis','memory_reviews') and value['status'] in ('running','queued'):
         value['status']='interrupted';value['problem']='从备份恢复后，请核对来源再重试。'
     return [value[column] for column in columns]
 
@@ -469,6 +473,7 @@ def restore_backup(file, destination, expected_hash, scratch, progress=lambda _:
                 with store.db:
                     for table in TABLES:store.db.execute('DELETE FROM '+table)
                     for table in TABLES:
+                        if table not in manifest['tables']:continue  # Known pre-v3 backups have no model comparisons.
                         columns=expected[table];count=0
                         sql='INSERT INTO '+table+' ('+','.join(columns)+') VALUES ('+','.join('?' for _ in columns)+')'
                         for row in read_table(archive,table,columns):

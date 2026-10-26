@@ -44,6 +44,8 @@ struct NodeCandidate: Codable, Identifiable, Sendable {
     var proposal: MemoryModelProposal?
     var relations: [MemoryRelation]?
     var relationsTruncated: Bool?
+    var modelReviews: [MemoryReviewReference]?
+    var modelReviewsTruncated: Bool?
     var organization: LibraryOrganization?
     var day: String?
     var sourceCount: Int { evidence?.count ?? sources.count }

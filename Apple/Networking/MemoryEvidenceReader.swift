@@ -4,14 +4,15 @@ import SwiftUI
 struct MemoryEvidenceReader: View {
     @ObservedObject var workspace: NodeWorkspaceStore
     let evidence: MemoryEvidence
+    var origin: SourcePassageReader.Origin = .memory
     var body: some View {
         SourcePassageReader(workspace: workspace, source: evidence.source, quote: evidence.quote,
-            quoteStart: evidence.snapshotState == "captured" ? evidence.quoteStart : nil, origin: .memory)
+            quoteStart: evidence.snapshotState == "captured" ? evidence.quoteStart : nil, origin: origin)
     }
 }
 
 struct SourcePassageReader: View {
-    enum Origin { case memory, search, answer }
+    enum Origin { case memory, search, answer, review }
     @ObservedObject var workspace: NodeWorkspaceStore
     let source: KnowledgeSource
     let quote: String
@@ -26,19 +27,20 @@ struct SourcePassageReader: View {
     @State private var loading = true
     @State private var fullSource = false
     private var pageTitle: String {
-        switch origin { case .memory: "引用上下文"; case .search: "检索片段上下文"; case .answer: "回答引用上下文" }
+        switch origin { case .memory: "引用上下文"; case .search: "检索片段上下文"; case .answer: "回答引用上下文"; case .review: "核对引用上下文" }
     }
     private var quoteTitle: String {
-        switch origin { case .memory: "提出时的引用"; case .search: "检索时保存的片段"; case .answer: "生成回答时引用的原文" }
+        switch origin { case .memory: "提出时的引用"; case .search: "检索时保存的片段"; case .answer: "生成回答时引用的原文"; case .review: "核对时引用的原文" }
     }
     private var locatedTitle: String {
-        switch origin { case .memory: "已定位到提出时的引用位置"; case .search: "已定位到检索片段"; case .answer: "已定位到回答引用的原文" }
+        switch origin { case .memory: "已定位到提出时的引用位置"; case .search: "已定位到检索片段"; case .answer: "已定位到回答引用的原文"; case .review: "已定位到核对引用的原文位置" }
     }
     private var changedNotice: String {
         switch origin {
         case .memory: "原文已变化，无法还原当时的前后文。下方保留原引用。"
         case .search: "原文已变化，无法还原检索时的前后文。下方保留当时的片段。"
         case .answer: "原文已变化，无法还原生成回答时的前后文。下方保留当时的引用。"
+        case .review: "原文已变化，无法还原核对时的前后文。下方保留当时的引用。"
         }
     }
 

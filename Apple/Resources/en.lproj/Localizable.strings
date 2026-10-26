@@ -2185,3 +2185,57 @@
 "记忆已变化，请重新查找相关记忆。" = "Memories changed. Find related memories again to review the current versions.";
 
 "记忆查找进度无效，请重新查找。" = "This search progress is invalid. Find related memories again.";
+
+"可能重复" = "Possibly a duplicate";
+"可能形成补充" = "Possibly supplementary";
+"可能存在冲突" = "Possible conflict";
+"可能属于不同事项" = "Possibly unrelated";
+"依据不足，无法判断关系" = "Not enough evidence to determine a relationship";
+"这是先前版本的模型核对；记忆或依据已变化，请重新核对当前内容。" = "This advice concerns earlier versions. The memories or evidence have changed; review the current content again.";
+"模型关系建议不是事实判断。引用准确也不代表结论正确；请核对人物、时间与原文后自行处理。" = "Model advice is not a factual decision. Accurate quotes do not prove the conclusion. Check the people, dates and originals before deciding.";
+"模型关系核对" = "Review memory relationships";
+"不发送整份来源、其他记忆或历史核对。模型不会替你确认或停用记忆。" = "Full sources, other memories and earlier reviews are excluded. The model cannot confirm or disable memories.";
+"正在核对记忆关系…" = "Reviewing the memory relationship…";
+"可以关闭窗口，稍后从这组记忆查看结果。" = "You can close this window and return to this pair later.";
+"发送所选记忆并核对" = "Send selected memories for review";
+"重新预览后重试核对" = "Retry this reviewed scope";
+"模型关系建议" = "Suggested relationship";
+"此版本的核对已保存；再次打开不会重复发送。请返回新旧对照页决定如何处理。" = "This review is saved and will not be sent again when reopened. Return to the comparison to decide what to do.";
+"模型引用的依据" = "Evidence cited by the model";
+"记忆版本 %d" = "Memory revision %d";
+"模型辅助核对" = "Model-assisted review";
+"可单独发送这两条记忆及依据，请模型提出关系建议。处理方式仍由你决定。" = "You can send this pair and its evidence for a relationship suggestion. You decide how to handle it.";
+"预览模型核对范围" = "Preview model review";
+"模型核对记录" = "Model review history";
+"模型核对只是建议；人工处理记录单独保留。" = "Model reviews are advice. Your decisions are recorded separately.";
+"更早的模型核对保存在记忆修订文件中。" = "Earlier model reviews are kept in the memory revision file.";
+"上次模型核对已中断，请重新核对发送范围后重试。" = "The last model review was interrupted. Review the sending scope before retrying.";
+"请选择需要核对的两条记忆。" = "Choose the two memories to review.";
+"两条记忆都需要可核对的原文依据，才能请求模型核对。" = "Both memories need original evidence before requesting a model review.";
+"记忆依据已变化或缺少保存位置，请先人工核对原文。" = "Evidence has changed or has no saved position. Review the original first.";
+"模型生成资料不能作为关系核对的本人原始依据。" = "Model-generated material cannot establish the user’s original evidence for this review.";
+"所选记忆或依据包含疑似凭证，请先移除凭证后重新核对。" = "The selected memories or evidence appear to contain credentials. Remove them before reviewing.";
+"两条记忆及依据超过 32000 个字符，请先人工核对或精简记忆依据。" = "These memories and evidence exceed 32,000 characters. Review manually or shorten the evidence first.";
+"找不到这次模型核对。" = "This model review could not be found.";
+"请明确选择发送这两条记忆及其依据。" = "Explicitly choose to send this pair and its evidence.";
+"核对范围或模型服务已变化，请重新预览后发送。" = "The review scope or model service changed. Preview again before sending.";
+"另一组记忆正在核对，请稍后重试。" = "Another pair is being reviewed. Try again shortly.";
+"模型核对格式不正确，未保存结果。" = "The review format is invalid. No result was saved.";
+"模型核对返回了不应保存的内容，未保存结果。" = "The review returned content that should not be stored. No result was saved.";
+"模型核对缺少有效的原文引用，未保存结果。" = "The review lacks valid original quotations. No result was saved.";
+"模型核对引用无法唯一定位，未保存结果。" = "A review quotation cannot be uniquely located. No result was saved.";
+"模型核对必须同时引用新旧两边的依据，未保存结果。" = "The review must cite evidence from both sides. No result was saved.";
+"核对期间记忆或依据已变化，请重新预览。" = "Memories or evidence changed during the review. Preview again.";
+"模型核对未完成，原有记忆和依据保留。请重试。" = "The model review did not finish. Your memories and evidence are preserved. Try again.";
+
+"重新预览发送范围" = "Preview sending scope again";
+
+"当时发送的范围" = "Scope sent at the time";
+"所选文字共 %d 个字符，包含下方两条记忆及其依据。" = "Selected text: %d characters, including the two memories below and their evidence.";
+
+"核对时引用的原文" = "Original passage cited in the review";
+"已定位到核对引用的原文位置" = "Located the original passage cited in the review";
+"原文已变化，无法还原核对时的前后文。下方保留当时的引用。" = "The source changed, so the review context cannot be reconstructed. The saved quotation is preserved below.";
+"备份包含未登记的资料表。" = "The backup contains an unregistered data table.";
+
+"关系核对" = "Memory review";

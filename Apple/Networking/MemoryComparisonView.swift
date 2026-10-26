@@ -71,6 +71,7 @@ struct MemoryComparisonSheet: View {
     @State private var suggestionsProblem: String?
     @State private var suggestionRequest = UUID()
     @State private var browseAll = false
+    @State private var modelReview = false
     private var incoming: NodeCandidate { proposal ?? candidate }
     private var filter: LibraryFilter { var value = LibraryFilter(); value.query = query; value.state = "confirmed"; return value }
     var body: some View {
@@ -83,6 +84,12 @@ struct MemoryComparisonSheet: View {
                             summary(target)
                             Button("选择另一条记忆") { self.target = nil; problem = nil; retryDecision = nil; requestID = UUID() }
                                 .disabled(busy || retryDecision != nil)
+                        }
+                        Section("模型辅助核对") {
+                            Text("可单独发送这两条记忆及依据，请模型提出关系建议。处理方式仍由你决定。")
+                                .font(.footnote).foregroundStyle(.secondary)
+                            Button("预览模型核对范围") { modelReview = true }
+                                .disabled(busy || problem != nil || retryDecision != nil || incoming.state != "pending" || target.state != "confirmed")
                         }
                         Section("核对后处理") {
                             Text("请核对两边的原文与说话人，再决定是否重复、补充或替代。")
@@ -191,6 +198,14 @@ struct MemoryComparisonSheet: View {
                 KnowledgeSourceReader(workspace: workspace, source: item.source).appLanguage()
             } else {
                 MemoryEvidenceReader(workspace: workspace, evidence: item).appLanguage()
+            }
+        }
+        .sheet(isPresented: $modelReview, onDismiss: {
+            if let target { Task { await readPair(target.id) } }
+        }) {
+            if let target, let revision = incoming.memoryRevision, let targetRevision = target.memoryRevision {
+                MemoryModelReviewView(workspace: workspace, pair: MemoryReviewPair(incomingID: incoming.id,
+                    targetID: target.id, incomingRevision: revision, targetRevision: targetRevision)).appLanguage()
             }
         }
         #if os(macOS)
