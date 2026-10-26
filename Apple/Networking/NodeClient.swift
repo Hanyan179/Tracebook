@@ -92,18 +92,33 @@ struct NodeClient: Sendable {
         try Self.validate(data, response)
         return data
     }
-    func uploadRequest(_ output: RecordingExport) throws -> URLRequest {
+    func uploadRequest(_ output: RecordingExport) async throws -> URLRequest {
         let data = try Data(contentsOf: output.manifestURL)
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
         let manifest = try decoder.decode(RecordingExportManifest.self, from: data)
         var req = request("v1/recordings/\(manifest.recording.id.uuidString)", method: "PUT")
-        req.setValue(data.base64EncodedString(), forHTTPHeaderField: "X-Recording-Manifest")
+        if manifest.schemaVersion == 2 || data.base64EncodedString().count > 24000 {
+            struct Prepared: Decodable { let manifestID: String; let nodeID: String }
+            let response: Data
+            do { response = try await sendData("v1/recordings/\(manifest.recording.id.uuidString)/prepare", method: "POST", body: data) }
+            catch let error as NodeFailure where error.statusCode == 404 || error.statusCode == 405 {
+                throw NodeFailure(message: "接收端尚不支持这份录音信息，请更新接收端后重试；原音与标记仍保留。")
+            }
+            let prepared = try JSONDecoder().decode(Prepared.self, from: response)
+            guard prepared.manifestID.count == 64, prepared.manifestID.allSatisfy({ $0.isHexDigit }) else {
+                throw NodeFailure(message: "录音上传准备信息不正确。")
+            }
+            req.setValue(prepared.manifestID, forHTTPHeaderField: "X-Recording-Upload")
+        } else {
+            req.setValue(data.base64EncodedString(), forHTTPHeaderField: "X-Recording-Manifest")
+        }
         req.setValue("audio/x-caf", forHTTPHeaderField: "Content-Type")
         req.timeoutInterval = 3600
         return req
     }
     func upload(_ output: RecordingExport) async throws -> TransferReceipt {
-        let (data, response) = try await URLSession.shared.upload(for: uploadRequest(output), fromFile: output.audioURL)
+        let request = try await uploadRequest(output)
+        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: output.audioURL)
         try Self.validate(data, response)
         return try JSONDecoder().decode(TransferReceipt.self, from: data)
     }

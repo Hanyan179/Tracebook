@@ -23,18 +23,16 @@ struct RecordingDetailScreen: View {
         Group {
             if let record = recording {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 30) {
+                    VStack(alignment: .leading, spacing: 22) {
                         VStack(alignment: .leading, spacing: 12) {
                             Text(record.displayTitle).font(.largeTitle.weight(.semibold))
                                 .fixedSize(horizontal: false, vertical: true)
                             Text(record.startedAt, format: .dateTime.year().month().day().hour().minute())
                                 .font(.subheadline).foregroundStyle(.secondary)
                         }
-                        VStack(spacing: 26) {
-                            Image(systemName: "waveform").font(.system(size: 54, weight: .ultraLight))
-                                .foregroundStyle(PhoneStyle.accent).padding(.top, 22).accessibilityHidden(true)
-                            Text(record.duration.timeLabel)
-                                .font(.system(size: 52, weight: .light, design: .rounded)).monospacedDigit()
+                        VStack(spacing: 16) {
+                            Text((isCurrent ? playback.position : 0).timeLabel)
+                                .font(.system(size: 38, weight: .light, design: .rounded)).monospacedDigit()
                             VStack(spacing: 8) {
                                 Slider(value: Binding(get: { isCurrent ? playback.position : 0 },
                                                       set: { playback.seek(to: $0) }),
@@ -56,7 +54,7 @@ struct RecordingDetailScreen: View {
                                 } label: {
                                     Image(systemName: isCurrent && playback.isPlaying ? "pause.fill" : "play.fill")
                                         .font(.system(size: 25)).foregroundStyle(AppPalette.actionText(scheme))
-                                        .frame(width: 76, height: 76).background(AppPalette.actionFill(scheme), in: Circle())
+                                        .frame(width: 64, height: 64).background(AppPalette.actionFill(scheme), in: Circle())
                                 }.disabled(!record.isPlayable || recorder.active != nil)
                                     .accessibilityLabel(isCurrent && playback.isPlaying ? "暂停回放" : "播放原音")
                                 Button { playback.skip(by: 15) } label: {
@@ -77,6 +75,10 @@ struct RecordingDetailScreen: View {
                             }
                         }.frame(maxWidth: .infinity).padding(22)
                             .background(PhoneStyle.surface, in: RoundedRectangle(cornerRadius: 28))
+                        RecordingMarkersView(markers: record.audioMarkers, duration: record.duration,
+                                             disabled: recorder.active != nil || !record.isPlayable) { marker in
+                            recorder.togglePlayback(record, at: marker.offset)
+                        }
                         VStack(spacing: 14) {
                             detail("状态", value: record.statusLabel)
                             detail("来源", value: record.sourceLabel)

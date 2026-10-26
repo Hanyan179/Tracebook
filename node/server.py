@@ -161,6 +161,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200,store.transcription.configure(self.body_json()))
             if parts[1] == 'transcription-settings' and self.command == 'PUT':
                 return self.send_json(200,store.transcription.set_automatic(self.body_json()))
+        if len(parts)==4 and parts[:2]==['v1','recordings'] and parts[3]=='prepare' and self.command=='POST':
+            return self.send_json(200,store.prepare_recording_upload(parts[2],self.body_json(256*1024)))
         if len(parts) in (3,4) and parts[:2] == ['v1','transcriptions']:
             if len(parts) == 3:
                 if self.command == 'GET':return self.send_json(200,store.transcription.status(parts[2]))
@@ -446,11 +448,12 @@ class Handler(BaseHTTPRequestHandler):
         raise StoreError(404, '找不到这个操作。')
 
     def receive_audio(self, rid):
+        prepared = self.headers.get('X-Recording-Upload')
         encoded = self.headers.get('X-Recording-Manifest', '')
-        if len(encoded) > 24000:
+        if len(encoded) > 24000 or (prepared and encoded):
             raise StoreError(400, '录音信息过大。')
         try:
-            manifest = json.loads(base64.b64decode(encoded, validate=True))
+            manifest = self.server.store.prepared_recording_upload(rid,prepared) if prepared else json.loads(base64.b64decode(encoded, validate=True))
             size = int(self.headers.get('Content-Length', '-1'))
         except (ValueError, UnicodeError):
             raise StoreError(400, '录音请求格式不正确。')
@@ -471,6 +474,10 @@ class Handler(BaseHTTPRequestHandler):
                     out.write(block);remaining -= len(block)
                 out.flush();os.fsync(out.fileno())
             receipt = self.server.store.accept(manifest, temp)
+            if prepared:
+                with self.server.store.lock:
+                    try:(self.server.store.staging/'recording-manifests'/(prepared+'.json')).unlink(missing_ok=True)
+                    except OSError:pass  # A cache cleanup failure does not undo durable audio reception.
             self.send_json(200, receipt)
         finally:
             if temp and os.path.exists(temp):

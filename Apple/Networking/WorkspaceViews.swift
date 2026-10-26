@@ -89,6 +89,10 @@ struct NodeRecordView: View {
                 Text(currentRecord.date, format: .dateTime.year().month().day().hour().minute()).foregroundStyle(.secondary)
                 OrganizationBadges(organization: currentRecord.organization ?? .init(), categories: categories)
                 NodeAudioControls(store: store, record: currentRecord, playback: store.playback)
+                RecordingMarkersView(markers: currentRecord.markers ?? [], duration: currentRecord.duration,
+                                     disabled: store.downloadingID != nil) { marker in
+                    Task { await store.play(currentRecord, at: marker.offset) }
+                }
                 TranscriptionView(store: store, recordingID: record.id)
                 NavigationLink {
                     NodeDocumentEditor(store: store, path: "v1/recordings/\(record.id.uuidString)/transcript", title: "文字记录",

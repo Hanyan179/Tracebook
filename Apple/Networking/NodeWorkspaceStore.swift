@@ -10,6 +10,7 @@ struct NodeRecord: Codable, Identifiable, Sendable {
     let sourceDevice: RecordingDevice?
     let audioSHA256: String
     let textState: String
+    var markers: [RecordingMarker]?
     var organization: LibraryOrganization?
     var day: String?
     var excerpt: String?
@@ -18,6 +19,7 @@ struct NodeRecord: Codable, Identifiable, Sendable {
         var value = Recording(id: id, startedAt: date, trigger: "node")
         value.title = title; value.duration = duration; value.byteCount = byteCount
         value.status = .saved; value.sourceDevice = sourceDevice
+        value.markers = markers
         return value
     }
 }
@@ -242,18 +244,19 @@ final class NodeWorkspaceStore: ObservableObject {
         libraryRevision = UUID()
         await refresh()
     }
-    func play(_ record: NodeRecord) async {
+    func play(_ record: NodeRecord, at position: TimeInterval? = nil) async {
         guard canPlay(), let client else { return }
         if let cached = audioCache[record.id] {
-            playback.toggle(record.localRecord, url: cached); return
+            playback.toggle(record.localRecord, url: cached, startingAt: position); return
         }
+        let revision = configurationRevision
         downloadingID = record.id
         defer { downloadingID = nil }
         do {
             let file = try await client.download(record.id, checksum: record.audioSHA256)
-            guard self.client?.endpoint == client.endpoint else { try? FileManager.default.removeItem(at: file); return }
+            guard revision == configurationRevision else { try? FileManager.default.removeItem(at: file); return }
             audioCache[record.id] = file
-            if canPlay() { playback.toggle(record.localRecord, url: file) }
+            if canPlay() { playback.toggle(record.localRecord, url: file, startingAt: position) }
         } catch { problem = error.localizedDescription }
     }
 }

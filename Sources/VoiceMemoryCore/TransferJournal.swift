@@ -12,6 +12,7 @@ public struct TransferJob: Codable, Identifiable, Sendable {
     public var attempts = 0
     public var nextAttemptAt: Date?
     public var audioSHA256: String?
+    public var markersSHA256: String?
     public var message: String?
     public var updatedAt: Date = .now
     public var id: String {
@@ -33,6 +34,7 @@ public struct TransferJob: Codable, Identifiable, Sendable {
               let audioSHA256, receipt.audioSHA256 == audioSHA256 else {
             throw RecordingIngress.IngressError.checksum
         }
+        guard receipt.markersSHA256 == markersSHA256 else { throw RecordingIngress.IngressError.markerConflict }
         state = .delivered
         message = nil
         nextAttemptAt = nil

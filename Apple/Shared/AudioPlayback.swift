@@ -13,8 +13,12 @@ final class AudioPlayback: NSObject, ObservableObject, AVAudioPlayerDelegate {
     private var player: AVAudioPlayer?
     private var timer: Timer?
 
-    func toggle(_ recording: Recording, url: URL) {
+    func toggle(_ recording: Recording, url: URL, startingAt: TimeInterval? = nil) {
         guard recording.isPlayable, recording.trashedAt == nil else { return }
+        if let startingAt, !startingAt.isFinite || startingAt < 0 || startingAt >= recording.duration {
+            problem = "这个标记超出已保存的原音，标记位置仍保留。"
+            return
+        }
         do {
             if recordingID != recording.id {
                 stop()
@@ -27,7 +31,7 @@ final class AudioPlayback: NSObject, ObservableObject, AVAudioPlayerDelegate {
                 duration = audio.duration
             }
             guard let player else { return }
-            if isPlaying {
+            if isPlaying && startingAt == nil {
                 player.pause()
                 position = player.currentTime
                 isPlaying = false
@@ -35,7 +39,11 @@ final class AudioPlayback: NSObject, ObservableObject, AVAudioPlayerDelegate {
                 timer = nil
                 deactivateSession()
             } else {
-                if position >= duration {
+                if let startingAt {
+                    guard startingAt < duration else { throw PlaybackError.unavailable }
+                    player.currentTime = startingAt
+                    position = startingAt
+                } else if position >= duration {
                     player.currentTime = 0
                     position = 0
                 }
@@ -44,7 +52,9 @@ final class AudioPlayback: NSObject, ObservableObject, AVAudioPlayerDelegate {
                 try AVAudioSession.sharedInstance().setActive(true)
                 #endif
                 guard player.play() else { throw PlaybackError.unavailable }
+                problem = nil
                 isPlaying = true
+                timer?.invalidate()
                 timer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
                     Task { @MainActor in
                         guard let self, self.isPlaying else { return }

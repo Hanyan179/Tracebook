@@ -20,11 +20,13 @@ public struct TransferReceipt: Codable, Sendable {
     public let audioSHA256: String
     public let nodeID: String
     public let durable: Bool
-    public init(recordingID: UUID, audioSHA256: String, nodeID: String, durable: Bool) {
+    public let markersSHA256: String?
+    public init(recordingID: UUID, audioSHA256: String, nodeID: String, durable: Bool, markersSHA256: String? = nil) {
         self.recordingID = recordingID
         self.audioSHA256 = audioSHA256
         self.nodeID = nodeID
         self.durable = durable
+        self.markersSHA256 = markersSHA256
     }
 }
 
@@ -35,7 +37,7 @@ public enum RecordingIngress {
         decoder.dateDecodingStrategy = .iso8601
         let manifest = try decoder.decode(RecordingExportManifest.self, from: manifestData)
         let record = manifest.recording
-        guard manifest.schemaVersion == 1, record.isPlayable, record.trashedAt == nil,
+        guard manifest.isSupported, record.isPlayable, record.trashedAt == nil,
               record.duration.isFinite, record.byteCount > 0,
               manifest.audioFilename == record.audioFilename,
               manifest.audioSHA256.count == 64,
@@ -56,21 +58,22 @@ public enum RecordingIngress {
         let index = library.root.appendingPathComponent("\(record.id.uuidString).json")
         if FileManager.default.fileExists(atPath: index.path) {
             // Validate, but preserve local title edits and trash state on a retry.
-            _ = try library.recording(id: record.id)
+            guard try library.recording(id: record.id).audioMarkers == record.audioMarkers else { throw IngressError.markerConflict }
         } else {
             try library.save(record)
         }
         return TransferReceipt(recordingID: record.id, audioSHA256: manifest.audioSHA256,
-                               nodeID: "paired-phone", durable: true)
+                               nodeID: "paired-phone", durable: true, markersSHA256: record.markersSHA256)
     }
 
     public enum IngressError: Error, LocalizedError {
-        case invalidManifest, checksum, conflict
+        case invalidManifest, checksum, conflict, markerConflict
         public var errorDescription: String? {
             switch self {
             case .invalidManifest: "收到的录音信息不完整，原音仍保留在发送设备。"
             case .checksum: "音频校验未通过，等待重新传输。"
             case .conflict: "相同编号对应不同音频，原有录音没有被覆盖。"
+            case .markerConflict: "接收方的重点标记不一致或尚未确认，原音与标记仍保留在发送设备。"
             }
         }
     }

@@ -50,6 +50,7 @@ public struct FolderExchange: Sendable {
             if FileManager.default.fileExists(atPath: targetManifest.path) {
                 let old = try decodeManifest(Data(contentsOf: targetManifest))
                 try validate(old, id: manifest.recording.id, checksum: manifest.audioSHA256)
+                guard old.recording.audioMarkers == manifest.recording.audioMarkers else { throw RecordingIngress.IngressError.markerConflict }
             }
             if FileManager.default.fileExists(atPath: targetAudio.path) {
                 guard try AudioDigest.sha256(targetAudio) == manifest.audioSHA256 else {
@@ -84,7 +85,7 @@ public struct FolderExchange: Sendable {
     }
 
     /// Cheap availability check for pending sends. Receivers still verify the complete audio checksum.
-    public func hasPublication(_ id: UUID, audioSHA256: String) throws -> Bool {
+    public func hasPublication(_ id: UUID, audioSHA256: String, markersSHA256: String? = nil) throws -> Bool {
         let target = try package(id)
         let manifestURL = target.appendingPathComponent("manifest.json")
         let audioURL = target.appendingPathComponent(id.uuidString + ".caf")
@@ -93,6 +94,7 @@ public struct FolderExchange: Sendable {
               FileManager.default.fileExists(atPath: audioURL.path) else { return false }
         let manifest = try decodeManifest(Data(contentsOf: manifestURL))
         try validate(manifest, id: id, checksum: audioSHA256)
+        guard manifest.recording.markersSHA256 == markersSHA256 else { throw RecordingIngress.IngressError.markerConflict }
         guard Int64((try audioURL.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 0) == manifest.recording.byteCount else {
             throw RecordingIngress.IngressError.conflict
         }
@@ -107,7 +109,7 @@ public struct FolderExchange: Sendable {
         let snapshot = try recoverySnapshot(manifest.recording.id, originalSHA256: manifest.audioSHA256,
                                             originalManifestSHA256: AudioDigest.sha256(output.manifestURL))
         if snapshot.copySHA256 == manifest.audioSHA256,
-           (try? hasPublication(manifest.recording.id, audioSHA256: manifest.audioSHA256)) == true {
+           (try? hasPublication(manifest.recording.id, audioSHA256: manifest.audioSHA256, markersSHA256: manifest.recording.markersSHA256)) == true {
             throw RecoveryError.unnecessary
         }
         return snapshot
@@ -153,7 +155,7 @@ public struct FolderExchange: Sendable {
     }
 
     private func validate(_ manifest: RecordingExportManifest, id: UUID, checksum: String) throws {
-        guard manifest.schemaVersion == 1, manifest.recording.id == id,
+        guard manifest.isSupported, manifest.recording.id == id,
               manifest.audioFilename == id.uuidString + ".caf", manifest.recording.byteCount > 0,
               manifest.audioSHA256.count == 64, manifest.audioSHA256.allSatisfy({ $0.isHexDigit }) else {
             throw RecordingIngress.IngressError.invalidManifest
@@ -201,12 +203,13 @@ public struct FolderExchange: Sendable {
         let previous = try readExisting()
         if let previous, let actual = try? JSONDecoder().decode(TransferReceipt.self, from: previous) {
             guard actual.durable, actual.recordingID == expected.recordingID,
-                  actual.audioSHA256 == expected.audioSHA256 else { throw ReceiptError.conflicting }
+                  actual.audioSHA256 == expected.audioSHA256,
+                  actual.markersSHA256 == expected.markersSHA256 else { throw ReceiptError.conflicting }
             return false
         }
         let record = try library.recording(id: expected.recordingID)
         let audio = library.audioURL(for: record)
-        guard record.isPlayable,
+        guard record.isPlayable, record.markersSHA256 == expected.markersSHA256,
               Int64((try audio.resourceValues(forKeys: [.fileSizeKey])).fileSize ?? 0) == record.byteCount,
               try AudioDigest.sha256(audio) == expected.audioSHA256 else { throw ReceiptError.unverifiedOriginal }
         guard try readExisting() == previous else { throw ReceiptError.changed }

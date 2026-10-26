@@ -573,7 +573,7 @@
 "管理" = "Manage";
 "累计时长" = "Total duration";
 "继续" = "Continue";
-"继续录音" = "Resume recording";
+"继续录音" = "Resume";
 "继续读取" = "Read more";
 "编辑" = "Edit";
 "编辑笔记" = "Edit note";
@@ -2492,3 +2492,47 @@
 "上次保存结果尚未确认，请重试或重新读取。当前草稿会保留，暂时不能修改。" = "The previous save is not confirmed. Retry or reload its status. Your draft is kept and temporarily locked.";
 
 "这是已保存的文件核对记录。资料库中的后续更新需要单独交付；查看记录不会恢复写入。" = "This is a saved file review. Later library updates still need delivery. Viewing this record does not resume writing.";
+
+"标记重点" = "Mark moment";
+
+"已标记 %d 处，最近 %@" = "Markers: %d · Latest: %@";
+
+"重点 %d · %@" = "Moment %d · %@";
+
+"重点标记 %d" = "Marked moments: %d";
+
+"从标记位置回听原音" = "Play original audio from this position";
+
+"这个标记超出已保存的原音，标记位置仍保留。" = "This marker is beyond the saved audio. Its original position is preserved.";
+
+"这条录音已达到 1000 个重点标记，已有标记与原音均保留。" = "This recording has reached 1,000 markers. Existing markers and audio are preserved.";
+
+"接收方的重点标记不一致或尚未确认，原音与标记仍保留在发送设备。" = "The receiver has not confirmed matching markers. Audio and markers remain on the sending device.";
+
+"录音重点标记格式不正确，请更新接收端后重试。" = "The recording marker format is unsupported or invalid. Update the receiving app and retry.";
+
+"录音上传准备已满，请稍后重试；原音与标记仍保留。" = "Upload preparation is full. Retry later; audio and markers are preserved.";
+
+"录音上传准备信息不正确。" = "The prepared recording upload is invalid.";
+
+"录音上传准备已失效，请重新发送；原音与标记仍保留。" = "Upload preparation expired. Send again; audio and markers are preserved.";
+
+"录音上传准备已变化，请重新发送。" = "The prepared recording upload changed. Send again.";
+
+"连接已变化，请重新发送录音。" = "The connection changed. Send the recording again.";
+
+"已展开" = "Expanded";
+
+"已收起" = "Collapsed";
+
+"接收端尚不支持这份录音信息，请更新接收端后重试；原音与标记仍保留。" = "The receiving app does not support this recording information yet. Update it and retry; audio and markers are preserved.";
+
+"标记 %d" = "Mark %d";
+
+"标记重点，已有 %d 处" = "Mark moment; %d saved";
+
+"标记" = "Mark";
+
+"已标记 %d · %@" = "%d marked · %@";
+
+"重点标记尚未保存，原音仍保留。请检查设备空间后重试。" = "The marker was not saved. Your audio is preserved. Check device storage and retry.";

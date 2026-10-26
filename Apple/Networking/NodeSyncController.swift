@@ -204,10 +204,23 @@ final class NodeSyncController: ObservableObject {
                 #endif
                 let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
                 let manifest = try decoder.decode(RecordingExportManifest.self, from: Data(contentsOf: output.manifestURL))
-                job.audioSHA256 = manifest.audioSHA256; job.attempts += 1; job.state = .sending
+                job.audioSHA256 = manifest.audioSHA256; job.markersSHA256 = manifest.recording.markersSHA256; job.attempts += 1; job.state = .sending
                 job.message = nil; job.updatedAt = .now; job.nextAttemptAt = nil
                 try persist(job)
-                let task = session.uploadTask(with: try client.uploadRequest(output), fromFile: output.audioURL)
+                let request = try await client.uploadRequest(output)
+                guard job.target == endpoint, self.client != nil else {
+                    job.fail("连接已变化，请重新发送录音。"); try persist(job); return
+                }
+                #if os(macOS)
+                guard LocalNodeController.shared.receivingAllowed else {
+                    job.state = .queued; try persist(job); return
+                }
+                #else
+                guard SyncRoute.current == .direct else {
+                    job.state = .queued; try persist(job); return
+                }
+                #endif
+                let task = session.uploadTask(with: request, fromFile: output.audioURL)
                 task.taskDescription = "\(job.id)/\(job.attempts)"
                 task.resume()
             } catch { job.fail(error.localizedDescription); try? persist(job); problem = error.localizedDescription }

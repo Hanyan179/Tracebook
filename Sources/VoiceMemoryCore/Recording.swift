@@ -20,6 +20,7 @@ public struct Recording: Codable, Identifiable, Equatable, Sendable {
     public var title: String?
     public var sourceDevice: RecordingDevice?
     public var trashedAt: Date?
+    public var markers: [RecordingMarker]?
     public var audioFilename: String { "\(id.uuidString).caf" }
     public var isInProgress: Bool { status == .recording || status == .paused }
     public var isPlayable: Bool {
@@ -47,7 +48,8 @@ public struct RecordingLibrary: Sendable {
         let url = root.appendingPathComponent("\(id.uuidString).json")
         guard FileManager.default.fileExists(atPath: url.path) else { throw LibraryError.notFound }
         let record = try JSONDecoder().decode(Recording.self, from: Data(contentsOf: url))
-        guard record.id == id, record.duration.isFinite, record.duration >= 0, record.byteCount >= 0 else {
+        guard record.id == id, record.duration.isFinite, record.duration >= 0, record.byteCount >= 0,
+              RecordingMarker.valid(record.audioMarkers) else {
             throw LibraryError.invalidMetadata
         }
         return record
@@ -76,7 +78,8 @@ public struct RecordingLibrary: Sendable {
         try save(record)
     }
     public func save(_ recording: Recording) throws {
-        guard recording.duration.isFinite, recording.duration >= 0, recording.byteCount >= 0 else {
+        guard recording.duration.isFinite, recording.duration >= 0, recording.byteCount >= 0,
+              RecordingMarker.valid(recording.audioMarkers) else {
             throw LibraryError.invalidMetadata
         }
         try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
@@ -93,7 +96,8 @@ public struct RecordingLibrary: Sendable {
             do {
                 let recording = try JSONDecoder().decode(Recording.self, from: Data(contentsOf: url))
                 guard url.deletingPathExtension().lastPathComponent == recording.id.uuidString,
-                      recording.duration.isFinite, recording.duration >= 0, recording.byteCount >= 0 else {
+                      recording.duration.isFinite, recording.duration >= 0, recording.byteCount >= 0,
+                      RecordingMarker.valid(recording.audioMarkers) else {
                     throw LibraryError.invalidMetadata
                 }
                 recordings.append(recording)
@@ -102,13 +106,14 @@ public struct RecordingLibrary: Sendable {
         return (recordings.sorted { $0.startedAt > $1.startedAt }, unreadable.sorted())
     }
     public enum LibraryError: Error, LocalizedError {
-        case invalidMetadata, notFound, inProgress, titleTooLong
+        case invalidMetadata, notFound, inProgress, titleTooLong, tooManyMarkers
         public var errorDescription: String? {
             switch self {
             case .invalidMetadata: "记录信息不完整，原文件已保留。"
             case .notFound: "找不到这条录音。"
             case .inProgress: "请先结束并保存这条录音。"
             case .titleTooLong: "标题请控制在 120 个字以内。"
+            case .tooManyMarkers: "这条录音已达到 1000 个重点标记，已有标记与原音均保留。"
             }
         }
     }

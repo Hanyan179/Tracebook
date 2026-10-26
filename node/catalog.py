@@ -85,7 +85,7 @@ class Catalog:
             except (OSError,UnicodeError,StoreError):
                 body=old['body'] if old else '';mtime='unavailable'
             data={'id':rid,'title':r.get('title') or '语音记录','startedAt':r['startedAt'],'duration':r['duration'],
-                  'byteCount':r['byteCount'],'sourceDevice':r.get('sourceDevice'),'audioSHA256':m['audioSHA256'],
+                  'byteCount':r['byteCount'],'sourceDevice':r.get('sourceDevice'),'audioSHA256':m['audioSHA256'],'markers':r.get('markers') or [],
                   'textState':'ready' if body.strip() else 'awaitingText'}
             self._upsert('recording',rid,data['title'],body,dt.datetime.fromisoformat(r['startedAt'].replace('Z','+00:00')),data['textState'],data,mtime)
 

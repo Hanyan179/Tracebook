@@ -11,6 +11,7 @@ import secrets
 import shutil
 import sqlite3
 import threading
+import time
 import uuid
 from zoneinfo import ZoneInfo
 from catalog import Catalog
@@ -60,7 +61,7 @@ class StoreError(Exception):
         self.path = path
 
 def validate_manifest(manifest, expected_id=None):
-    if not isinstance(manifest, dict) or manifest.get('schemaVersion') != 1:
+    if not isinstance(manifest, dict) or type(manifest.get('schemaVersion')) is not int or manifest['schemaVersion'] not in (1,2):
         raise StoreError(400, '不支持这个录音格式版本。')
     r = manifest.get('recording', {})
     if not isinstance(r, dict):
@@ -93,8 +94,25 @@ def validate_manifest(manifest, expected_id=None):
         value = r.get(key)
         if value is not None and (not isinstance(value, str) or len(value) > limit):
             raise StoreError(400, '录音文字信息过长。')
+    markers=r.get('markers') or []
+    if (not isinstance(markers,list) or len(markers)>1000
+            or (r.get('markers') is not None and not isinstance(r['markers'],list))
+            or (manifest['schemaVersion']==1 and markers) or (manifest['schemaVersion']==2 and not markers)):
+        raise StoreError(400, '录音重点标记格式不正确，请更新接收端后重试。')
+    seen=set();previous=-1
+    for marker in markers:
+        if not isinstance(marker,dict) or set(marker)!={'id','offsetMilliseconds'}:
+            raise StoreError(400, '录音重点标记格式不正确，请更新接收端后重试。')
+        mid=canonical_id(marker['id']);offset=marker['offsetMilliseconds']
+        if mid in seen or type(offset) is not int or not 0<=offset<=31536000000 or offset<=previous:
+            raise StoreError(400, '录音重点标记格式不正确，请更新接收端后重试。')
+        marker['id']=mid;seen.add(mid);previous=offset
     r['id'] = rid
     return rid
+
+def markers_checksum(recording):
+    markers=recording.get('markers') or []
+    return digest(''.join(m['id']+':'+str(m['offsetMilliseconds'])+'\n' for m in markers).encode()) if markers else None
 
 class Store:
     def __init__(self, data_dir, output_dir=None):
@@ -258,16 +276,25 @@ class Store:
         if path.stat().st_size != manifest['recording']['byteCount'] or file_hash(path) != manifest['audioSHA256']:
             raise StoreError(422, '音频校验失败，请重新传输。')
         with self.lock:
-            existing = self.db.execute('SELECT checksum FROM recordings WHERE id=?', (rid,)).fetchone()
+            existing = self.db.execute('SELECT checksum,manifest FROM recordings WHERE id=?', (rid,)).fetchone()
             if existing:
                 if existing['checksum'] != manifest['audioSHA256']:
                     raise StoreError(409, '相同编号对应不同音频，原有录音未被覆盖。')
+                if markers_checksum(json.loads(existing['manifest'])['recording']) != markers_checksum(manifest['recording']):
+                    raise StoreError(409, '接收方的重点标记不一致或尚未确认，原音与标记仍保留在发送设备。')
                 return self.receipt(rid)
             folder = self.recordings / rid
             if folder.exists():
                 cached = folder / (rid + '.caf')
                 if not cached.exists() or file_hash(cached) != manifest['audioSHA256']:
                     raise StoreError(409, '存在需要恢复的同名录音。')
+                try:
+                    previous=json.loads((folder/'manifest.json').read_text())
+                    validate_manifest(previous,rid)
+                    if markers_checksum(previous['recording'])!=markers_checksum(manifest['recording']):
+                        raise ValueError()
+                except (OSError,ValueError,StoreError):
+                    raise StoreError(409,'存在需要恢复的同名录音。')
             else:
                 prepared = self.staging / str(uuid.uuid4())
                 prepared.mkdir()
@@ -295,12 +322,49 @@ class Store:
             self.transcription.wake.set()
             return self.receipt(rid)
 
+    def prepare_recording_upload(self, rid, manifest):
+        validate_manifest(manifest,rid)
+        raw=json.dumps(manifest,ensure_ascii=False,separators=(',',':'),sort_keys=True).encode()
+        if len(raw)>256*1024:raise StoreError(413,'录音信息过大。')
+        key=digest(raw);directory=self.staging/'recording-manifests'
+        with self.lock:
+            directory.mkdir(exist_ok=True,mode=0o700)
+            now=time.time()
+            for path in directory.glob('*.json'):
+                if now-path.stat().st_mtime>24*60*60:path.unlink()
+            target=directory/(key+'.json')
+            if not target.exists() and sum(1 for _ in directory.glob('*.json'))>=64:
+                raise StoreError(503,'录音上传准备已满，请稍后重试；原音与标记仍保留。')
+            self._atomic(target,raw)
+        return {'manifestID':key,'nodeID':self.setting('nodeID')}
+
+    def prepared_recording_upload(self, rid, key):
+        import stat
+        if not isinstance(key,str) or not re.fullmatch(r'[a-f0-9]{64}',key):
+            raise StoreError(400,'录音上传准备信息不正确。')
+        path=self.staging/'recording-manifests'/(key+'.json')
+        try:
+            if path.is_symlink():raise FileNotFoundError()
+            fd=os.open(path,os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK)
+            with os.fdopen(fd,'rb') as stream:
+                info=os.fstat(stream.fileno())
+                if not stat.S_ISREG(info.st_mode) or time.time()-info.st_mtime>24*60*60:raise FileNotFoundError()
+                raw=stream.read(256*1024+1)
+        except (FileNotFoundError,IsADirectoryError):
+            raise StoreError(409,'录音上传准备已失效，请重新发送；原音与标记仍保留。')
+        if len(raw)>256*1024 or digest(raw)!=key:raise StoreError(409,'录音上传准备已变化，请重新发送。')
+        try:manifest=json.loads(raw)
+        except (ValueError,UnicodeError):raise StoreError(400,'录音上传准备信息不正确。')
+        validate_manifest(manifest,rid)
+        return manifest
+
     def receipt(self, rid):
         with self.lock:
-            row = self.db.execute('SELECT checksum FROM recordings WHERE id=?', (canonical_id(rid),)).fetchone()
+            row = self.db.execute('SELECT checksum,manifest FROM recordings WHERE id=?', (canonical_id(rid),)).fetchone()
             if not row:
                 raise StoreError(404, '找不到这条录音。')
-            return {'recordingID': canonical_id(rid), 'audioSHA256': row['checksum'], 'nodeID': self.setting('nodeID'), 'durable': True}
+            return {'recordingID': canonical_id(rid), 'audioSHA256': row['checksum'], 'nodeID': self.setting('nodeID'), 'durable': True,
+                    'markersSHA256':markers_checksum(json.loads(row['manifest'])['recording'])}
 
     def manifest(self, rid):
         row = self.db.execute('SELECT manifest FROM recordings WHERE id=?', (canonical_id(rid),)).fetchone()
@@ -322,7 +386,7 @@ class Store:
                 m = json.loads(row['manifest']);r = m['recording'];rid = r['id']
                 text = self.read_document('transcripts/' + rid + '.md')
                 result.append({'id': rid, 'title': r.get('title') or '语音记录', 'startedAt': r['startedAt'],
-                               'duration': r['duration'], 'byteCount': r['byteCount'], 'sourceDevice': r.get('sourceDevice'),
+                               'duration': r['duration'], 'byteCount': r['byteCount'], 'sourceDevice': r.get('sourceDevice'), 'markers':r.get('markers') or [],
                                'audioSHA256': m['audioSHA256'], 'textState': 'ready' if text['text'].strip() else 'awaitingText'})
             return sorted(result, key=lambda r: dt.datetime.fromisoformat(r['startedAt'].replace('Z', '+00:00')), reverse=True)
 

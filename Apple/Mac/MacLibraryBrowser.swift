@@ -457,6 +457,10 @@ private struct MacRecordingReader: View {
                 Text(Duration.seconds(record.duration).formatted(.time(pattern: .minuteSecond))).font(.caption.monospacedDigit())
                 Spacer()
             }.padding(.horizontal, 24).padding(.bottom, 20)
+            RecordingMarkersView(markers: record.markers ?? [], duration: record.duration,
+                                 disabled: store.downloadingID != nil) { marker in
+                Task { await store.play(record, at: marker.offset) }
+            }.padding(.horizontal, 24).padding(.bottom, record.markers?.isEmpty == false ? 16 : 0)
             if let problem = playback.problem ?? store.problem {
                 Text(L(problem)).font(.caption).foregroundStyle(.secondary).padding(.horizontal, 24).padding(.bottom, 12)
             }

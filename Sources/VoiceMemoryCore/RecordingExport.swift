@@ -8,6 +8,11 @@ public struct RecordingExportManifest: Codable, Sendable {
     public let recording: Recording
     public let audioFilename: String
     public let audioSHA256: String
+    public var isSupported: Bool {
+        RecordingMarker.valid(recording.audioMarkers)
+            && ((schemaVersion == 1 && recording.audioMarkers.isEmpty)
+                || (schemaVersion == 2 && !recording.audioMarkers.isEmpty))
+    }
 }
 
 public struct RecordingExport: Sendable {
@@ -28,7 +33,7 @@ public struct RecordingExport: Sendable {
             let audio = destination.appendingPathComponent(record.audioFilename)
             try FileManager.default.copyItem(at: source, to: audio)
             let checksum = try AudioDigest.sha256(audio)
-            let manifest = RecordingExportManifest(schemaVersion: 1, recording: record,
+            let manifest = RecordingExportManifest(schemaVersion: record.audioMarkers.isEmpty ? 1 : 2, recording: record,
                                                    audioFilename: record.audioFilename, audioSHA256: checksum)
             let manifestURL = destination.appendingPathComponent("\(record.id.uuidString).json")
             let encoder = JSONEncoder()

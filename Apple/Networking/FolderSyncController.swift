@@ -140,6 +140,7 @@ final class FolderSyncController: ObservableObject {
                     var job = current.first { $0.target == target && $0.recordingID == record.id }
                         ?? TransferJob(recordingID: record.id, target: target)
                     guard job.state != .delivered else { continue }
+                    job.markersSHA256 = record.markersSHA256
                     do {
                         // A valid receipt is sufficient even if the drive has since removed the package.
                         // Without it, check for missing files again instead of waiting forever.
@@ -148,7 +149,7 @@ final class FolderSyncController: ObservableObject {
                             try job.acknowledge(existingReceipt); try persist(job); continue
                         }
                         let available = try job.audioSHA256.map { hash in
-                            try Self.coordinated(url, writing: false) { try FolderExchange(root: $0).hasPublication(record.id, audioSHA256: hash) }
+                            try Self.coordinated(url, writing: false) { try FolderExchange(root: $0).hasPublication(record.id, audioSHA256: hash, markersSHA256: record.markersSHA256) }
                         } ?? false
                         if !available {
                             let temp = FileManager.default.temporaryDirectory.appendingPathComponent("folder-export-" + UUID().uuidString)
@@ -181,7 +182,7 @@ final class FolderSyncController: ObservableObject {
                         ?? TransferJob(recordingID: id, target: target)
                     do {
                         if let hash = job.audioSHA256 {
-                            let receipt = TransferReceipt(recordingID: id, audioSHA256: hash, nodeID: "desktop-library", durable: true)
+                            let receipt = TransferReceipt(recordingID: id, audioSHA256: hash, nodeID: "desktop-library", durable: true, markersSHA256: job.markersSHA256)
                             let repaired = try Self.coordinated(url, writing: true) {
                                 try FolderExchange(root: $0).restoreReceipt(receipt, from: library)
                             }
@@ -198,9 +199,9 @@ final class FolderSyncController: ObservableObject {
                             try FileManager.default.copyItem(at: $0, to: temp)
                         }
                         let accepted = try RecordingIngress.accept(audio: temp, manifestData: manifest, into: library)
-                        let receipt = TransferReceipt(recordingID: id, audioSHA256: accepted.audioSHA256, nodeID: "desktop-library", durable: true)
+                        let receipt = TransferReceipt(recordingID: id, audioSHA256: accepted.audioSHA256, nodeID: "desktop-library", durable: true, markersSHA256: accepted.markersSHA256)
                         _ = try Self.coordinated(url, writing: true) { try FolderExchange(root: $0).restoreReceipt(receipt, from: library) }
-                        job.audioSHA256 = receipt.audioSHA256; job.attempts += 1
+                        job.audioSHA256 = receipt.audioSHA256; job.markersSHA256 = receipt.markersSHA256; job.attempts += 1
                         try job.acknowledge(receipt); try persist(job)
                     } catch {
                         job.fail(error.localizedDescription); try? persist(job)
@@ -277,6 +278,7 @@ final class FolderSyncController: ObservableObject {
                 ?? TransferJob(recordingID: plan.snapshot.recordingID, target: plan.target)
             guard job.state != .delivered else { throw FolderExchange.RecoveryError.receiptExists }
             _ = try Self.coordinated(url, writing: true) { try FolderExchange(root: $0).recover(output, expected: plan.snapshot) }
+            job.markersSHA256 = try library.recording(id: job.recordingID).markersSHA256
             job.audioSHA256 = plan.snapshot.originalSHA256; job.state = .awaitingReceipt
             job.message = nil; job.nextAttemptAt = nil; job.attempts += 1; job.updatedAt = .now
             try journal.save(job)

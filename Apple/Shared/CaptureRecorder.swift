@@ -29,6 +29,7 @@ final class CaptureRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate
     private var timer: Timer?
     private var gate = TriggerGate()
     private var pauseGate = TriggerGate()
+    private var markerGate = TriggerGate()
     private var subscriptions = Set<AnyCancellable>()
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "VoiceMemory", category: "Capture")
     var permissionDenied: Bool { AVAudioApplication.shared.recordPermission == .denied }
@@ -115,6 +116,26 @@ final class CaptureRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate
         } catch { problem = error.localizedDescription }
     }
 
+    func markMoment() {
+        guard !busy, (capturing || paused), let recorder, var recording = active, markerGate.begin() else { return }
+        busy = true
+        defer { busy = false; markerGate.complete() }
+        do {
+            // Use the recorder's media clock, never wall time or the UI timer.
+            let position = recorder.currentTime
+            try recording.mark(at: position)
+            try library.save(recording)
+            active = recording
+            elapsed = position
+            #if os(watchOS)
+            WKInterfaceDevice.current().play(.click)
+            #else
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            #endif
+        } catch let error as RecordingLibrary.LibraryError { problem = error.localizedDescription }
+        catch { problem = "重点标记尚未保存，原音仍保留。请检查设备空间后重试。" }
+    }
+
     func rename(_ recording: Recording, to title: String) {
         do { try library.rename(id: recording.id, title: title); reload() }
         catch { problem = error.localizedDescription }
@@ -133,9 +154,9 @@ final class CaptureRecorder: NSObject, ObservableObject, AVAudioRecorderDelegate
         catch { problem = error.localizedDescription }
     }
 
-    func togglePlayback(_ recording: Recording) {
+    func togglePlayback(_ recording: Recording, at position: TimeInterval? = nil) {
         guard active == nil else { return }
-        playback.toggle(recording, url: library.audioURL(for: recording))
+        playback.toggle(recording, url: library.audioURL(for: recording), startingAt: position)
     }
 
     private func toggle(origin: String) throws {

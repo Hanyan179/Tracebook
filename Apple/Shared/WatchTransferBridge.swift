@@ -111,7 +111,7 @@ final class WatchTransferBridge: NSObject, ObservableObject, WCSessionDelegate {
                     let data = try Data(contentsOf: output.manifestURL)
                     let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
                     let manifest = try decoder.decode(RecordingExportManifest.self, from: data)
-                    job.audioSHA256 = manifest.audioSHA256; job.state = .sending
+                    job.audioSHA256 = manifest.audioSHA256; job.markersSHA256 = manifest.recording.markersSHA256; job.state = .sending
                     job.attempts += 1; job.updatedAt = .now; job.message = nil
                     try persist(job)
                     WCSession.default.transferFile(output.audioURL, metadata: ["recordingID": record.id.uuidString, "manifest": data])
