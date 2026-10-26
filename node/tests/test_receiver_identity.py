@@ -51,9 +51,10 @@ class ReceiverIdentityTests(unittest.TestCase):
         rid,manifest,audio=self.fixture();node=self.store.setting('nodeID')
         server=Server(('127.0.0.1',0),self.store,'synthetic-receiver-token')
         worker=threading.Thread(target=server.serve_forever,daemon=True);worker.start()
-        def call(method,path,body=b'',receiver=None):
+        def call(method,path,body=b'',receiver=None,extra=None):
             c=http.client.HTTPConnection(*server.server_address,timeout=10)
             headers={'Authorization':'Bearer '+server.token}
+            headers.update(extra or {})
             if receiver is not None:headers['X-Recording-Node-ID']=receiver
             c.request(method,path,body,headers=headers);r=c.getresponse();value=json.loads(r.read());c.close();return r.status,value
         try:
@@ -69,6 +70,9 @@ class ReceiverIdentityTests(unittest.TestCase):
             self.assertEqual(call('GET',path+'/receipt',receiver=node),(200,receipt))
             self.store.audio_path(rid).unlink()
             self.assertEqual(call('GET',path+'/receipt',receiver=node)[0],409)
+            status,prepared=call('POST',path+'/prepare',json.dumps(manifest),node)
+            self.assertEqual(status,200)
+            self.assertEqual(call('PUT',path,audio.read_bytes(),node,{'X-Recording-Upload':prepared['manifestID']})[0],409)
             # Existing clients retain their response contract; identity-aware clients
             # require the capability and verified receipt path before showing success.
             self.assertEqual(call('GET',path+'/receipt')[0],200)

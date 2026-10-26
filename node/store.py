@@ -283,7 +283,7 @@ class Store:
                     raise StoreError(409, '相同编号对应不同音频，原有录音未被覆盖。')
                 if markers_checksum(json.loads(existing['manifest'])['recording']) != markers_checksum(manifest['recording']):
                     raise StoreError(409, '接收方的重点标记不一致或尚未确认，原音与标记仍保留在发送设备。')
-                return self.receipt(rid)
+                return self.receipt(rid, verify_files=True)
             folder = self.recordings / rid
             if folder.exists():
                 cached = folder / (rid + '.caf')
