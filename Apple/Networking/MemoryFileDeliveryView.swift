@@ -7,8 +7,11 @@ struct MemoryFileDelivery: Codable, Sendable, Equatable {
     let problem: String?
     let conflicts: [NodeConflict]
     var reviewedFiles: [String]?
+    var paused: Bool?
+    var isPaused: Bool { paused == true }
     var title: String {
-        switch state {
+        if isPaused { return "记忆文件更新已暂停" }
+        return switch state {
         case "failed": "记忆文件写入失败"
         case "pending": "记忆文件待写入"
         case "review": "记忆文件需核对"
@@ -17,7 +20,8 @@ struct MemoryFileDelivery: Codable, Sendable, Equatable {
         }
     }
     var symbol: String {
-        switch state {
+        if isPaused { return "pause.circle" }
+        return switch state {
         case "ready", "reviewed": "checkmark.circle"
         case "pending": "clock"
         default: "exclamationmark.triangle"
@@ -64,7 +68,11 @@ private struct MemoryFileDeliveryView: View {
                             Text(L(value.title)).frame(maxWidth: .infinity, alignment: .leading)
                                 .fixedSize(horizontal: false, vertical: true)
                         }.font(.headline)
+                        if value.isPaused {
+                            Text("恢复副本的记忆文件更新已暂停，原记忆文件保留。新修订仍保存在资料库；核对内容后，可恢复写入资料夹。")
+                        }
                         if let issue = value.problem { Text(L(issue)) }
+                        else if value.isPaused { EmptyView() }
                         else if value.state == "pending" {
                             Text("电脑运行时会自动补写已保存的记忆。也可以立即重试。")
                         } else if value.state == "review" {
@@ -100,14 +108,17 @@ private struct MemoryFileDeliveryView: View {
                                         Text(verbatim: generated).font(.callout)
                                     }
                                 }.textSelection(.enabled)
-                                Button("核对两个版本") { reviewing = file }
+                                Button("核对两个版本") { reviewing = file }.disabled(busy || value.isPaused)
                             }
+                            if value.isPaused { Text("恢复文件更新后，可核对人工修改与新生成的版本。") }
                         }
                     }
                 }
                 Section {
-                    Button("重新检查并写入") { Task { await run(retry: true) } }.disabled(busy)
-                    Text("只补写已保存的文字和历史，不重新整理或确认记忆。")
+                    Button(value?.isPaused == true ? "恢复记忆文件更新" : "重新检查并写入") { Task { await run(retry: true) } }.disabled(busy)
+                    Text(value?.isPaused == true
+                         ? "恢复后补写已保存的记忆和历史；人工修改会保留并另存新版本。接收与模型自动处理保持原设置。"
+                         : "只补写已保存的文字和历史，不重新整理或确认记忆。")
                         .font(.footnote).foregroundStyle(.secondary)
                     if busy { ProgressView("正在处理") }
                     if let problem { Text(L(problem)).foregroundStyle(.secondary) }

@@ -387,7 +387,7 @@ def mapped_row(table, columns, row, output, directory, old_output):
     if table=='memory_file_operations' and value['state']!='done':value['state']='blocked'
     if table=='memory_delivery':
         value['output_root']=str(output);value['pending']=1
-        value['problem']='从备份恢复后，请核对并重新写入记忆文件。'
+        value['problem']=None  # Pausing restored projections is intentional, not a failed write.
     if table=='speech_jobs':
         value['output_root']=str(output)
         if value['status'] not in ('ready','conflict'):

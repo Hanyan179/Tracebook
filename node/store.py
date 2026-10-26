@@ -459,6 +459,8 @@ class Store:
         with self.lock:
             with self.db:
                 self.memories.mark_delivery_pending()
+                if self.memories.delivery_paused():
+                    return {'exports': []}  # Save the decision, but leave restored files untouched until explicit resume.
                 self.db.execute('UPDATE memory_delivery SET last_attempt=? WHERE id=1', (stamp(),))
             try:
                 result = self._export_memory()

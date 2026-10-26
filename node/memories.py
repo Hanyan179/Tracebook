@@ -173,9 +173,18 @@ class Memories:
         """Caller owns the transaction: a committed change must survive a crash before export."""
         self.db.execute('UPDATE memory_delivery SET pending=1,problem=NULL WHERE id=1')
 
+    def delivery_paused(self):
+        row = self.db.execute("SELECT value FROM settings WHERE key='memoryDeliveryPaused'").fetchone()
+        return bool(row and row[0] == 'true')
+
     def delivery_status(self):
         with self.s.lock:
             row = self.db.execute('SELECT * FROM memory_delivery WHERE id=1').fetchone()
+            paused = self.delivery_paused()
+            problem = row['problem']
+            # Older restored libraries stored the pause notice as a write error.
+            if paused and problem == '从备份恢复后，请核对并重新写入记忆文件。':
+                problem = None
             same_root = row['output_root'] == str(self.s.output)
             pending = bool(row['pending']) or not same_root
             names = {'memory.md', 'memory-inbox.md', 'memory-inactive.md', 'memory-rejected.md', 'memory-archive.md'}
@@ -184,17 +193,17 @@ class Memories:
                 (str(self.s.output),)) if r['path'] in names or r['path'].startswith('memories/')]
             reviewed = [r['path'] for r in self.db.execute("SELECT path FROM exports WHERE root=? AND state='reviewed' ORDER BY path", (str(self.s.output),))]
             file_pending = self.s.memory_files.pending()
-            return {'state': 'failed' if file_pending else (('failed' if row['problem'] else 'pending') if pending else ('review' if conflicts else 'reviewed' if reviewed else 'ready')),
+            return {'state': 'failed' if file_pending else (('failed' if problem else 'pending') if pending else ('review' if conflicts else 'reviewed' if reviewed else 'ready')),
+                    'paused': paused,
                     'reviewedFiles': reviewed,
                     'lastAttemptAt': row['last_attempt'],
                     'lastSuccessAt': row['last_success'] if same_root else None,
-                    'problem': '文件核对操作尚未完成。原件和处理记录保留，电脑运行时会重试，也可以立即重新检查。' if file_pending else row['problem'] if pending else None, 'conflicts': conflicts}
+                    'problem': '文件核对操作尚未完成。原件和处理记录保留，电脑运行时会重试，也可以立即重新检查。' if file_pending else problem if pending else None, 'conflicts': conflicts}
 
     def deliver_pending(self, force=False):
         """Only project saved data; never run a model or repeat a memory decision."""
         with self.s.lock:
-            paused = self.db.execute("SELECT value FROM settings WHERE key='memoryDeliveryPaused'").fetchone()
-            if paused and paused[0] == 'true':
+            if self.delivery_paused():
                 if not force: return self.delivery_status()
                 with self.db:
                     self.db.execute("UPDATE settings SET value='false' WHERE key='memoryDeliveryPaused'")

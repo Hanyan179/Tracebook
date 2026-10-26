@@ -144,3 +144,65 @@ class MemoryDeliveryTests(unittest.TestCase):
             self.assertEqual(self.store.db.execute('SELECT count(*) FROM memory_versions').fetchone()[0], 1)
             self.assertEqual(self.store.status()['memoryDelivery']['state'], 'ready')
         finally: server.shutdown(); server.server_close(); worker.join()
+
+    def test_paused_revision_survives_restart_without_writing_until_explicit_resume(self):
+        cid = self.propose(); self.update(cid, state='confirmed')
+        human = 'Human file retained while the restored library is reviewed.\n'
+        (self.store.output/'memory.md').write_text(human)
+        before = {p.relative_to(self.store.output):p.read_bytes() for p in self.store.output.rglob('*') if p.is_file()}
+        attempt = self.store.memories.delivery_status()['lastAttemptAt']
+        with self.store.db:
+            self.store.db.execute("INSERT OR REPLACE INTO settings VALUES ('memoryDeliveryPaused','true')")
+        with patch.object(self.store, '_export_memory', side_effect=AssertionError('paused files must not be written')):
+            self.update(cid, text='A revision saved while file updates are paused.')
+            self.store.memories.deliver_pending()
+        status = self.store.memories.delivery_status()
+        self.assertTrue(status['paused']); self.assertEqual(status['state'], 'pending')
+        self.assertIsNone(status['problem']); self.assertEqual(status['lastAttemptAt'], attempt)
+        self.restart(); self.assertTrue(self.store.memories.deliver_pending()['paused'])
+        after = {p.relative_to(self.store.output):p.read_bytes() for p in self.store.output.rglob('*') if p.is_file()}
+        self.assertEqual(before, after)
+        versions = self.store.memories.history(cid)
+        result = self.store.memories.deliver_pending(force=True)
+        self.assertFalse(result['paused']); self.assertEqual(result['state'], 'review')
+        self.assertEqual((self.store.output/'memory.md').read_text(), human)
+        self.assertIn('A revision saved while file updates are paused.', (self.store.output/result['conflicts'][0]['generatedPath']).read_text())
+        self.assertEqual(self.store.memories.history(cid), versions)
+
+    def test_legacy_pause_notice_is_not_an_error_but_real_resume_failure_is(self):
+        self.propose()
+        with self.store.db:
+            self.store.db.execute("INSERT OR REPLACE INTO settings VALUES ('memoryDeliveryPaused','true')")
+            self.store.db.execute('UPDATE memory_delivery SET pending=1,problem=?', ('从备份恢复后，请核对并重新写入记忆文件。',))
+        status = self.store.memories.delivery_status()
+        self.assertTrue(status['paused']); self.assertEqual(status['state'], 'pending'); self.assertIsNone(status['problem'])
+        with patch.object(self.store, '_export_memory', side_effect=OSError('synthetic unavailable folder')):
+            failed = self.store.memories.deliver_pending(force=True)
+        self.assertFalse(failed['paused']); self.assertEqual(failed['state'], 'failed')
+        self.assertIsNotNone(failed['problem'])
+        with self.store.db:
+            self.store.db.execute("UPDATE settings SET value='true' WHERE key='memoryDeliveryPaused'")
+        paused_failure = self.store.memories.delivery_status()
+        self.assertTrue(paused_failure['paused']); self.assertEqual(paused_failure['state'], 'failed')
+        self.assertEqual(paused_failure['problem'], failed['problem'])
+        self.assertEqual(self.store.memories.deliver_pending(force=True)['state'], 'ready')
+
+    def test_read_only_status_does_not_resume_and_explicit_retry_does(self):
+        self.propose()
+        with self.store.db:
+            self.store.db.execute("INSERT OR REPLACE INTO settings VALUES ('memoryDeliveryPaused','true')")
+            self.store.memories.mark_delivery_pending()
+        server = Server(('127.0.0.1',0), self.store, 'synthetic-pause-token')
+        worker = threading.Thread(target=server.serve_forever, daemon=True); worker.start()
+        try:
+            for method,path,paused in [('GET','/v1/memory-delivery',True),('POST','/v1/memory-delivery/retry',False)]:
+                client = http.client.HTTPConnection(*server.server_address,timeout=5)
+                client.request(method,path,body='{}' if method=='POST' else None,
+                               headers={'Authorization':'Bearer '+server.token,'Content-Type':'application/json'})
+                response=client.getresponse();data=json.loads(response.read());client.close()
+                self.assertEqual(response.status,200);self.assertEqual(data['paused'],paused)
+                self.assertEqual(data['state'],'pending' if paused else 'ready')
+            self.assertEqual(self.store.db.execute('SELECT count(*) FROM memory_versions').fetchone()[0],1)
+            for table in ('speech_jobs','memory_extractions','memory_batches','answer_jobs','memory_reviews'):
+                self.assertEqual(self.store.db.execute('SELECT count(*) FROM '+table).fetchone()[0],0)
+        finally:server.shutdown();server.server_close();worker.join()

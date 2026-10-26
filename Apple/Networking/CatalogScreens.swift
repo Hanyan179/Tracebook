@@ -133,11 +133,12 @@ struct NodeMemoryView: View {
             VStack(alignment: .leading, spacing: 12) {
                 scopePicker
                 LibraryFilters(filter: $filter, facets: loader.facets)
-                ViewThatFits(in: .horizontal) {
-                    if !typeSize.isAccessibilitySize {
-                        HStack(spacing: 12) { count; Spacer(minLength: 8); MemoryFileDeliveryButton(store: store) }
-                    }
-                    VStack(alignment: .leading, spacing: 8) { count; MemoryFileDeliveryButton(store: store) }
+                // Keep the same button and its open sheet when Dynamic Type changes the layout.
+                (typeSize.isAccessibilitySize
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
+                    : AnyLayout(HStackLayout(spacing: 12))) {
+                    count.frame(maxWidth: .infinity, alignment: .leading)
+                    MemoryFileDeliveryButton(store: store)
                 }
                 if let notice = store.memoryNotice { Text(L(notice)).font(.callout).foregroundStyle(.secondary) }
                 if let problem = store.problem { Text(problem).font(.footnote).foregroundStyle(AppPalette.muted) }
