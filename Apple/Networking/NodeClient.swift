@@ -4,7 +4,8 @@ import Security
 struct NodeFailure: Error, LocalizedError {
     let message: String
     var statusCode: Int? = nil
-    var errorDescription: String? { L(message) }
+    var detailPath: String? = nil
+    var errorDescription: String? { L(message) + (detailPath.map { "\n" + $0 } ?? "") }
 }
 
 enum NodeEndpoint {
@@ -78,12 +79,13 @@ struct NodeClient: Sendable {
         return try JSONDecoder().decode(type, from: data)
     }
     @discardableResult
-    func send(_ path: String, method: String = "PUT", body: [String: String]) async throws -> Data {
-        try await sendData(path, method: method, body: JSONEncoder().encode(body))
+    func send(_ path: String, method: String = "PUT", body: [String: String], timeout: TimeInterval = 45) async throws -> Data {
+        try await sendData(path, method: method, body: JSONEncoder().encode(body), timeout: timeout)
     }
     @discardableResult
-    func sendData(_ path: String, method: String, body: Data) async throws -> Data {
+    func sendData(_ path: String, method: String, body: Data, timeout: TimeInterval = 45) async throws -> Data {
         var req = request(path, method: method)
+        req.timeoutInterval = timeout
         req.httpBody = body
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let (data, response) = try await URLSession.shared.data(for: req)
@@ -119,11 +121,12 @@ struct NodeClient: Sendable {
     }
     static func validate(_ data: Data, _ response: URLResponse) throws {
         guard let response = response as? HTTPURLResponse, 200..<300 ~= response.statusCode else {
-            let message = (try? JSONDecoder().decode(ServerError.self, from: data).error) ?? "节点暂时无法完成操作。"
-            throw NodeFailure(message: message, statusCode: (response as? HTTPURLResponse)?.statusCode)
+            let problem = try? JSONDecoder().decode(ServerError.self, from: data)
+            throw NodeFailure(message: problem?.error ?? "节点暂时无法完成操作。", statusCode: (response as? HTTPURLResponse)?.statusCode,
+                              detailPath: problem?.path)
         }
     }
-    private struct ServerError: Decodable { let error: String }
+    private struct ServerError: Decodable { let error: String; let path: String? }
 }
 
 extension Notification.Name {

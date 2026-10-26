@@ -99,11 +99,17 @@ struct MacSettingsView: View {
                     .font(.callout).textSelection(.enabled).id(workspace.status?.outputDirectory)
                 HStack {
                     Button("选择归档目录") { Task { await local.chooseFolder(workspace: workspace) } }
+                        .disabled(local.maintenance || local.archiveFolderBusy || workspace.hasUnfinishedEdits || workspace.status?.archiveCopySupported != true)
                     Button("在文件夹中打开") {
                         if let path = workspace.status?.outputDirectory { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
                     }
                 }.disabled(!workspace.connected)
-                Text("更换目录会保留原目录中的资料。").font(.caption).foregroundStyle(.secondary)
+                Text("复制归档文字、历史、备选和已保留的文档原件；原目录与原音保留。目标有不同文件时会停止。")
+                    .font(.caption).foregroundStyle(.secondary)
+                if workspace.connected && workspace.status?.archiveCopySupported != true {
+                    Text("当前节点不支持完整归档复制，请更新电脑应用。").font(.caption).foregroundStyle(.secondary)
+                }
+                ArchiveFolderFeedback()
             }
             LibraryBackupSection(workspace: workspace)
             DataTransferSection(workspace: workspace)

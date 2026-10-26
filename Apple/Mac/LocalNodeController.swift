@@ -19,6 +19,15 @@ final class LocalNodeController: ObservableObject {
     @Published private(set) var baseDirectory: URL
     @Published private(set) var selectionProblem: String?
     @Published private(set) var rememberedLocation: RememberedLibrary?
+    @Published private(set) var archiveFolderBusy = false
+    @Published private(set) var archiveFolderTarget: String?
+    @Published private(set) var archiveFolderResult: String?
+    @Published private(set) var archiveFolderProblem: String?
+    @Published private(set) var archiveFolderFailurePath: String?
+    @Published private(set) var archiveFolderRecovery: String?
+    struct ArchiveFolderCounts { let total: Int; let copied: Int; let reused: Int }
+    @Published private(set) var archiveFolderCounts: ArchiveFolderCounts?
+    @Published private(set) var archiveFeedbackLibrary = ""
     let locationPreferences: LibraryLaunchPreferences
     let recoveryDirectory: URL
     private let startupCommand = LocalNodeCommand()
@@ -116,7 +125,14 @@ final class LocalNodeController: ObservableObject {
             guard let script = Bundle.main.url(forResource: "server", withExtension: "py") else {
                 throw NodeFailure(message: "应用中缺少处理节点文件。")
             }
-            if hasRememberedLocation, let saved = rememberedLocation {
+            if hasRememberedLocation, var saved = rememberedLocation {
+                let recoverArchive = saved.pendingArchiveFolder != nil
+                if recoverArchive {
+                    startupCommand.reset()
+                    let inspected = try await startupCommand.run("library_location_cli",
+                        arguments: ["inspect", "--data", dataDirectory.path, "--offline"], as: LibraryLocationPreview.self)
+                    saved = try saved.resolvingArchiveCopy(inspected, dataPath: dataDirectory.path)
+                }
                 var outputScope = saved
                 if !isRestoredLibrary { outputScope.restoredID = nil }
                 try accessOutput(for: outputScope)
@@ -128,6 +144,7 @@ final class LocalNodeController: ObservableObject {
                       checked.outputAvailable else {
                     throw NodeFailure(message: "上次选择的资料库身份或文字位置已变化，请重新选择并核对。")
                 }
+                if recoverArchive { try locationPreferences.save(saved); rememberedLocation = saved }
             } else {
                 try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
             }
@@ -391,21 +408,108 @@ final class LocalNodeController: ObservableObject {
         guard let token = try? String(contentsOf: dataDirectory.appendingPathComponent("connection-token"), encoding: .utf8) else { return }
         NSPasteboard.general.clearContents(); NSPasteboard.general.setString(token, forType: .string)
     }
+    private struct ArchiveReply: Decodable {
+        struct Receipt: Decodable { let id: String; let totalFiles: Int; let copiedFiles: Int; let reusedFiles: Int }
+        let nodeID: String
+        let outputDirectory: String
+        let archiveTransfer: Receipt?
+    }
+    private func archiveSelection(status: NodeStatus) async throws -> RememberedLibrary {
+        if hasRememberedLocation, let saved = rememberedLocation { return saved }
+        startupCommand.reset()
+        let base = try await startupCommand.run("library_location_cli", arguments: ["inspect", "--data", baseDirectory.path], as: LibraryLocationPreview.self)
+        let bookmark = try baseDirectory.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+        var saved = RememberedLibrary(bookmark: bookmark, basePath: baseDirectory.path, baseNodeID: base.nodeID,
+            baseOutputDirectory: base.outputDirectory, port: port, receivingPaused: receivingPaused)
+        if !base.outputDirectory.hasPrefix(baseDirectory.path + "/") && base.outputDirectory != baseDirectory.path {
+            let old = URL(fileURLWithPath: base.outputDirectory)
+            if isRestoredLibrary { saved.baseOutputBookmark = try? old.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) }
+            else { saved.baseOutputBookmark = try old.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil) }
+        }
+        if isRestoredLibrary {
+            saved.restoredID = UUID(uuidString: dataDirectory.lastPathComponent)
+            saved.activeNodeID = status.nodeID; saved.activeOutputDirectory = status.outputDirectory
+            if !status.outputDirectory.hasPrefix(baseDirectory.path + "/") {
+                saved.activeOutputBookmark = try URL(fileURLWithPath: status.outputDirectory).bookmarkData(
+                    options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+            }
+        }
+        try locationPreferences.save(saved); rememberedLocation = saved
+        return saved
+    }
     func chooseFolder(workspace: NodeWorkspaceStore) async {
+        guard !archiveFolderBusy, !maintenance, !starting, !LibraryBackupController.shared.busy,
+              !LibraryLocationController.shared.busy, !workspace.hasUnfinishedEdits,
+              let client = workspace.client, let status = workspace.status else { return }
+        archiveFeedbackLibrary = dataDirectory.path
+        archiveFolderResult = nil; archiveFolderProblem = nil; archiveFolderFailurePath = nil
+        archiveFolderRecovery = nil; archiveFolderCounts = nil; archiveFolderTarget = nil
+        guard status.archiveCopySupported == true else {
+            archiveFolderProblem = "当前节点不支持完整归档复制，请更新电脑应用。"; return
+        }
+        guard rememberedLocation?.pendingArchiveFolder == nil else {
+            archiveFolderProblem = "归档复制结果尚未确认，请重新打开应用核对后再操作。"; return
+        }
         let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.canCreateDirectories = true
         panel.prompt = L("用作归档目录")
-        guard panel.runModal() == .OK, let url = panel.url, let client = workspace.client else { return }
+        panel.message = L("复制归档文字、历史、备选和已保留的文档原件；原目录与原音保留。目标有不同文件时会停止。")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        let output = url.standardizedFileURL.resolvingSymlinksInPath().path
+        archiveFolderResult = nil; archiveFolderProblem = nil; archiveFolderFailurePath = nil
+        archiveFolderRecovery = nil; archiveFolderCounts = nil; archiveFolderTarget = output
+        guard output != status.outputDirectory else { archiveFolderResult = "当前已使用此目录，无需复制。"; return }
+        archiveFolderBusy = true; maintenance = true
+        defer { archiveFolderBusy = false; maintenance = false; archiveFeedbackLibrary = dataDirectory.path }
+        let access = url.startAccessingSecurityScopedResource(); var keepAccess = false
+        defer { if access && !keepAccess { url.stopAccessingSecurityScopedResource() } }
+        var staged: RememberedLibrary?
+        var committed = false
+        var refresh = false
         do {
-            try await client.send("v1/settings", body: ["outputDirectory": url.path])
-            await workspace.refresh()
-            if hasRememberedLocation, var saved = rememberedLocation {
-                let bookmark = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
-                if isRestoredLibrary { saved.activeOutputBookmark = bookmark }
-                else { saved.baseOutputBookmark = bookmark }
-                rememberedLocation = saved
-                try saveSelection(workspace: workspace)
-                if let saved = rememberedLocation { try accessOutput(for: saved) }
+            let bookmark = try url.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
+            var saved = try await archiveSelection(status: status)
+            let selectedID = isRestoredLibrary ? saved.activeNodeID : saved.baseNodeID
+            let selectedOutput = isRestoredLibrary ? saved.activeOutputDirectory : saved.baseOutputDirectory
+            guard selectedID?.lowercased() == status.nodeID.lowercased(), selectedOutput == status.outputDirectory else {
+                throw NodeFailure(message: "归档复制的资料库身份不一致，请重新选择并核对。")
             }
-        } catch { problem = error.localizedDescription }
+            let id = UUID().uuidString
+            saved.pendingArchiveFolder = PendingArchiveFolder(id: id, nodeID: status.nodeID,
+                dataDirectory: dataDirectory.path, outputDirectory: output, bookmark: bookmark)
+            try locationPreferences.save(saved); rememberedLocation = saved; staged = saved
+            let data = try await client.send("v1/settings", body: ["outputDirectory": output, "archiveCopyID": id,
+                "archiveSourceNodeID": status.nodeID, "archiveSourceDirectory": status.outputDirectory], timeout: 3600)
+            let reply = try JSONDecoder().decode(ArchiveReply.self, from: data)
+            guard reply.nodeID == status.nodeID, reply.outputDirectory == output,
+                  let receipt = reply.archiveTransfer, receipt.id == id else {
+                throw NodeFailure(message: "归档复制结果尚未确认，请重新打开应用核对后再操作。")
+            }
+            committed = true; refresh = true
+            archiveFolderCounts = ArchiveFolderCounts(total: receipt.totalFiles, copied: receipt.copiedFiles, reused: receipt.reusedFiles)
+            if isRestoredLibrary { saved.activeOutputDirectory = output; saved.activeOutputBookmark = bookmark }
+            else { saved.baseOutputDirectory = output; saved.baseOutputBookmark = bookmark }
+            saved.pendingArchiveFolder = nil; rememberedLocation = saved
+            scopedOutput?.stopAccessingSecurityScopedResource(); scopedOutput = access ? url : nil; keepAccess = access
+            try locationPreferences.save(saved)
+        } catch {
+            if !committed, var saved = staged, let failure = error as? NodeFailure,
+               let code = failure.statusCode, (400..<500).contains(code) {
+                saved.pendingArchiveFolder = nil
+                do { try locationPreferences.save(saved); rememberedLocation = saved; refresh = true }
+                catch { archiveFolderProblem = "归档复制结果尚未确认，请重新打开应用核对后再操作。" }
+            }
+            let failure = error as? NodeFailure
+            archiveFolderProblem = failure?.message ?? (staged == nil ? "无法准备归档复制，请核对访问权限后重试。" : "未能收到归档复制的完整结果。")
+            archiveFolderFailurePath = failure?.detailPath
+            if committed {
+                // Preserve the on-disk recovery receipt until saving the final
+                // selection succeeds; another copy must not replace it.
+                rememberedLocation = staged
+                archiveFolderRecovery = "资料已复制并切换，但启动位置未能保存。重新打开时会核对复制回执；请勿重复复制。"
+            } else if rememberedLocation?.pendingArchiveFolder != nil {
+                archiveFolderRecovery = "归档复制结果尚未确认，请重新打开应用核对后再操作。"
+            }
+        }
+        if refresh { await workspace.refresh() }
     }
 }

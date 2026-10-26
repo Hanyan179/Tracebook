@@ -68,6 +68,7 @@ struct NodeStatus: Codable, Sendable {
     var analysisConfigured: Bool?
     var answerConfigured: Bool?
     var transcriptionConfigured: Bool?
+    var archiveCopySupported: Bool?
     var memoryDelivery: MemoryFileDelivery?
     let conflicts: [NodeConflict]
 }

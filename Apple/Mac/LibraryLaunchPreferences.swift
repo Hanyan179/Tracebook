@@ -3,6 +3,7 @@ import Darwin
 import Foundation
 
 struct LibraryLocationPreview: Decodable, Identifiable, Sendable {
+    struct ArchiveReceipt: Decodable, Sendable { let id: String; let outputDirectory: String }
     let id: String
     let snapshot: String
     let nodeID: String
@@ -12,6 +13,7 @@ struct LibraryLocationPreview: Decodable, Identifiable, Sendable {
     let previousOutputDirectory: String?
     let relocationFiles: Int?
     let modifiedFiles: Int?
+    let archiveCopyReceipt: ArchiveReceipt?
     let timeZone: String
     let recordings: Int
     let notes: Int
@@ -19,6 +21,14 @@ struct LibraryLocationPreview: Decodable, Identifiable, Sendable {
     let documents: Int
     let memories: Int
     let pendingMemories: Int
+}
+
+struct PendingArchiveFolder: Codable, Sendable {
+    let id: String
+    let nodeID: String
+    let dataDirectory: String
+    let outputDirectory: String
+    let bookmark: Data
 }
 
 struct RememberedLibrary: Codable, Sendable {
@@ -34,6 +44,34 @@ struct RememberedLibrary: Codable, Sendable {
     var activeOutputDirectory: String?
     var activeOutputBookmark: Data? = nil
     var receivingPaused: Bool
+    var pendingArchiveFolder: PendingArchiveFolder? = nil
+
+    /// A committed receipt permits adopting only the exact folder already
+    /// selected by the user. An unfinished copy keeps the prior selection.
+    func resolvingArchiveCopy(_ preview: LibraryLocationPreview, dataPath: String) throws -> Self {
+        guard let pending = pendingArchiveFolder else { return self }
+        let base = dataPath == basePath
+        let restoredPath = restoredID.map { basePath + "/RestoredLibraries/" + $0.uuidString }
+        let expectedID = base ? baseNodeID : activeNodeID
+        let expectedOutput = base ? baseOutputDirectory : activeOutputDirectory
+        guard base || restoredPath == dataPath, UUID(uuidString: pending.id) != nil, pending.dataDirectory == dataPath,
+              pending.nodeID.lowercased() == expectedID?.lowercased(),
+              preview.nodeID.lowercased() == expectedID?.lowercased() else {
+            throw NodeFailure(message: "归档复制的资料库身份不一致，请重新选择并核对。")
+        }
+        var next = self
+        if preview.outputDirectory != expectedOutput {
+            guard preview.archiveCopyReceipt?.id == pending.id,
+                  preview.archiveCopyReceipt?.outputDirectory == pending.outputDirectory,
+                  preview.outputDirectory == pending.outputDirectory else {
+                throw NodeFailure(message: "归档复制结果尚未确认，请重新选择启动资料库并核对实际位置。")
+            }
+            if base { next.baseOutputDirectory = pending.outputDirectory; next.baseOutputBookmark = pending.bookmark }
+            else { next.activeOutputDirectory = pending.outputDirectory; next.activeOutputBookmark = pending.bookmark }
+        }
+        next.pendingArchiveFolder = nil
+        return next
+    }
 
     func resolve() throws -> URL {
         guard version == 1, UUID(uuidString: baseNodeID) != nil, (1024...65535).contains(port) else {
@@ -108,6 +146,9 @@ final class LibraryLaunchPreferences {
         }
         let encoder = JSONEncoder(); encoder.outputFormatting = .sortedKeys
         let encoded = try encoder.encode(selection)
+        guard encoded.count <= 64 * 1024 else {
+            throw NodeFailure(message: "资料库位置记录过大，未覆盖原选择。")
+        }
         if current == encoded { return }
         if let current {
             let history = parent.appendingPathComponent("LibraryLocationHistory")

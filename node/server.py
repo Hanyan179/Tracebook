@@ -463,7 +463,7 @@ class Handler(BaseHTTPRequestHandler):
             self.dispatch()
         except StoreError as e:
             self.close_connection = True
-            self.send_json(e.status, {'error': str(e)})
+            self.send_json(e.status, {'error': str(e), **({'path': e.path} if e.path else {})})
         except (BrokenPipeError, ConnectionResetError, TimeoutError):
             self.close_connection = True
         except Exception:

@@ -83,11 +83,23 @@ def read_identity(root, db, identity, objects, output_directory=None):
         require(kind=='table' and not sql.lstrip().upper().startswith('CREATE VIRTUAL TABLE'), '资料库包含不支持的数据结构。')
         counts[key]=db.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]
     pending=db.execute("SELECT COUNT(*) FROM candidates WHERE state='pending'").fetchone()[0]
+    receipt=None
+    row=db.execute("SELECT value FROM settings WHERE key='archiveCopyReceipt'").fetchone()
+    if row and isinstance(row[0],str) and len(row[0])<=8192:
+        try:
+            saved=json.loads(row[0])
+            if (isinstance(saved,dict) and saved.get('nodeID')==settings['nodeID']
+                    and saved.get('outputDirectory')==str(raw)
+                    and isinstance(saved.get('id'),str)
+                    and str(uuid.UUID(saved.get('id',''))).upper()==saved['id']):
+                receipt={'id':saved['id'],'outputDirectory':str(raw)}
+        except (ValueError,TypeError,KeyError):pass
     return {'id':snapshot,'snapshot':snapshot,'nodeID':settings['nodeID'],'dataDirectory':str(root),
             'outputDirectory':str(output),'outputAvailable':output.is_dir() and (relocation is not None or not raw.is_symlink()),
             'previousOutputDirectory':str(raw) if relocation else None,
             'relocationFiles':relocation['files'] if relocation else None,
             'modifiedFiles':relocation['modifiedFiles'] if relocation else None,
+            'archiveCopyReceipt':receipt,
             'timeZone':settings['timeZone'],'pendingMemories':pending,**counts}
 
 

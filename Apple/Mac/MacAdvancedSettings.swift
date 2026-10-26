@@ -12,6 +12,7 @@ struct MacAdvancedSettings: View {
             Form {
                 Section("处理位置") {
                     Toggle("使用这台电脑作为处理节点", isOn: $useLocal)
+                        .disabled(local.archiveFolderBusy)
                         .onChange(of: useLocal) { _, enabled in
                             if enabled { Task { await local.start(workspace: workspace) } }
                             else { local.stop(); workspace.disconnect() }
@@ -20,16 +21,17 @@ struct MacAdvancedSettings: View {
                         LabeledContent("服务状态", value: L(local.starting ? "正在启动" : (local.running ? "运行中" : "已停止")))
                         HStack {
                             Button(L(local.running ? "重启节点" : "启动节点")) { Task { await local.restart(workspace: workspace) } }
-                                .disabled(local.starting)
+                                .disabled(local.starting || local.archiveFolderBusy)
                             Button("选择归档目录") { Task { await local.chooseFolder(workspace: workspace) } }
-                                .disabled(!workspace.connected)
+                                .disabled(!workspace.connected || local.maintenance || local.archiveFolderBusy || workspace.hasUnfinishedEdits || workspace.status?.archiveCopySupported != true)
                             Button("打开归档目录") {
                                 if let path = workspace.status?.outputDirectory { NSWorkspace.shared.open(URL(fileURLWithPath: path)) }
                             }.disabled(workspace.status == nil)
                         }
                         Toggle("允许同一局域网的手机连接", isOn: $local.allowLAN)
                             .onChange(of: local.allowLAN) { _, _ in Task { await local.restart(workspace: workspace) } }
-                            .disabled(local.starting || (local.running && !local.managesProcess))
+                            .disabled(local.starting || local.archiveFolderBusy || (local.running && !local.managesProcess))
+                        ArchiveFolderFeedback()
                         if local.allowLAN {
                             LabeledContent("手机连接地址", value: local.phoneEndpoint)
                             HStack {

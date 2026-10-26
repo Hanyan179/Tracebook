@@ -106,7 +106,7 @@ def archive_file(name):
 
 
 @contextmanager
-def offline(directory):
+def offline(directory, busy_message='资料库仍在运行，请先停止本机节点再备份。'):
     directory = Path(directory)
     require(directory.is_dir() and not directory.is_symlink()
             and (directory/'node.sqlite3').is_file() and not (directory/'node.sqlite3').is_symlink(),
@@ -116,7 +116,7 @@ def offline(directory):
     require((directory/'staging').is_dir() and not (directory/'staging').is_symlink(), '资料库暂存位置不可用。')
     with lock.open('a') as handle:
         try:fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:raise BackupError('资料库仍在运行，请先停止本机节点再备份。')
+        except BlockingIOError:raise BackupError(busy_message)
         yield directory.resolve()
 
 

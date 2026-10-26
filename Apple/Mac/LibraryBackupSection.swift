@@ -153,7 +153,7 @@ struct LibraryBackupSection: View {
                     Label("当前使用恢复副本", systemImage: "externaldrive.badge.checkmark").font(.headline)
                     Text(verbatim: local.dataDirectory.path).font(.caption).textSelection(.enabled)
                     Button("返回原资料库") { Task { await controller.returnToOriginal(workspace: workspace) } }
-                        .disabled(controller.busy || location.busy || workspace.hasUnfinishedEdits)
+                        .disabled(controller.busy || location.busy || local.archiveFolderBusy || workspace.hasUnfinishedEdits)
                 }
             }
             progressAndResult
@@ -214,7 +214,7 @@ struct LibraryBackupSection: View {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("恢复并打开副本") {
                                 Task { if await controller.restore(item.file, receipt: item.receipt, localRecovery: item.localRecovery, workspace: workspace) { preview = nil } }
-                            }.disabled(controller.busy || controller.problem != nil || (local.running && !local.managesProcess) || workspace.hasUnfinishedEdits)
+                            }.disabled(controller.busy || local.archiveFolderBusy || controller.problem != nil || (local.running && !local.managesProcess) || workspace.hasUnfinishedEdits)
                         }
                     }
             }.frame(minWidth: 500, idealWidth: 580, minHeight: 560, idealHeight: 650)
@@ -222,8 +222,8 @@ struct LibraryBackupSection: View {
         }
     }
     @ViewBuilder private var actions: some View {
-        Button("创建备份…") { chooseBackup() }.disabled(controller.busy || location.busy || local.starting || !workspace.connected || !local.managesProcess || workspace.hasUnfinishedEdits)
-        Button("选择备份还原…") { chooseRestore() }.disabled(controller.busy || location.busy || local.starting)
+        Button("创建备份…") { chooseBackup() }.disabled(controller.busy || location.busy || local.archiveFolderBusy || local.starting || !workspace.connected || !local.managesProcess || workspace.hasUnfinishedEdits)
+        Button("选择备份还原…") { chooseRestore() }.disabled(controller.busy || location.busy || local.archiveFolderBusy || local.starting)
     }
     private func backupValue(_ label: String, _ value: String) -> some View {
         LabeledContent(L(label), value: value)

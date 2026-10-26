@@ -54,9 +54,10 @@ def canonical_id(value):
         raise StoreError(400, '记录编号不正确。')
 
 class StoreError(Exception):
-    def __init__(self, status, message):
+    def __init__(self, status, message, path=None):
         super().__init__(message)
         self.status = status
+        self.path = path
 
 def validate_manifest(manifest, expected_id=None):
     if not isinstance(manifest, dict) or manifest.get('schemaVersion') != 1:
@@ -522,59 +523,56 @@ class Store:
                     'transcriptionConfigured': self.transcription.configuration is not None,
                     'summaryMode': 'sourceDraft', 'conflicts': conflicts,
                     'memoryDelivery': self.memories.delivery_status(),
+                    'archiveCopySupported':True,
                     'analysisConfigured':hasattr(self,'analysis') and self.analysis.configuration is not None,
                     'answerConfigured':self.answers.configuration is not None}
 
     def configure(self, values):
         with self.lock:
-            timezone = values.get('timeZone', self.setting('timeZone'))
-            try:
-                ZoneInfo(timezone)
-            except (KeyError, ValueError, TypeError):
-                raise StoreError(400, '时区名称不正确。')
-            output = Path(values.get('outputDirectory', str(self.output))).expanduser().resolve()
-            output.mkdir(parents=True, exist_ok=True)
-            if output != self.output:
-                previous = self.output
-                from document_originals import OriginalError, read_original, retain_original
-                for row in self.db.execute('SELECT id,format,details FROM documents'):
-                    details = json.loads(row['details'])
-                    if details.get('original') is not None:
-                        try:
-                            raw = read_original(previous, row['id'], row['format'], details)
-                            retain_original(output, row['id'], row['format'], raw, details['original']['sha256'])
-                        except OriginalError as error:raise StoreError(409, str(error))
-                # Copy owned documents without overwriting anything in the chosen directory.
-                files = list(previous.glob('transcripts/*.md')) + list(previous.glob('daily/*.md')) + list(previous.glob('analysis/*.md'))
-                files += list(previous.glob('prompts/*.md')) + list(previous.glob('notes/*.md')) + list(previous.glob('organization/**/*.json'))
-                files += list(previous.glob('sources/**/*.md')) + list(previous.glob('sources/**/index.json'))
-                files += list(previous.glob('documents/*.md')) + list(previous.glob('.generated/documents/*.md')) + list(previous.glob('.history/documents/*.md'))
-                files += list(previous.glob('.generated/sources/**/*.md')) + list(previous.glob('.history/sources/**/*.md'))
-                files += list(previous.glob('memory*.md')) + list(previous.glob('memories/*.json'))
-                files += list(previous.glob('.generated/memories/**/*.md')) + list(previous.glob('.history/memories/**/*.md'))
-                files += list(previous.glob('.generated/transcripts/**/*.md')) + list(previous.glob('.history/transcripts/**/*.md'))
-                for source in files:
-                    if not source.is_file() or source.is_symlink():
-                        continue
-                    relative = source.relative_to(previous).as_posix()
-                    target = (output / relative).resolve()
-                    if output not in target.parents:
-                        raise StoreError(400, '目标目录中存在不支持的文件链接。')
-                    if not target.exists():
-                        self._atomic(target, source.read_bytes())
-                        row = self.db.execute('SELECT * FROM exports WHERE root=? AND path=?', (str(previous), relative)).fetchone()
-                        if row:
-                            with self.db:
-                                self.db.execute('INSERT OR REPLACE INTO exports VALUES (?,?,?,?,?,?,?)',
-                                    (str(output), relative, row['last_hash'], row['semantic_hash'], row['state'],
-                                     row['generated_path'] if relative.startswith(('sources/','documents/','memories/','transcripts/')) else None, stamp()))
-            with self.db:
-                self.db.execute('UPDATE settings SET value=? WHERE key=?', (timezone, 'timeZone'))
-                self.db.execute('UPDATE settings SET value=? WHERE key=?', (str(output), 'outputDirectory'))
-            self.output = output
-            self._initialize_files()
-            self.catalog.reconcile()
-            # A new output location intentionally leaves old files intact.
-            self.export_memory()
-            self.catch_up()
-            return self.status()
+            if values.get('archiveSourceNodeID',self.setting('nodeID'))!=self.setting('nodeID'):
+                raise StoreError(409,'资料库已变化，未复制。请重新连接并核对。')
+            previous_timezone=self.setting('timeZone')
+            timezone=values.get('timeZone',previous_timezone)
+            try:ZoneInfo(timezone)
+            except (KeyError,ValueError,TypeError):raise StoreError(400,'时区名称不正确。')
+            raw_value=values.get('outputDirectory',str(self.output))
+            if not isinstance(raw_value,str) or not raw_value or not Path(raw_value).expanduser().is_absolute():
+                raise StoreError(400,'请选择有效的完整归档目录。')
+            raw=Path(raw_value).expanduser().absolute()
+            if raw.is_symlink():raise StoreError(400,'目标资料夹是文件链接，未复制。请选择实际资料夹。')
+            output=raw.resolve();receipt=None
+            request_id=canonical_id(values['archiveCopyID'] if values.get('archiveCopyID') is not None else uuid.uuid4())
+            if values.get('archiveCopyID') is not None:
+                if not isinstance(values.get('archiveSourceNodeID'),str):
+                    raise StoreError(400,'请先核对资料库身份与原归档位置。')
+                saved_row=self.db.execute('SELECT value FROM settings WHERE key=?',('archiveCopy:'+request_id,)).fetchone()
+                if saved_row:
+                    saved=json.loads(saved_row[0])
+                    if (saved['outputDirectory']!=str(output) or saved['sourceDirectory']!=values.get('archiveSourceDirectory')
+                            or ('timeZone' in values and saved['timeZone']!=timezone)):
+                        raise StoreError(409,'这次归档复制的参数已变化，请重新核对并使用新的操作。')
+                    if self.output!=output:raise StoreError(409,'这次复制已经完成，但当前目录已变更。请刷新后再操作。')
+                    return {**self.status(),'archiveTransfer':saved}
+                if values.get('archiveSourceDirectory')!=str(self.output):
+                    raise StoreError(409,'原归档位置已变化，未复制。请刷新后重新选择。')
+            if output!=self.output:
+                from archive_copy import copy_archive
+                from backup import BackupError
+                try:receipt=copy_archive(self,raw,request_id,timezone)
+                except BackupError as error:raise StoreError(409,str(error),getattr(error,'path',None))
+                except OSError:raise StoreError(409,'复制未完成。原目录仍在使用，已完成的副本保留，可重新选择同一目录重试。')
+                self.output=output
+            else:
+                try:
+                    row=self.db.execute("SELECT value FROM settings WHERE key='archiveCopyReceipt'").fetchone()
+                    saved=json.loads(row[0]) if row else {}
+                    if isinstance(saved,dict) and saved.get('id')==request_id and saved.get('outputDirectory')==str(output):receipt=saved
+                except (ValueError,TypeError):pass
+                if not output.is_dir():raise StoreError(409,'当前资料夹不可用，请先连接存储位置或重新关联已有资料夹。')
+            with self.db:self.db.execute('UPDATE settings SET value=? WHERE key=?',(timezone,'timeZone'))
+            # A byte-identical copy does not regenerate projections, request a
+            # model, or change the user's file-delivery pause and decisions.
+            if timezone!=previous_timezone:self.catch_up()
+            result=self.status()
+            if receipt:result['archiveTransfer']=receipt
+            return result

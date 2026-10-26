@@ -3,7 +3,7 @@ import argparse
 import json
 import signal
 import sys
-from backup import BackupError
+from backup import BackupError, offline
 from library_location import inspect_library, prepare_library
 
 
@@ -13,11 +13,16 @@ def main():
     parser.add_argument('--data',required=True)
     parser.add_argument('--snapshot')
     parser.add_argument('--output')
+    parser.add_argument('--offline',action='store_true')
     args=parser.parse_args()
     def cancel(*_):raise BackupError('操作已取消，当前资料库保持不变。')
     signal.signal(signal.SIGTERM,cancel);signal.signal(signal.SIGINT,cancel)
     try:
-        if args.command=='inspect':result=inspect_library(args.data,args.output)
+        if args.command=='inspect':
+            if args.offline:
+                with offline(args.data,'资料库仍在运行，暂不能核对复制结果。请等待节点退出后重新打开。'):
+                    result=inspect_library(args.data,args.output)
+            else:result=inspect_library(args.data,args.output)
         else:result=prepare_library(args.data,args.snapshot,args.output)
         print(json.dumps({'ok':True,**result},ensure_ascii=False));return 0
     except BackupError as error:
