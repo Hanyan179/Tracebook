@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from document_originals import OriginalError, original_metadata, original_name, original_directory
 
 FORMAT = 'tracebook-library-backup'
-VERSION = 4
+VERSION = 5
 MAX_FILES = 100000
 MAX_TOTAL = 256 * 1024 ** 3
 MAX_MANIFEST = 16 * 1024 ** 2
@@ -33,7 +33,7 @@ TABLES = (
     'memory_details', 'memory_versions', 'memory_operations', 'memory_relations', 'memory_delivery',
     'memory_file_operations', 'import_batches', 'note_origins', 'conversations', 'conversation_turns',
     'library_categories', 'library_items', 'library_tags', 'daily_analysis', 'memory_extractions',
-    'memory_batches', 'memory_batch_items', 'answer_jobs', 'speech_jobs', 'speech_parts', 'memory_reviews',
+    'memory_batches', 'memory_batch_items', 'answer_jobs', 'speech_jobs', 'speech_parts', 'memory_reviews', 'transcript_reviews',
 )
 SETTINGS = {'nodeID', 'timeZone', 'outputDirectory', 'dailyEnabled', 'dailyTime', 'dailyLastRun',
             'analysisEnabled', 'speechAutomatic', 'speechAfter', 'memoryDeliveryPaused'}
@@ -140,7 +140,7 @@ def current_schema(scratch, include_names=False):
 def selected_rows(db, table, output):
     if table == 'settings':
         return (row for row in db.execute('SELECT * FROM settings ORDER BY key') if row[0] in SETTINGS)
-    if table in ('exports', 'memory_file_operations'):
+    if table in ('exports', 'memory_file_operations', 'transcript_reviews'):
         return db.execute('SELECT * FROM '+table+' WHERE root=? ORDER BY rowid', (str(output),))
     if table == 'import_batches':return db.execute("SELECT * FROM import_batches WHERE state='complete' ORDER BY rowid")
     return db.execute('SELECT * FROM '+table+' ORDER BY rowid')
@@ -299,13 +299,14 @@ def inspect_backup(file, scratch, expected_hash=None, progress=lambda _:None):
         require('manifest.json' in by_name and by_name['manifest.json'].file_size<=MAX_MANIFEST, '找不到有效的备份清单。')
         manifest=parse_json(archive.read('manifest.json'))
         require(isinstance(manifest,dict) and manifest.get('format')==FORMAT
-                and type(manifest.get('version')) is int and manifest['version'] in (1, 2, 3, VERSION),
+                and type(manifest.get('version')) is int and manifest['version'] in (1, 2, 3, 4, VERSION),
                 '这不是当前版本支持的迹库备份。')
         require(str(uuid.UUID(manifest.get('id',''))).upper()==manifest['id']
                 and dt.datetime.fromisoformat(manifest.get('createdAt','').replace('Z','+00:00')).tzinfo is not None,
                 '备份编号或时间无效。')
         tables = tuple(t for t in TABLES if (t != 'memory_reviews' or manifest['version'] >= 3)
-                       and (t != 'local_source_issues' or manifest['version'] >= 4))
+                       and (t != 'local_source_issues' or manifest['version'] >= 4)
+                       and (t != 'transcript_reviews' or manifest['version'] >= 5))
         require(isinstance(manifest.get('files'),list) and isinstance(manifest.get('tables'),dict)
                 and set(manifest['tables'])==set(tables), '备份资料结构不完整。')
         require({name for name in by_name if name.startswith('tables/')} == {'tables/'+table+'.jsonl' for table in tables},
@@ -384,10 +385,10 @@ def mapped_row(table, columns, row, output, directory, old_output):
         replacements={'outputDirectory':str(output),'nodeID':str(uuid.uuid4()).upper(),
             'dailyEnabled':'false','analysisEnabled':'false','speechAutomatic':'','memoryDeliveryPaused':'true'}
         if value['key'] in replacements:value['value']=replacements[value['key']]
-    if table in ('exports','memory_file_operations'):
+    if table in ('exports','memory_file_operations','transcript_reviews'):
         require(value['root']==old_output, '备份包含其他资料库的文件操作。')
         value['root']=str(output)
-    if table=='memory_file_operations' and value['state']!='done':value['state']='blocked'
+    if table in ('memory_file_operations','transcript_reviews') and value['state']!='done':value['state']='blocked'
     if table=='memory_delivery':
         value['output_root']=str(output);value['pending']=1
         value['problem']=None  # Pausing restored projections is intentional, not a failed write.

@@ -130,6 +130,8 @@ def prepare_library(directory, expected_snapshot, output_directory=None):
                 db.execute("UPDATE memory_delivery SET pending=1")
             if 'memory_file_operations' in objects:
                 db.execute("UPDATE memory_file_operations SET state='blocked' WHERE state='pending'")
+            if 'transcript_reviews' in objects:
+                db.execute("UPDATE transcript_reviews SET state='blocked' WHERE state='pending'")
             if 'speech_jobs' in objects:
                 db.execute("UPDATE speech_jobs SET status='failed',next_run=0,problem=? WHERE status NOT IN ('ready','conflict')",(message,))
             if 'local_sources' in objects:db.execute('UPDATE local_sources SET automatic=0')

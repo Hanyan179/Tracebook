@@ -214,7 +214,7 @@ struct NodeConnectionView: View {
     }
 }
 
-private struct EditorDraft: Codable {
+struct EditorDraft: Codable {
     let text: String
     let etag: String
     var savedText: String?
@@ -356,7 +356,7 @@ struct NodeDocumentEditor: View {
     }
 }
 
-private struct EditorDraftContext {
+struct EditorDraftContext {
     let endpoint: String
     let nodeID: String
     let path: String

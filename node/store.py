@@ -143,6 +143,9 @@ class Store:
         self.memory_extraction = MemoryExtraction(self)
         self.memory_batches = MemoryBatches(self)
         self.transcription = Transcription(self)
+        from transcript_reviews import TranscriptReviews
+        self.transcript_reviews = TranscriptReviews(self)
+        self.transcript_reviews.recover()
 
     def _ensure_transcript(self, rid):
         try:

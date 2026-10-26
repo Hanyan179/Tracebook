@@ -7,10 +7,14 @@ struct TranscriptionState: Decodable, Sendable {
     let total: Int
     let problem: String?
     let generatedPath: String?
+    var reviewSupported: Bool?
+    var fileReview: TranscriptReviewReceipt?
+    var pendingReview: TranscriptReviewPending?
     var serviceChanged: Bool?
     var nextRetryAt: Double?
     var active: Bool { ["queued", "running", "retry"].contains(status) }
     var title: String {
+        if let fileReview, fileReview.matchesCurrent == true { return fileReview.title }
         if serviceChanged == true && active { return "等待原语音服务" }
         if !configured && active { return "等待语音服务配置" }
         switch status {
@@ -35,6 +39,7 @@ struct TranscriptionView: View {
     @State private var confirmSend = false
     @State private var generated: NodeDocument?
     @State private var showGenerated = false
+    @State private var showReview = false
     #if os(macOS)
     @Environment(\.openSettings) private var openSettings
     #endif
@@ -75,7 +80,7 @@ struct TranscriptionView: View {
                     Text("机器转写可能有误，请结合原音校对；不会自动成为已确认记忆。")
                         .font(.caption).foregroundStyle(.secondary)
                 } else if state.status == "conflict" {
-                    Text("原有文字已保留，请查看另存的转写版本后自行合并。")
+                    Text(L(state.reviewSupported == true ? "原有文字已保留，请核对两个版本后选择保留、采用或合并。" : "原有文字已保留，请查看另存的转写版本后自行合并。"))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 if state.active && state.serviceChanged != true {
@@ -84,7 +89,9 @@ struct TranscriptionView: View {
                     Button(L(state.status == "idle" ? "转写这条录音" : "继续转写")) { confirmSend = true }
                         .disabled(busy || !state.configured || (state.serviceChanged == true && state.completed > 0))
                 }
-                if state.generatedPath != nil {
+                if state.generatedPath != nil && state.reviewSupported == true {
+                    Button(L(state.status == "conflict" ? "核对文字与转写" : "查看转写核对结果")) { showReview = true }
+                } else if state.generatedPath != nil {
                     Button("查看另存转写") {
                         Task {
                             do {
@@ -104,6 +111,9 @@ struct TranscriptionView: View {
                 Button("发送并转写") { Task { await action("") } }
             } message: {
                 Text("将发送到电脑配置的语音服务，可能产生服务费用。网络失败最多尝试三次，已完成片段不重复发送。")
+            }
+            .sheet(isPresented: $showReview, onDismiss: { Task { await reload() } }) {
+                TranscriptReviewSheet(store: store, recordingID: recordingID).appLanguage()
             }
             .sheet(isPresented: $showGenerated) {
                 NavigationStack {

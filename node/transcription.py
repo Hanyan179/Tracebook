@@ -104,13 +104,15 @@ class Transcription:
             self.s.receipt(rid)
             row = self.s.db.execute('SELECT * FROM speech_jobs WHERE id=?', (rid,)).fetchone()
             result = {'id': rid, 'status': 'idle', 'attempts': 0, 'total': 0, 'completed': 0,
-                      'configured': self.configuration is not None, 'problem': None, 'generatedPath': None}
+                      'configured': self.configuration is not None, 'problem': None, 'generatedPath': None, 'reviewSupported': True}
             if row:
                 result.update({k: row[k] for k in ('status', 'attempts', 'total', 'problem')})
                 result['generatedPath'] = row['generated_path']
                 result['completed'] = self.s.db.execute('SELECT COUNT(*) FROM speech_parts WHERE id=?', (rid,)).fetchone()[0]
                 result['serviceChanged'] = bool(self.configuration and row['service'] != self.configuration['service'])
                 result['nextRetryAt'] = row['next_run'] if row['status'] == 'retry' else None
+                result['fileReview'] = self.s.transcript_reviews.last_decision(rid)
+                result['pendingReview'] = self.s.transcript_reviews.pending(rid)
             return result
 
     def enqueue(self, rid):

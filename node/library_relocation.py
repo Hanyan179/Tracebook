@@ -80,7 +80,7 @@ def output_snapshot(db, objects, directory, previous, allow_registered=False):
     root=Path(directory).absolute()
     require(root.is_dir() and not root.is_symlink() and str(root)!='/', '请选择已搬动的文字资料夹，不要选择空目录或文件链接。')
     root=root.resolve()
-    names=('exports','memory_file_operations','memory_delivery','speech_jobs','notes','documents','recordings','local_inputs','local_sources','candidates')
+    names=('exports','memory_file_operations','transcript_reviews','memory_delivery','speech_jobs','notes','documents','recordings','local_inputs','local_sources','candidates')
     rows={};data_digest=hashlib.sha256();row_count=0
     keep={'exports':None,'notes':('id',),'documents':('id',),'recordings':('id',),
           'local_inputs':('id','source_id'),'local_sources':('id','provider')}
@@ -127,6 +127,6 @@ def output_snapshot(db, objects, directory, previous, allow_registered=False):
 
 def relink_output(db, objects, previous, output):
     """Run inside the caller's transaction after its snapshot is revalidated."""
-    for table,column in [('exports','root'),('memory_file_operations','root'),('memory_delivery','output_root'),('speech_jobs','output_root')]:
+    for table,column in [('exports','root'),('memory_file_operations','root'),('transcript_reviews','root'),('memory_delivery','output_root'),('speech_jobs','output_root')]:
         if table in objects:db.execute('UPDATE '+table+' SET '+column+'=? WHERE '+column+'=?',(output,previous))
     db.execute("UPDATE settings SET value=? WHERE key='outputDirectory'",(output,))

@@ -165,7 +165,7 @@ class SourcePositionTests(unittest.TestCase):
         archive=self.root/'positions.zip';report=create_backup(self.root/'node',archive)
         self.assertEqual(report['localInputs'],1);self.assertEqual(report['sourceIssuePositions'],5)
         with zipfile.ZipFile(archive) as z:
-            self.assertEqual(json.loads(z.read('manifest.json'))['version'],4)
+            self.assertEqual(json.loads(z.read('manifest.json'))['version'],5)
             self.assertNotIn(SYNTHETIC_SECRET,b''.join(z.read(n) for n in z.namelist()))
         destination=self.root/'restored';restore_backup(archive,destination,report['archiveSHA256'],self.root)
         self.store=Store(destination);self.assertEqual(self.positions(rid,path),before)

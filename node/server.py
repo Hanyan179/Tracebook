@@ -172,6 +172,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200,store.transcription.pause(parts[2]))
             if len(parts) == 4 and parts[3] == 'generated' and self.command == 'GET':
                 return self.send_json(200,store.transcription.generated(parts[2]))
+            if len(parts)==4 and parts[3] in ('review','review-retry'):
+                try:
+                    if parts[3]=='review':
+                        if self.command=='GET':return self.send_json(200,store.transcript_reviews.preview(parts[2]))
+                        if self.command=='POST':return self.send_json(200,store.transcript_reviews.resolve(parts[2],self.body_json(max_size=8*1024*1024)))
+                    elif self.command=='POST':return self.send_json(200,store.transcript_reviews.retry(parts[2],self.body_json()))
+                except OSError:
+                    raise StoreError(503,'转写文件暂时无法读写。请检查资料夹连接和权限，再继续核对；已保存的备份仍保留。')
         if parts==['v1','memory-delivery'] and self.command=='GET':
             return self.send_json(200,store.memories.delivery_status())
         if parts==['v1','memory-files','preview'] and self.command=='GET':

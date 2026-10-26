@@ -130,7 +130,7 @@ def copy_archive(store, destination, request_id, timezone):
     with store.db:
         store.db.execute('''INSERT OR REPLACE INTO exports(root,path,last_hash,semantic_hash,state,generated_path,updated_at)
             SELECT ?,path,last_hash,semantic_hash,state,generated_path,updated_at FROM exports WHERE root=?''',(str(output),previous))
-        for table,column in [('memory_file_operations','root'),('memory_delivery','output_root'),('speech_jobs','output_root')]:
+        for table,column in [('memory_file_operations','root'),('transcript_reviews','root'),('memory_delivery','output_root'),('speech_jobs','output_root')]:
             store.db.execute('UPDATE '+table+' SET '+column+'=? WHERE '+column+'=?',(str(output),previous))
         store.db.execute("UPDATE settings SET value=? WHERE key='outputDirectory'",(str(output),))
         store.db.execute("UPDATE settings SET value=? WHERE key='timeZone'",(timezone,))
