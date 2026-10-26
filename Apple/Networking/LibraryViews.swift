@@ -304,6 +304,9 @@ struct OrganizationEditor: View {
                     Button("重新读取已保存的分类") { Task { await reloadSaved() } }.disabled(saving)
                 }
             }.formStyle(.grouped).navigationTitle("整理分类")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                #endif
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("取消") { dismiss() }.disabled(saving) }
                     ToolbarItem(placement: .confirmationAction) { Button(L(saving ? "保存中" : "保存"), action: save).disabled(saving) }

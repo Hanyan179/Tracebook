@@ -2790,3 +2790,22 @@
 "来源详情" = "Source details";
 
 "历史全文，只读核对。" = "Read-only historical text.";
+
+"笔记列表操作" = "Note list actions";
+
+"1 条笔记" = "1 note";
+
+"%d 条笔记" = "%d notes";
+
+"1 条已归档笔记" = "1 archived note";
+
+"%d 条已归档笔记" = "%d archived notes";
+
+"暂无已归档笔记" = "No archived notes yet";
+
+"返回笔记" = "Back to notes";
+
+
+"尝试其他关键词，或调整上方筛选。" = "Try another search or adjust the filters above.";
+
+"正文更新会保留历史。" = "Text edits keep earlier versions.";
