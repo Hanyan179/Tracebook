@@ -1,5 +1,13 @@
 import SwiftUI
 
+func documentArchiveParts(_ text: String, kind: String) -> (header: String?, body: String) {
+    guard kind == "document", text.hasPrefix("# "),
+          let divider = text.range(of: "\n\n---\n\n") else { return (nil, text) }
+    let header = String(text[..<divider.lowerBound])
+    guard header.contains("\n来源：导入资料\n"), header.contains("\n作者：未确认。") else { return (nil, text) }
+    return (header, String(text[divider.upperBound...]))
+}
+
 struct DocumentRevisionNotice: View {
     let source: KnowledgeSource
     var snapshot = false

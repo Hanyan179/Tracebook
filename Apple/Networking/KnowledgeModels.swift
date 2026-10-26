@@ -1,6 +1,17 @@
 import Combine
 import Foundation
 
+struct SourceVersionRead: Decodable, Sendable {
+    let state: String
+    var source: KnowledgeSource?
+    var locator: String?
+    var nextCursor: String?
+    var beforeRevision: Int?
+    var checked: Int?
+    var skipped: Int?
+    var canContinue: Bool { nextCursor != nil || beforeRevision != nil }
+}
+
 struct KnowledgeSource: Codable, Identifiable, Sendable {
     let id: String
     let kind: String

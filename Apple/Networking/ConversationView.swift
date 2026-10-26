@@ -206,13 +206,7 @@ struct KnowledgeSourceReader: View {
     @State private var correctingImage = false
     @State private var proposalSaved = false
     @State private var memory: NodeCandidate?
-    private var documentParts: (header: String?, body: String) {
-        guard source.kind == "document", text.hasPrefix("# "),
-              let divider = text.range(of: "\n\n---\n\n") else { return (nil, text) }
-        let header = String(text[..<divider.lowerBound])
-        guard header.contains("\n来源：导入资料\n"), header.contains("\n作者：未确认。") else { return (nil, text) }
-        return (header, String(text[divider.upperBound...]))
-    }
+    private var documentParts: (header: String?, body: String) { documentArchiveParts(text, kind: source.kind) }
     var body: some View {
         NavigationStack {
             ScrollView {

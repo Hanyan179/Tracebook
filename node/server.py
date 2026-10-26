@@ -336,6 +336,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200,store.knowledge.revoke_grant(parts[2]))
         if parts==['v1','query'] and self.command=='POST':
             return self.send_json(200,store.knowledge.query(self.body_json()))
+        if len(parts)==6 and parts[:2]==['v1','sources'] and parts[4]=='versions' and self.command=='GET':
+            parameters={k:v[-1] for k,v in urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
+            return self.send_json(200,store.source_history.read(parts[2],parts[3],parts[5],parameters))
         if len(parts)==4 and parts[:2]==['v1','sources'] and self.command=='GET':
             parameters={k:v[-1] for k,v in urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query).items()}
             return self.send_json(200,store.knowledge.read_source(parts[2],parts[3],list(SCOPES),parameters))

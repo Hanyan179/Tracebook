@@ -62,6 +62,7 @@ struct NodeConflict: Codable, Identifiable, Sendable, Equatable {
     var id: String { path }
 }
 struct NodeStatus: Codable, Sendable {
+    var sourceHistorySupported: Bool?
     let nodeID: String
     let timeZone: String
     let outputDirectory: String

@@ -817,6 +817,12 @@
 			"path" = "node/server.py";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"65F5E2BEFABCADBED1EE8DD8" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.script.python";
+			"path" = "node/source_history.py";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"F133B230F9341A0CC84E4DEA" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "text.script.python";
@@ -1920,6 +1926,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "4867BF3E4C2A0C8E222DFF23";
 		};
+		"6C3679FD936F0FE80BF01FA7" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "65F5E2BEFABCADBED1EE8DD8";
+		};
 		"C589B3882108B610C05B0992" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "F133B230F9341A0CC84E4DEA";
@@ -2075,6 +2085,7 @@
 				"95864B52536263CE96115C06",
 				"681C55F274F245BEF0C38812",
 				"C4E902F4FB76D191ECAA748B",
+				"6C3679FD936F0FE80BF01FA7",
 				"C589B3882108B610C05B0992",
 				"FDF82AB1BC14848957B3FB53",
 				"ED45B44953C6D9847817A3B8",
@@ -2447,6 +2458,7 @@
 				"4016B0BA7B496692741037B0",
 				"54168C54EA516E2135F258CD",
 				"4867BF3E4C2A0C8E222DFF23",
+				"65F5E2BEFABCADBED1EE8DD8",
 				"F133B230F9341A0CC84E4DEA",
 				"8B0D777D4EB6CA613E17E9D3",
 				"0D2EF36FA60F89043DC56247",

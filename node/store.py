@@ -164,6 +164,8 @@ class Store:
         self.catalog = Catalog(self)
         self.memories.migrate()
         self.knowledge = Knowledge(self)
+        from source_history import SourceHistory
+        self.source_history = SourceHistory(self)
         self.exchange = DataExchange(self)
         self.analysis = DailyAnalysis(self)
         self.answers = Answers(self)
@@ -191,6 +193,7 @@ class Store:
             pass
 
     def close(self):
+        self.source_history.close()
         documents_closed = self.documents.close()
         answers_closed = self.answers.close()
         batches_closed = self.memory_batches.close()
@@ -661,6 +664,7 @@ class Store:
                     'archiveCopySupported':True,
                     'recordingIdentitySupported':True,
                     'recordingRepairSupported':True,
+                    'sourceHistorySupported':True,
                     'analysisConfigured':hasattr(self,'analysis') and self.analysis.configuration is not None,
                     'answerConfigured':self.answers.configuration is not None}
 

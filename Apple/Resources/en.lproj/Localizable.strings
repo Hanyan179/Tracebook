@@ -2750,3 +2750,43 @@
 "选择文档、截图或照片，先预览提取文字。" = "Choose documents, screenshots or photos to preview their text.";
 
 "校对文字，保存会保留历史。" = "Review text. Saving keeps history.";
+
+"历史文件或资料夹已变化，请重新读取。" = "The historical file or folder changed. Read it again.";
+
+"历史来源位置不正确。" = "The historical source location is invalid.";
+
+"历史文件过大或不是普通文字文件，未读取。" = "The historical file is too large or is not a regular text file. It was not read.";
+
+"来源版本不正确。" = "The source version is invalid.";
+
+"资料库已变化，请重新连接后读取。" = "The library changed. Reconnect before reading.";
+
+"历史文件编号不正确。" = "The historical file identifier is invalid.";
+
+"历史查找已失效，请重新读取。" = "The history search expired. Read it again.";
+
+"已核对当时版本与引用位置" = "Saved version and quote position verified";
+
+"继续查找历史版本" = "Continue history search";
+
+"查看当时完整原文" = "Read the full saved version";
+
+"历史较多，尚未查找完。可继续查找，原引用保留。" = "More history remains to be checked. Continue searching; the saved quote is retained.";
+
+"未找到这个版本的历史全文。下方保留原引用。" = "No saved full text was found for this version. The original quote is retained below.";
+
+"部分历史文件无法核对，尚未找到这个版本。下方保留原引用。" = "Some historical files could not be checked, and this version has not been found. The original quote is retained below.";
+
+"以下为当时保存的历史版本。当前原文可能已修订。" = "This is the saved historical version. The current source may have been revised.";
+
+
+"当时的完整原文" = "Full saved version";
+
+"版本 %@" = "Version %@";
+
+
+"历史版本" = "Historical version";
+
+"来源详情" = "Source details";
+
+"历史全文，只读核对。" = "Read-only historical text.";
