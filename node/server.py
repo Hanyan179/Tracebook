@@ -182,11 +182,17 @@ class Handler(BaseHTTPRequestHandler):
                     raise StoreError(503,'转写文件暂时无法读写。请检查资料夹连接和权限，再继续核对；已保存的备份仍保留。')
         if parts==['v1','memory-delivery'] and self.command=='GET':
             return self.send_json(200,store.memories.delivery_status())
-        if parts==['v1','memory-files','preview'] and self.command=='GET':
-            values=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
-            return self.send_json(200,store.memory_files.preview(values.get('path',[''])[-1]))
-        if parts==['v1','memory-files','resolve'] and self.command=='POST':
-            return self.send_json(200,store.memory_files.resolve(self.body_json()))
+        if parts[:2]==['v1','memory-files']:
+            try:
+                if parts==['v1','memory-files','preview'] and self.command=='GET':
+                    values=urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
+                    return self.send_json(200,store.memory_files.preview(values.get('path',[''])[-1]))
+                if parts==['v1','memory-files','resolve'] and self.command=='POST':
+                    return self.send_json(200,store.memory_files.resolve(self.body_json()))
+                if parts==['v1','memory-files','retry'] and self.command=='POST':
+                    return self.send_json(200,store.memory_files.retry(self.body_json()))
+            except OSError:
+                raise StoreError(503,'记忆文件暂时无法读写。请检查资料夹连接和权限；备份与合并记录仍保留。')
         if parts==['v1','memory-delivery','retry'] and self.command=='POST':
             self.body_json()
             return self.send_json(200,store.memories.deliver_pending(force=True))

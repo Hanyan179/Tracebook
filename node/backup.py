@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from document_originals import OriginalError, original_metadata, original_name, original_directory
 
 FORMAT = 'tracebook-library-backup'
-VERSION = 6
+VERSION = 7
 MAX_FILES = 100000
 MAX_TOTAL = 256 * 1024 ** 3
 MAX_MANIFEST = 16 * 1024 ** 2
@@ -302,7 +302,7 @@ def inspect_backup(file, scratch, expected_hash=None, progress=lambda _:None):
         require('manifest.json' in by_name and by_name['manifest.json'].file_size<=MAX_MANIFEST, '找不到有效的备份清单。')
         manifest=parse_json(archive.read('manifest.json'))
         require(isinstance(manifest,dict) and manifest.get('format')==FORMAT
-                and type(manifest.get('version')) is int and manifest['version'] in (1, 2, 3, 4, 5, VERSION),
+                and type(manifest.get('version')) is int and manifest['version'] in (1, 2, 3, 4, 5, 6, VERSION),
                 '这不是当前版本支持的迹库备份。')
         require(str(uuid.UUID(manifest.get('id',''))).upper()==manifest['id']
                 and dt.datetime.fromisoformat(manifest.get('createdAt','').replace('Z','+00:00')).tzinfo is not None,

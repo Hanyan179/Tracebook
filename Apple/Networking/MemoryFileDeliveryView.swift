@@ -113,6 +113,17 @@ private struct MemoryFileDeliveryView: View {
                             if value.isPaused { Text("恢复文件更新后，可核对人工修改与新生成的版本。") }
                         }
                     }
+                    if let files = value.reviewedFiles, !files.isEmpty {
+                        Section("已核对的文件") {
+                            ForEach(files, id: \.self) { path in
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text(verbatim: path).font(.body.weight(.medium))
+                                    Button("查看文件核对记录") { reviewing = NodeConflict(path: path, state: "reviewed", generatedPath: nil) }
+                                        .disabled(busy)
+                                }
+                            }
+                        }
+                    }
                 }
                 Section {
                     Button(value?.isPaused == true ? "恢复记忆文件更新" : "重新检查并写入") { Task { await run(retry: true) } }.disabled(busy)

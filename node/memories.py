@@ -191,7 +191,7 @@ class Memories:
             conflicts = [dict(r) for r in self.db.execute(
                 "SELECT path,state,generated_path AS generatedPath FROM exports WHERE root=? AND state='conflict' ORDER BY path",
                 (str(self.s.output),)) if r['path'] in names or r['path'].startswith('memories/')]
-            reviewed = [r['path'] for r in self.db.execute("SELECT path FROM exports WHERE root=? AND state='reviewed' ORDER BY path", (str(self.s.output),))]
+            reviewed = [r['path'] for r in self.db.execute("SELECT path FROM exports WHERE root=? AND state='reviewed' ORDER BY path", (str(self.s.output),)) if r['path'] in names or r['path'].startswith('memories/')]
             file_pending = self.s.memory_files.pending()
             return {'state': 'failed' if file_pending else (('failed' if problem else 'pending') if pending else ('review' if conflicts else 'reviewed' if reviewed else 'ready')),
                     'paused': paused,

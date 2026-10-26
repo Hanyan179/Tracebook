@@ -2468,3 +2468,27 @@
 "选择新建议" = "Choose a proposed memory";
 
 "返回任务状态" = "Back to task status";
+
+"上次文件核对尚未完成，继续会复用已保存的备份和合并内容。" = "The previous file review is unfinished. Continue using its saved backup and merged content.";
+"历史文件的合并内容须为有效 JSON 对象；原文件和草稿仍保留。" = "Merged history must be a valid JSON object. The original and draft are preserved.";
+"采用或合并前会备份原文件，生成版本也会保留。预览后文件或记忆有变化时会停止，并保留本机草稿。" = "Adopting or merging backs up the current file and retains the generated version. Changes after preview stop saving and preserve your local draft.";
+"合并文件须为有效文字，最多 128 KB。" = "Merged content must be valid text, up to 128 KB.";
+"处理文件" = "Handle file";
+"备份并保存合并文件" = "Back up and save merged file";
+"对照当前文件与生成版本，可保留、采用或手动合并。采用或合并前先备份；这里只修改导出文件，不会写回记忆条目。" = "Compare your file with the generated version. Keep, adopt or merge them manually. Adopting or merging backs up the current file. Only the exported file changes; memory entries stay unchanged.";
+"已保存合并文件" = "Merged file saved";
+"当前文件在这次核对后又有修改，下面显示当前内容。" = "This file changed after the review. Its current content is shown below.";
+"继续保存上次文件核对" = "Continue the previous file save";
+"草稿保存在本机，只有保存后才更新这个导出文件。" = "The draft stays on this device. Saving updates only this exported file.";
+"资料库中的记忆条目、原文依据与修订历史均未改变。" = "Memory entries, original evidence and revision history in the library are unchanged.";
+"上次文件核对仍未保存完成，请先继续上次处理。" = "The previous file review is unfinished. Continue that operation first.";
+"找不到当前资料库中的文件核对记录。" = "This file review could not be found in the current library.";
+"文件核对方式不受支持，请更新应用后重新核对。" = "This file review action is unsupported. Update the app and review again.";
+"核对的文件位置已变化，请重新读取。" = "The file location changed during review. Reload it.";
+"记忆文件暂时无法读写。请检查资料夹连接和权限；备份与合并记录仍保留。" = "Memory files are temporarily unavailable. Check the folder connection and permissions. Backups and saved merge operations are retained.";
+"已核对的文件" = "Reviewed files";
+"查看文件核对记录" = "View file review";
+
+"上次保存结果尚未确认，请重试或重新读取。当前草稿会保留，暂时不能修改。" = "The previous save is not confirmed. Retry or reload its status. Your draft is kept and temporarily locked.";
+
+"这是已保存的文件核对记录。资料库中的后续更新需要单独交付；查看记录不会恢复写入。" = "This is a saved file review. Later library updates still need delivery. Viewing this record does not resume writing.";
