@@ -137,6 +137,10 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts)==4 and parts[3]=='retry-file' and self.command=='POST':
                 return self.send_json(200,store.local_sources.retry_file(parts[2],self.body_json()))
             raise StoreError(404,'找不到这个资料来源操作。')
+        if len(parts)==4 and parts[:2]==['v1','documents'] and parts[3]=='text':
+            if self.command=='GET':return self.send_json(200,store.documents.text_document(parts[2]))
+            if self.command=='PUT':return self.send_json(200,store.documents.text_document(parts[2],self.body_json(12*1024*1024+65536)))
+            raise StoreError(404,'找不到这次资料校对操作。')
         if parts[:2] == ['v1','documents']:
             if not ipaddress.ip_address(self.client_address[0]).is_loopback:
                 raise StoreError(403,'请在资料库所在电脑导入资料。')

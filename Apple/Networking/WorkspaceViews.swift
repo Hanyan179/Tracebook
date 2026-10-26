@@ -304,7 +304,7 @@ struct NodeDocumentEditor: View {
                                         guard revision == store.connectionRevision, context.endpoint == store.endpoint, context.nodeID == identity.nodeID else {
                                             throw NodeFailure(message: "资料库已变化，草稿仍保留。请回到原资料库核对。")
                                         }
-                                        let doc = try await store.saveDocument(path, text: text, etag: etag)
+                                        let doc = try await store.saveDocument(path, text: text, etag: etag, nodeID: context.nodeID)
                                         etag = doc.etag; savedText = doc.text; error = nil
                                         removeDraft()
                                     } catch { self.error = error.localizedDescription; persistDraft() }

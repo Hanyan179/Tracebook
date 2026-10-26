@@ -1,4 +1,4 @@
-"""Opt-in PDF/DOCX copies. Never replace an existing user-owned file."""
+"""Opt-in document and image copies. Never replace an existing user-owned file."""
 from contextlib import contextmanager
 import hashlib
 import os
@@ -6,7 +6,12 @@ from pathlib import Path
 import stat
 import uuid
 
-MAX_ORIGINAL = 2 * 1024 * 1024
+from image_documents import IMAGE_EXTENSIONS, MAX_IMAGE
+
+MAX_ORIGINAL = MAX_IMAGE
+
+def original_limit(extension):
+    return MAX_IMAGE if extension in IMAGE_EXTENSIONS else 2 * 1024 * 1024
 
 
 class OriginalError(Exception):
@@ -15,7 +20,7 @@ class OriginalError(Exception):
 
 def original_name(identifier, extension):
     try:
-        if str(uuid.UUID(identifier)).upper() != identifier or extension not in ('pdf', 'docx'):
+        if str(uuid.UUID(identifier)).upper() != identifier or extension not in ('pdf', 'docx')+IMAGE_EXTENSIONS:
             raise ValueError()
     except (ValueError, TypeError, AttributeError):
         raise OriginalError('原件编号或格式无效。')
@@ -31,7 +36,7 @@ def original_metadata(identifier, extension, details):
             or not isinstance(value.get('sha256'), str) or len(value['sha256']) != 64
             or any(c not in '0123456789abcdef' for c in value['sha256'])
             or value['sha256'] != details.get('originalFileSHA256')
-            or type(value.get('byteCount')) is not int or not 0 < value['byteCount'] <= MAX_ORIGINAL):
+            or type(value.get('byteCount')) is not int or not 0 < value['byteCount'] <= original_limit(extension)):
         raise OriginalError('原件校验信息无效，请重新核对导入文件。')
     return value
 
@@ -88,7 +93,7 @@ def read_original(output, identifier, extension, details):
 
 def retain_original(output, identifier, extension, raw, digest, root_guard=None):
     name = original_name(identifier, extension)
-    if not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_ORIGINAL or hashlib.sha256(raw).hexdigest() != digest:
+    if not isinstance(raw, bytes) or not 0 < len(raw) <= original_limit(extension) or hashlib.sha256(raw).hexdigest() != digest:
         raise OriginalError('原件内容与预览不一致，请重新选择文件。')
     expected = {'sha256': digest, 'byteCount': len(raw)}
     try:

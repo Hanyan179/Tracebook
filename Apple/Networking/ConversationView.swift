@@ -203,6 +203,7 @@ struct KnowledgeSourceReader: View {
     @State private var sourceChanged = false
     @State private var currentSource: KnowledgeSource?
     @State private var proposing = false
+    @State private var correctingImage = false
     @State private var proposalSaved = false
     @State private var memory: NodeCandidate?
     private var documentParts: (header: String?, body: String) {
@@ -228,6 +229,9 @@ struct KnowledgeSourceReader: View {
                     DocumentRevisionNotice(source: currentSource ?? source, snapshot: currentSource == nil)
                     DocumentOriginalNotice(workspace: workspace, source: currentSource ?? source)
                     if source.kind == "document" { DocumentContentNotice(role: (currentSource ?? source).documentRole) }
+                    if (currentSource ?? source).documentInfo?.imageOCR == true, loaded {
+                        Button("校对识别文字", systemImage: "pencil") { correctingImage = true }.disabled(loading)
+                    }
                     if loaded && text.isEmpty { Text("这条记录还没有文字。").foregroundStyle(.secondary) }
                     if let metadata = documentParts.header {
                         MarkdownReader(text: documentParts.body)
@@ -264,6 +268,19 @@ struct KnowledgeSourceReader: View {
         }.task { await read(reset: true) }.sourceLinks(workspace: workspace)
             .sheet(isPresented: $proposing) {
                 MemoryProposalSheet(workspace: workspace, source: currentSource ?? source, sourceText: text) { proposalSaved = true }.appLanguage()
+            }
+            .sheet(isPresented: $correctingImage, onDismiss: { Task { await read(reset: true) } }) {
+                NavigationStack {
+                    NodeDocumentEditor(store: workspace, path: "v1/documents/\(source.id)/text", title: "校对识别文字",
+                        hint: "校对文字，保存会保留历史。")
+                        .toolbar { ToolbarItem(placement: .confirmationAction) { Button("完成") { correctingImage = false } } }
+                        #if os(iOS)
+                        .navigationBarTitleDisplayMode(.inline)
+                        #endif
+                }.appLanguage()
+                #if os(macOS)
+                .frame(minWidth: 520, idealWidth: 640, minHeight: 480, idealHeight: 600)
+                #endif
             }
             .sheet(item: $memory) { value in MemoryDetail(store: workspace, candidate: value) }
         #if os(macOS)

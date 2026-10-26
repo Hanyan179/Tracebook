@@ -12,6 +12,7 @@ import time
 from local_sources import redact
 from pdf_documents import PDFError, extract_pdf, ocr_available
 from docx_documents import DOCXError, extract_docx
+from image_documents import IMAGE_EXTENSIONS, MAX_IMAGE, extract_image, image_ocr_available
 from document_originals import OriginalError, retain_original, read_original, original_state
 
 NAMESPACE = uuid.UUID('2132fb96-e68f-4a7b-8bd2-697b876fcb0d')
@@ -50,6 +51,10 @@ def archive_header(item, previous, legacy_original_notice=False):
         body += '样式、自动编号和版式未还原；表格、修订、域结果及遗漏内容请对照原文件。\n'
         body += ('批注与附注不代表本人陈述；原文件保持原位，资料夹仅保存提取文字。\n' if legacy_original_notice else
                  '批注与附注不代表本人陈述；原文件保持原位，原件副本状态请在应用中核对。\n')
+    elif details.get('format') in IMAGE_EXTENSIONS:
+        body += '图片识别文字：使用本机中英文文字识别，结果可能有错漏；识别行号不是原图坐标。\n'
+        body += '复杂版式、表格和手写内容需对照原件校对；人物、说话人和作者未核实。\n'
+        body += '原图片保持原位；原件副本状态请在应用中核对。\n'
     return body+'\n---\n\n'
 
 
@@ -77,7 +82,7 @@ class DocumentImports:
         # traverse a linked directory or remove unfamiliar files.
         scratch = store.data/'document-previews'
         if scratch.is_dir() and not scratch.is_symlink():
-            for kind in ('pdf', 'docx'):
+            for kind in ('pdf', 'docx', 'image'):
                 for folder in scratch.glob('.'+kind+'-*'):
                     if folder.is_symlink() or not folder.is_dir():continue
                     for name in ('input.'+kind, 'result.json'):
@@ -162,6 +167,7 @@ class DocumentImports:
         total = 0
         details_report = []
         docx_report = []
+        images_report = []
         fingerprint = hashlib.sha256(json.dumps(files, sort_keys=True, ensure_ascii=False).encode()).hexdigest() if preparation_id else None
         deadline = time.monotonic() + 90
         for index, value in enumerate(files):
@@ -268,7 +274,34 @@ class DocumentImports:
                 except DOCXError as error:
                     if str(error) == 'cancelled':raise
                     reason = str(error)
-            if suffix not in ('.md', '.markdown', '.txt', '.text', '.pdf', '.docx'):
+            elif suffix.lstrip('.') in IMAGE_EXTENSIONS and not reason:
+                try:
+                    encoded=value.get('data')
+                    if not isinstance(encoded,str):raise PDFError('invalid_image')
+                    if len(encoded)>4*((MAX_IMAGE+2)//3):raise PDFError('image_too_large')
+                    try:raw_image=base64.b64decode(encoded,validate=True)
+                    except (binascii.Error,ValueError):raise PDFError('invalid_image')
+                    total+=len(raw_image);raw_original=raw_image
+                    if total>12*1024*1024:self.error(413,'本批资料超过 12 MB，请分批导入。')
+                    remaining=deadline-time.monotonic()
+                    if remaining<=0:raise PDFError('not_processed')
+                    extracted=extract_image(raw_image,suffix[1:],self.s.data/'document-previews',cancel,seconds=min(60,remaining))
+                    if not extracted['lines']:raise PDFError('image_no_text')
+                    pieces=[];lines=[];position=0;hidden=False
+                    for number,line in enumerate(extracted['lines'],1):
+                        passage,redacted=redact(line);hidden=hidden or redacted
+                        lines.append({'number':number,'start':position,'end':position+len(passage)})
+                        pieces.append(passage+'\n');position+=len(passage)+1
+                    text=''.join(pieces)
+                    if len(text.encode())>MAX_FILE:raise PDFError('text_limit')
+                    details={key:extracted[key] for key in ('parser','width','height','orientation','recognizedWidth','recognizedHeight')}
+                    canonical_format={'public.png':'png','public.jpeg':'jpg','public.heic':'heic','public.heif':'heif'}[extracted['containerType']]
+                    details.update(format=canonical_format,imageLines=lines,originalFileSHA256=hashlib.sha256(raw_image).hexdigest(),
+                                   parserWarnings=False,redacted=bool(hidden),imageOCR=True)
+                except PDFError as error:
+                    if str(error)=='cancelled':raise
+                    reason=str(error)
+            if suffix not in ('.md', '.markdown', '.txt', '.text', '.pdf', '.docx') and suffix[1:] not in IMAGE_EXTENSIONS:
                 reason = 'unsupported'
             elif not isinstance(text, str) or not text.strip() or '\0' in text:
                 reason = reason or 'unreadable'
@@ -278,13 +311,13 @@ class DocumentImports:
                 allowed = ('unsupported', 'too_large', 'encrypted', 'invalid_pdf', 'page_limit', 'text_limit',
                            'no_text', 'parser_limit', 'parser_timeout', 'parser_unavailable', 'parser_busy', 'not_processed', 'batch_limit',
                            'invalid_docx', 'encrypted_docx', 'unsupported_docx')
-                allowed += ('ocr_unavailable', 'ocr_no_text')
+                allowed += ('ocr_unavailable', 'ocr_no_text', 'invalid_image', 'image_too_large', 'image_frames', 'image_dimensions', 'image_ocr_failed', 'image_no_text')
                 warnings.append({'name': name, 'reason': reason if reason in allowed else 'unreadable'})
                 continue
-            if suffix not in ('.pdf', '.docx'):total += len(text.encode())
+            if suffix not in ('.pdf', '.docx') and suffix[1:] not in IMAGE_EXTENSIONS:total += len(text.encode())
             if total > 12 * 1024 * 1024:
                 self.error(413, '本批资料超过 12 MB，请分批导入。')
-            if suffix in ('.pdf', '.docx'):hidden = details['redacted']
+            if suffix in ('.pdf', '.docx') or suffix[1:] in IMAGE_EXTENSIONS:hidden = details['redacted']
             else:text, hidden = redact(text.lstrip('\ufeff').replace('\r\n', '\n').replace('\r', '\n'))
             signature = hashlib.sha256(((details['format']+'-v1\0'+details['originalFileSHA256']+'\0') if details else '').encode()+text.encode()).hexdigest()
             if details.get('ocrRequested'):
@@ -316,6 +349,8 @@ class DocumentImports:
             elif details.get('format') == 'docx':
                 docx_report.append({'name': name, 'paragraphs': details['paragraphCount'], 'tables': details['tableCount'],
                                     'parts': details['parts'], 'blocks': len(details['blocks']), 'warnings': details['warnings']})
+            if details.get('imageOCR'):
+                images_report.append({'name':name,**{key:details[key] for key in ('width','height','orientation','recognizedWidth','recognizedHeight')},'lines':len(details['imageLines'])})
             if role != 'unknown':details = {**details, 'contentRole': role}
             source = value.get('sourcePath')
             source = source if isinstance(source, str) and 0 < len(source) <= 4096 else name
@@ -331,7 +366,7 @@ class DocumentImports:
                 pass
             with self.s.lock:
                 existing = bool(self.s.db.execute('SELECT 1 FROM documents WHERE id=?', (rid,)).fetchone())
-            items.append({'id': rid, 'title': name, 'text': text, 'source': source, 'format': suffix.lstrip('.'),
+            items.append({'id': rid, 'title': name, 'text': text, 'source': source, 'format': details['format'] if details.get('imageOCR') else suffix.lstrip('.'),
                           'signature': signature, 'created_at': moment, 'dateBasis': date_basis,
                           'redacted': hidden, 'existing': existing, 'details': details, 'contentRole': role,
                           'originalData': base64.b64encode(raw_original).decode() if retain and raw_original and not hidden else None,
@@ -342,7 +377,7 @@ class DocumentImports:
                   'duplicates': duplicate+sum(i['existing'] for i in items),
                   'redacted': sum(i['redacted'] for i in items), 'warnings': warnings,
                   'titles': [i['title'] for i in items], 'pdfs': details_report,
-                  'docxDocuments': docx_report,
+                  'docxDocuments': docx_report, 'images': images_report,
                   'originalCopies': [{'name': i['title'], 'state': 'blocked' if i['originalBlocked'] else 'selected',
                                       'bytes': len(base64.b64decode(i['originalData'])) if i['originalData'] else 0}
                                      for i in items if i['originalData'] or i['originalBlocked']],
@@ -404,8 +439,10 @@ class DocumentImports:
                         details = {**details, 'pages': [{**p, 'start': p['start']+len(body), 'end': p['end']+len(body)} for p in details['pages']]}
                     elif details.get('format') == 'docx':
                         details = {**details, 'blocks': [{**b, 'start': b['start']+len(body), 'end': b['end']+len(body)} for b in details['blocks']]}
+                    elif details.get('imageOCR'):
+                        details={**details,'imageLines':[{**line,'start':line['start']+len(body),'end':line['end']+len(body)} for line in details['imageLines']]}
                     body += item['text']+'\n'
-                    if details.get('format') in ('pdf', 'docx'):details['textVersion'] = hashlib.sha256(body.encode()).hexdigest()
+                    if details.get('format') in ('pdf', 'docx') or details.get('imageOCR'):details['textVersion'] = hashlib.sha256(body.encode()).hexdigest()
                     output = self.s.export('documents/'+item['id']+'.md', body, item['signature'])
                     if output['state'] == 'conflict':
                         self.error(409, '资料目标已有人工内容，已保留，请先核对另存版本。')
@@ -451,14 +488,37 @@ class DocumentImports:
     def info(self, rid, version):
         row = self.s.db.execute('SELECT details FROM documents WHERE id=?', (rid,)).fetchone()
         details = json.loads(row['details']) if row else {}
-        if details.get('format') not in ('pdf', 'docx'):return None
+        if details.get('format') not in ('pdf', 'docx')+IMAGE_EXTENSIONS:return None
         valid = details['textVersion'] == version
         details = {**details, 'originalCopy': original_state(self.s.output, rid, details['format'], details)}
+        if details.get('imageOCR'):
+            return {**details,'rangesValid':valid,'imageLines':details['imageLines'] if valid else
+                    [{k:v for k,v in line.items() if k not in ('start','end')} for line in details['imageLines']]}
         if details['format'] == 'docx':
             return {**details, 'rangesValid': valid, 'blocks': details['blocks'] if valid else
                     [{k:v for k,v in b.items() if k not in ('start', 'end')} for b in details['blocks']]}
         return {**details, 'rangesValid': valid,
                 'pages': details['pages'] if valid else [{k:v for k,v in p.items() if k not in ('start','end')} for p in details['pages']]}
+
+    def text_document(self, identifier, update=None):
+        from store import canonical_id
+        with self.s.lock:
+            self.s.require_output(update is not None)
+            rid=canonical_id(identifier);row=self.s.db.execute('SELECT * FROM documents WHERE id=?',(rid,)).fetchone()
+            if not row:self.error(404,'找不到这份资料。')
+            if json.loads(row['details']).get('imageOCR') is not True:
+                self.error(400,'此入口仅用于校对图片识别正文。')
+            relative='documents/'+rid+'.md';current=self.s.read_document(relative)
+            start=self.content_start(row,current['text'])
+            if not start:self.error(409,'资料说明已在文件中修改，请先在原文件中核对；已有内容仍保留。')
+            if update is not None:
+                if update.get('nodeID')!=self.s.setting('nodeID'):self.error(409,'资料库已变化，未保存校对内容。')
+                text=update.get('text')
+                if not isinstance(text,str) or '\0' in text or len(text.encode())>MAX_FILE:self.error(400,'校对文字过长或包含无效字符。')
+                full=current['text'][:start]+text
+                current=self.s.edit_document(relative,full,update.get('etag'),maximum=MAX_FILE+65536)
+                self.s.catalog.index_document(rid)
+            return {**current,'text':current['text'][start:]}
 
     def original(self, identifier):
         from store import canonical_id
@@ -519,4 +579,5 @@ class DocumentImports:
             return {'items': items, 'count': self.s.db.execute('SELECT COUNT(*) FROM documents').fetchone()[0],
                     'originalCopiesSupported': True,
                     'pdfOCRSupported': ocr_available(),
+                    'imageOCRSupported': image_ocr_available(),
                     'nextOffset': offset+40 if len(rows)>40 else None}

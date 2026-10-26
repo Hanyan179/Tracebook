@@ -73,6 +73,13 @@ struct DocumentSourceInfo: Codable, Sendable {
     var warnings: [DocumentStructureWarning]?
     var originalCopy: DocumentOriginalCopy?
     var ocrRequested: Bool?
+    var imageOCR: Bool?
+    var imageLines: [ImageLine]?
+    var width: Int?
+    var height: Int?
+    var recognizedWidth: Int?
+    var recognizedHeight: Int?
+    struct ImageLine: Codable, Sendable { let number: Int; let start: Int?; let end: Int? }
 }
 
 struct DocumentOriginalCopy: Codable, Sendable {
@@ -160,8 +167,34 @@ struct DocumentSourceNotice: View {
         }
     }
     var body: some View {
-        if info.format == "docx" { docxNotice }
+        if info.imageOCR == true { imageNotice }
+        else if info.format == "docx" { docxNotice }
         else { pdfNotice }
+    }
+    private var imageNotice: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("图片识别文字，请对照原件核对。", systemImage: "text.viewfinder")
+                .font(.callout).fixedSize(horizontal: false, vertical: true)
+            if info.rangesValid, let quoteStart, quoteLength > 0 {
+                let cited = (info.imageLines ?? []).filter {
+                    guard let start = $0.start, let end = $0.end else { return false }
+                    return quoteStart < end && quoteStart + quoteLength > start
+                }
+                if !cited.isEmpty {
+                    Text(LF("识别行：%@", cited.prefix(8).map { String($0.number) }.joined(separator: ", ") + (cited.count > 8 ? "…" : "")))
+                        .font(.callout.weight(.medium))
+                }
+            }
+            DisclosureGroup("图片识别说明") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(LF("原图 %d × %d 像素 · 识别 %d 行", info.width ?? 0, info.height ?? 0, info.imageLines?.count ?? 0))
+                    Text(LF("按图片方向处理，识别图像为 %d × %d 像素。", info.recognizedWidth ?? 0, info.recognizedHeight ?? 0))
+                    Text("识别文字可能有错漏；行号表示识别顺序，不是原图坐标。原件副本按本次选择保存。")
+                    if !info.rangesValid { Text("这份文字已被修改，原识别行的位置无法继续核对。") }
+                }.font(.footnote).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+            }.font(.callout)
+        }.frame(maxWidth: .infinity, alignment: .leading)
     }
     private var docxNotice: some View {
         VStack(alignment: .leading, spacing: 8) {

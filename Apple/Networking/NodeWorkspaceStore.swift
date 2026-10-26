@@ -211,9 +211,11 @@ final class NodeWorkspaceStore: ObservableObject {
         guard let client else { throw NodeFailure(message: "请先连接电脑或处理节点。") }
         return try await client.read(path, as: NodeDocument.self)
     }
-    func saveDocument(_ path: String, text: String, etag: String) async throws -> NodeDocument {
+    func saveDocument(_ path: String, text: String, etag: String, nodeID: String? = nil) async throws -> NodeDocument {
         guard let client else { throw NodeFailure(message: "请先连接电脑或处理节点。") }
-        let data = try await client.send(path, body: ["text": text, "etag": etag])
+        var body = ["text": text, "etag": etag]
+        if let nodeID { body["nodeID"] = nodeID }
+        let data = try await client.send(path, body: body)
         let document = try JSONDecoder().decode(NodeDocument.self, from: data)
         await refresh()
         libraryRevision = UUID()

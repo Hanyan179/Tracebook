@@ -16,7 +16,7 @@ struct DocumentOriginalNotice: View {
     private var available: Bool { copy?.state == "available" }
 
     var body: some View {
-        if source.kind == "document", let format = source.documentInfo?.format, ["pdf", "docx"].contains(format) {
+        if source.kind == "document", let format = source.documentInfo?.format, ["pdf", "docx", "png", "jpg", "jpeg", "heic", "heif"].contains(format) {
             VStack(alignment: .leading, spacing: 8) {
                 Label(L(available ? "原件副本已保存" : (copy?.state == "unavailable" ? "原件副本需要核对" : "未保留原文件副本")), systemImage: "paperclip")
                     .font(.callout)
@@ -62,14 +62,14 @@ struct DocumentOriginalNotice: View {
         do {
             let value = try await client.read("v1/documents/" + source.id + "/original", as: Download.self)
             guard client.endpoint == workspace.client?.endpoint, value.format == format,
-                  let raw = Data(base64Encoded: value.data), raw.count > 0, raw.count <= 2 * 1024 * 1024,
+                  let raw = Data(base64Encoded: value.data), raw.count > 0, raw.count <= (["pdf", "docx"].contains(format) ? 2 : 8) * 1024 * 1024,
                   raw.count == value.byteCount, value.sha256 == copy?.sha256,
                   SHA256.hash(data: raw).map({ String(format: "%02x", $0) }).joined() == value.sha256 else {
                 throw NodeFailure(message: "原件内容与预览不一致，请重新选择文件。")
             }
             let panel = NSSavePanel()
             panel.nameFieldStringValue = URL(fileURLWithPath: value.name).lastPathComponent
-            panel.allowedContentTypes = [format == "pdf" ? .pdf : (UTType(filenameExtension: "docx") ?? .data)]
+            panel.allowedContentTypes = [UTType(filenameExtension: format) ?? .data]
             panel.canCreateDirectories = true
             guard panel.runModal() == .OK, let url = panel.url else { return }
             let access = url.startAccessingSecurityScopedResource()

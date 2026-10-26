@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from document_originals import OriginalError, original_metadata, original_name, original_directory
 
 FORMAT = 'tracebook-library-backup'
-VERSION = 9
+VERSION = 10
 MAX_FILES = 100000
 MAX_TOTAL = 256 * 1024 ** 3
 MAX_MANIFEST = 16 * 1024 ** 2
@@ -327,7 +327,7 @@ def inspect_backup(file, scratch, expected_hash=None, progress=lambda _:None):
         require('manifest.json' in by_name and by_name['manifest.json'].file_size<=MAX_MANIFEST, '找不到有效的备份清单。')
         manifest=parse_json(archive.read('manifest.json'))
         require(isinstance(manifest,dict) and manifest.get('format')==FORMAT
-                and type(manifest.get('version')) is int and manifest['version'] in (1, 2, 3, 4, 5, 6, 7, 8, VERSION),
+                and type(manifest.get('version')) is int and manifest['version'] in (1, 2, 3, 4, 5, 6, 7, 8, 9, VERSION),
                 '这不是当前版本支持的迹库备份。')
         require(str(uuid.UUID(manifest.get('id',''))).upper()==manifest['id']
                 and dt.datetime.fromisoformat(manifest.get('createdAt','').replace('Z','+00:00')).tzinfo is not None,
@@ -374,6 +374,8 @@ def inspect_backup(file, scratch, expected_hash=None, progress=lambda _:None):
         originals = {}
         for values in read_table(archive, 'documents', expected['documents']):
             row = dict(zip(expected['documents'], values));details = parse_json(row['details'])
+            from image_documents import IMAGE_EXTENSIONS
+            require(manifest['version']>=10 or row['format'] not in IMAGE_EXTENSIONS, '图片资料需要新版备份格式。')
             try:metadata = original_metadata(row['id'], row['format'], details)
             except OriginalError as error:raise BackupError(str(error))
             if metadata is not None:

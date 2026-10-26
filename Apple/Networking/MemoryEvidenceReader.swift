@@ -101,7 +101,7 @@ struct SourcePassageReader: View {
                     }
             }
         }.task(id: workspace.client?.endpoint.absoluteString) { await read() }
-            .sheet(isPresented: $fullSource) {
+            .sheet(isPresented: $fullSource, onDismiss: { Task { await read() } }) {
                 KnowledgeSourceReader(workspace: workspace, source: currentSource ?? source).appLanguage()
             }
         #if os(macOS)

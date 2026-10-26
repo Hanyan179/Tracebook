@@ -8,6 +8,7 @@ struct DocumentPage: Decodable, Sendable {
     let nextOffset: Int?
     let originalCopiesSupported: Bool?
     let pdfOCRSupported: Bool?
+    let imageOCRSupported: Bool?
 }
 
 private struct DocumentPreview: Decodable, Identifiable, Sendable {
@@ -22,6 +23,16 @@ private struct DocumentPreview: Decodable, Identifiable, Sendable {
     let samples: [Sample]
     let pdfs: [PDFCoverage]?
     let docxDocuments: [DOCXCoverage]?
+    let images: [ImageCoverage]?
+    struct ImageCoverage: Decodable, Sendable {
+        let name: String
+        let width: Int
+        let height: Int
+        let orientation: Int
+        let recognizedWidth: Int
+        let recognizedHeight: Int
+        let lines: Int
+    }
     let sourceRoles: [SourceRole]?
     let originalCopies: [OriginalCopy]?
     struct OriginalCopy: Decodable, Sendable { let name: String; let state: String; let bytes: Int }
@@ -53,6 +64,12 @@ private struct DocumentPreview: Decodable, Identifiable, Sendable {
             case "unsupported": "暂不支持这个文件格式"
             case "too_large": "单份资料最多 2 MB"
             case "encrypted": "PDF 已加密，请先导出未加密副本"
+            case "image_too_large": "单张图片最多 8 MB"
+            case "invalid_image": "图片损坏、格式不符或无法解码"
+            case "image_frames": "多帧图片尚不支持，请分别导出单张图片"
+            case "image_dimensions": "图片尺寸超过上限：最长边 16000 像素、总计 6400 万像素"
+            case "image_ocr_failed": "图片本机文字识别失败，请核对原件后重试"
+            case "image_no_text": "图片中没有识别到文字，尚未归档"
             case "invalid_pdf": "PDF 损坏或结构不受支持"
             case "invalid_docx": "DOCX 损坏或结构不受支持"
             case "encrypted_docx": "DOCX 已加密，请先导出未加密副本"
@@ -115,11 +132,13 @@ struct DocumentLibraryView: View {
     @State private var preparation: DocumentPreparation?
     @State private var reread = 0
     @State private var cancelling = false
+    @State private var importOptionsExpanded = false
     @State private var contentRole = DocumentContentRole.unknown
     @State private var retainOriginal = false
     @State private var originalsSupported: Bool?
     @State private var recognizeScans = false
     @State private var ocrSupported: Bool?
+    @State private var imageSupported: Bool?
     private var savedPreparation: String { "documents.preparation." + workspace.endpoint }
 
     var body: some View {
@@ -128,41 +147,56 @@ struct DocumentLibraryView: View {
                 HStack {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(LF("已导入 %d 份文字资料", count)).font(.headline)
-                        Text("支持 DOCX、PDF、Markdown 和 TXT。先预览，再保存提取文字。").font(.caption).foregroundStyle(.secondary)
+                        Text(L(imageSupported == true ? "支持文档与 PNG、JPEG、HEIC 图片。先预览，再保存提取文字。" : "支持 DOCX、PDF、Markdown 和 TXT。先预览，再保存提取文字。")).font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button("选择文件", systemImage: "plus") { choose() }.buttonStyle(FilledButtonStyle()).disabled(busy || preparingID != nil)
                 }
-                Text("原文件保持原位。同一份资料不会重复导入；文件变化会另存版本，保留已有内容和人工修改。资料不会自动发送给模型或成为本人记忆。")
-                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                VStack(alignment: .leading, spacing: 6) {
-                    Picker("这批资料的性质", selection: $contentRole) {
-                        ForEach(DocumentContentRole.allCases, id: \.self) { role in Text(L(role.title)).tag(role) }
-                    }.pickerStyle(.menu).disabled(busy || preparingID != nil)
-                    Text("选择适用于本批所有文件的性质；混合资料请分批导入，无法确定时保留未确认。更正性质会另存版本。")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("保留 PDF 和 DOCX 原文件副本", isOn: $retainOriginal)
-                        .disabled(busy || preparingID != nil || originalsSupported != true)
-                    if originalsSupported == false {
-                        Text("此资料库尚不支持保留原件副本，请更新电脑应用后重试。")
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    if retainOriginal {
-                        Text("原件副本保留文件内容与元数据，并纳入资料库备份；不会自动发给模型。")
+                DisclosureGroup(isExpanded: $importOptionsExpanded) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("原文件保持原位。同一份资料不会重复导入；文件变化会另存版本，保留已有内容和人工修改。资料不会自动发送给模型或成为本人记忆。")
                             .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    Toggle("识别 PDF 扫描页中的文字", isOn: $recognizeScans)
-                        .disabled(busy || preparingID != nil || ocrSupported != true)
-                    if recognizeScans {
-                        Text("在电脑本机处理中英文；每份最多尝试 10 个无文字层页面。已有文字页中的图片不会识别，结果需对照原件校对。")
-                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    } else if ocrSupported == false {
-                        Text("此资料库不支持本机文字识别，请连接更新后的 Mac 应用。")
-                            .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        VStack(alignment: .leading, spacing: 6) {
+                            Picker("这批资料的性质", selection: $contentRole) {
+                                ForEach(DocumentContentRole.allCases, id: \.self) { role in Text(L(role.title)).tag(role) }
+                            }.pickerStyle(.menu).disabled(busy || preparingID != nil)
+                            Text("选择适用于本批所有文件的性质；混合资料请分批导入，无法确定时保留未确认。更正性质会另存版本。")
+                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            Toggle("保留文档和图片原文件副本", isOn: $retainOriginal)
+                                .disabled(busy || preparingID != nil || originalsSupported != true)
+                            if originalsSupported == false {
+                                Text("此资料库尚不支持保留原件副本，请更新电脑应用后重试。")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            if retainOriginal {
+                                Text("原件副本保留文件内容与元数据，并纳入资料库备份；不会自动发给模型。")
+                                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: 6) {
+                            Toggle("识别 PDF 扫描页中的文字", isOn: $recognizeScans)
+                                .disabled(busy || preparingID != nil || ocrSupported != true)
+                            if recognizeScans {
+                                Text("在电脑本机处理中英文；每份最多尝试 10 个无文字层页面。已有文字页中的图片不会识别，结果需对照原件校对。")
+                                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            } else if ocrSupported == false {
+                                Text("此资料库不支持本机文字识别，请连接更新后的 Mac 应用。")
+                                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        if imageSupported == true {
+                            Text("图片自动在本机识别中英文；复杂版式、手写和表格需对照原件校对。")
+                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        }
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
+                } label: {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("导入选项")
+                        Spacer(minLength: 12)
+                        Text(L(contentRole.title) + " · " + L(retainOriginal ? "保留原件副本" : "仅归档文字"))
+                            .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.trailing)
                     }
                 }
                 if let problem { Text(L(problem)).foregroundStyle(.secondary).textSelection(.enabled) }
@@ -181,7 +215,7 @@ struct DocumentLibraryView: View {
                 }
                 if items.isEmpty && !busy {
                     ContentUnavailableView("还没有导入资料", systemImage: "doc.text",
-                        description: Text("选择已有的笔记、日记或其他文字文件。"))
+                        description: Text("选择文档、截图或照片，先预览提取文字。"))
                 } else {
                     List {
                         ForEach(items) { item in
@@ -266,6 +300,19 @@ struct DocumentLibraryView: View {
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
                     }
+                    if let images = value.images, !images.isEmpty {
+                        Section("图片识别范围") {
+                            ForEach(Array(images.enumerated()), id: \.offset) { _, image in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(verbatim: image.name).font(.headline)
+                                    Text(LF("原图 %d × %d 像素 · 识别 %d 行", image.width, image.height, image.lines))
+                                    Text(LF("按图片方向处理，识别图像为 %d × %d 像素。", image.recognizedWidth, image.recognizedHeight))
+                                }.font(.callout).fixedSize(horizontal: false, vertical: true)
+                            }
+                            Text("识别文字可能有错漏；行号表示识别顺序，不是原图坐标。原件副本按本次选择保存。")
+                                .font(.footnote).foregroundStyle(.secondary)
+                        }
+                    }
                     if let documents = value.docxDocuments, !documents.isEmpty {
                         Section("DOCX 提取范围") {
                             ForEach(Array(documents.enumerated()), id: \.offset) { _, document in
@@ -321,7 +368,8 @@ struct DocumentLibraryView: View {
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.allowedContentTypes = [.pdf, .plainText, UTType(filenameExtension: "docx") ?? .data, UTType(filenameExtension: "md") ?? .plainText, UTType(filenameExtension: "markdown") ?? .plainText]
-        panel.message = L("选择 DOCX、PDF、Markdown 或 TXT，每份最多 2 MB；PDF 最多 200 页。扫描页识别按本次选择处理。")
+        if imageSupported == true { panel.allowedContentTypes += [.png, .jpeg, .heic, .heif] }
+        panel.message = L(imageSupported == true ? "选择文档或图片。图片最多 8 MB，其他资料最多 2 MB；图片在本机识别，先预览再归档。" : "选择 DOCX、PDF、Markdown 或 TXT，每份最多 2 MB；PDF 最多 200 页。扫描页识别按本次选择处理。")
         guard panel.runModal() == .OK else { return }
         let urls = panel.urls
         guard urls.count <= 100 else { problem = "每次请选择 1 至 100 份文字资料。";return }
@@ -375,11 +423,13 @@ struct DocumentLibraryView: View {
         do {
             let info = try url.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey, .isSymbolicLinkKey, .contentModificationDateKey])
             guard info.isRegularFile == true, info.isSymbolicLink != true else { item.error = "unreadable";return item }
-            guard (info.fileSize ?? 0) <= 2 * 1024 * 1024 else { item.error = "too_large";return item }
+            let image = ["png", "jpg", "jpeg", "heic", "heif"].contains(url.pathExtension.lowercased())
+            let maximum = (image ? 8 : 2) * 1024 * 1024
+            guard (info.fileSize ?? 0) <= maximum else { item.error = image ? "image_too_large" : "too_large";return item }
             let handle = try FileHandle(forReadingFrom: url);defer { try? handle.close() }
-            let data = try handle.read(upToCount: 2 * 1024 * 1024 + 1) ?? Data()
-            guard data.count <= 2 * 1024 * 1024 else { item.error = "too_large";return item }
-            if ["pdf", "docx"].contains(url.pathExtension.lowercased()) { item.data = data.base64EncodedString() }
+            let data = try handle.read(upToCount: maximum + 1) ?? Data()
+            guard data.count <= maximum else { item.error = image ? "image_too_large" : "too_large";return item }
+            if image || ["pdf", "docx"].contains(url.pathExtension.lowercased()) { item.data = data.base64EncodedString() }
             else { item.text = String(data: data, encoding: .utf8) }
             if let date = info.contentModificationDate { item.modifiedAt = ISO8601DateFormatter().string(from: date) }
             if item.text == nil && item.data == nil { item.error = "unreadable" }
@@ -435,6 +485,7 @@ struct DocumentLibraryView: View {
             count = page.count;nextOffset = page.nextOffset
             originalsSupported = page.originalCopiesSupported == true
             ocrSupported = page.pdfOCRSupported == true
+            imageSupported = page.imageOCRSupported == true
             if originalsSupported == false { retainOriginal = false }
         } catch { problem = error.localizedDescription }
     }

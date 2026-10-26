@@ -437,8 +437,8 @@ class Store:
         raw = path.read_bytes() if path.exists() else b''
         return {'text': raw.decode('utf-8'), 'etag': digest(raw) if path.exists() else '', 'path': relative}
 
-    def edit_document(self, relative, text, expected):
-        if not isinstance(text, str) or len(text.encode()) > 1024 * 1024:
+    def edit_document(self, relative, text, expected, maximum=1024 * 1024):
+        if not isinstance(text, str) or len(text.encode()) > maximum:
             raise StoreError(400, '文字过长。')
         with self.lock:
             current = self.read_document(relative)

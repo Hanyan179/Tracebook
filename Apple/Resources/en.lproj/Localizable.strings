@@ -2686,3 +2686,67 @@
 
 "原音文件" = "Audio file";
 "保留的接收文件缺失或已变化，请先核对再备份。" = "Retained received files are missing or changed. Review them before backing up.";
+
+"支持文档与 PNG、JPEG、HEIC 图片。先预览，再保存提取文字。" = "Import documents and PNG, JPEG or HEIC images. Preview before saving extracted text.";
+
+"保留文档和图片原文件副本" = "Keep copies of document and image originals";
+
+"图片自动在本机识别中英文；复杂版式、手写和表格需对照原件校对。" = "Images use on-device Chinese and English text recognition. Check layouts, handwriting and tables against the original.";
+
+"单张图片最多 8 MB" = "Each image can be up to 8 MB";
+
+"图片损坏、格式不符或无法解码" = "The image is damaged, has a mismatched format, or cannot be decoded";
+
+"多帧图片尚不支持，请分别导出单张图片" = "Multi-image files are not supported yet. Export each image separately";
+
+"图片尺寸超过上限：最长边 16000 像素、总计 6400 万像素" = "Image size limit exceeded: 16,000 pixels on the longest edge and 64 megapixels total";
+
+"图片本机文字识别失败，请核对原件后重试" = "On-device image recognition failed. Check the original and retry";
+
+"图片中没有识别到文字，尚未归档" = "No text was recognized in the image. It has not been archived";
+
+"图片识别范围" = "Image recognition coverage";
+
+"原图 %d × %d 像素 · 识别 %d 行" = "Original: %d × %d pixels · Lines recognized: %d";
+
+"按图片方向处理，识别图像为 %d × %d 像素。" = "Processed using the image orientation at %d × %d pixels.";
+
+"识别文字可能有错漏；行号表示识别顺序，不是原图坐标。原件副本按本次选择保存。" = "Recognized text may contain errors or omissions. Line numbers reflect recognition order, not image coordinates. Originals are kept only when selected.";
+
+"选择文档或图片。图片最多 8 MB，其他资料最多 2 MB；图片在本机识别，先预览再归档。" = "Choose documents or images. Images can be up to 8 MB; other files up to 2 MB. Image text is recognized on this Mac and previewed before archiving.";
+
+"图片识别文字，请对照原件核对。" = "Text recognized from an image. Check it against the original.";
+
+"识别行：%@" = "Recognized lines: %@";
+
+"图片识别说明" = "About image recognition";
+
+"这份文字已被修改，原识别行的位置无法继续核对。" = "This text has been edited. Original recognized line positions can no longer be verified.";
+
+"图片资料需要新版备份格式。" = "Image documents require a newer backup format.";
+
+"导入文档或图片中的文字。" = "Import text from documents or images.";
+
+"校对识别文字" = "Correct recognized text";
+
+"结合原图片校对正文；保存会保留此前文字和原件，已有记忆引用不随正文改写。" = "Check the text against the original image. Saving preserves earlier text and the image; existing memory references stay tied to their saved version.";
+
+"此入口仅用于校对图片识别正文。" = "This editor is for text recognized from images.";
+
+"资料说明已在文件中修改，请先在原文件中核对；已有内容仍保留。" = "The document header was edited in the file. Review the original file first; its contents are preserved.";
+
+"资料库已变化，未保存校对内容。" = "The library changed. Corrections were not saved.";
+
+"校对文字过长或包含无效字符。" = "The corrected text is too long or contains invalid characters.";
+
+"找不到这次资料校对操作。" = "This document correction operation was not found.";
+
+"导入选项" = "Import options";
+
+"保留原件副本" = "Keep original copies";
+
+"仅归档文字" = "Archive text only";
+
+"选择文档、截图或照片，先预览提取文字。" = "Choose documents, screenshots or photos to preview their text.";
+
+"校对文字，保存会保留历史。" = "Review text. Saving keeps history.";

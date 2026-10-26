@@ -177,7 +177,7 @@ class DocumentOriginalTests(unittest.TestCase):
         try:self.assertEqual(base64.b64decode(restored.documents.original(source['id'])['data']), raw)
         finally:restored.close()
         with zipfile.ZipFile(archive) as z:entries = {n: z.read(n) for n in z.namelist()}
-        manifest = json.loads(entries['manifest.json']);self.assertEqual(manifest['version'], 9)
+        manifest = json.loads(entries['manifest.json']);self.assertEqual(manifest['version'], 10)
         manifest['tables'].pop('recording_repairs');entries.pop('tables/recording_repairs.jsonl')
         manifest['files'] = [item for item in manifest['files'] if item['path'] != 'tables/recording_repairs.jsonl']
         manifest.pop('recordingRepairs', None);manifest.pop('retainedRecordingFiles', None)
