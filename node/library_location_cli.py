@@ -12,12 +12,13 @@ def main():
     parser.add_argument('command',choices=['inspect','prepare'])
     parser.add_argument('--data',required=True)
     parser.add_argument('--snapshot')
+    parser.add_argument('--output')
     args=parser.parse_args()
     def cancel(*_):raise BackupError('操作已取消，当前资料库保持不变。')
     signal.signal(signal.SIGTERM,cancel);signal.signal(signal.SIGINT,cancel)
     try:
-        if args.command=='inspect':result=inspect_library(args.data)
-        else:result=prepare_library(args.data,args.snapshot)
+        if args.command=='inspect':result=inspect_library(args.data,args.output)
+        else:result=prepare_library(args.data,args.snapshot,args.output)
         print(json.dumps({'ok':True,**result},ensure_ascii=False));return 0
     except BackupError as error:
         print(json.dumps({'ok':False,'error':str(error)},ensure_ascii=False));return 1

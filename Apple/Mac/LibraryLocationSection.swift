@@ -17,23 +17,27 @@ final class LibraryLocationController: ObservableObject {
         guard cancellable else { return }
         cancellable = false; command.cancel()
     }
-    func inspect(_ url: URL) async -> LibraryLocationPreview? {
+    func inspect(_ url: URL, outputURL: URL? = nil) async -> LibraryLocationPreview? {
         guard !busy, !LibraryBackupController.shared.busy else { return nil }
         busy = true; problem = nil; result = nil; phase = "正在核对所选资料库"; command.reset()
         defer { busy = false; cancellable = false; feedbackContext = context }
         let access = url.startAccessingSecurityScopedResource()
         defer { if access { url.stopAccessingSecurityScopedResource() } }
+        let outputAccess = outputURL?.startAccessingSecurityScopedResource() == true
+        defer { if outputAccess { outputURL?.stopAccessingSecurityScopedResource() } }
         do {
-            return try await command.run("library_location_cli", arguments: ["inspect", "--data", url.path],
+            var arguments = ["inspect", "--data", url.path]
+            if let outputURL { arguments += ["--output", outputURL.path] }
+            return try await command.run("library_location_cli", arguments: arguments,
                 as: LibraryLocationPreview.self) { cancellable = $0 }
         } catch { problem = error.localizedDescription; return nil }
     }
-    func open(_ preview: LibraryLocationPreview, url: URL, workspace: NodeWorkspaceStore) async -> Bool {
+    func open(_ preview: LibraryLocationPreview, url: URL, outputURL: URL?, workspace: NodeWorkspaceStore) async -> Bool {
         guard !busy, !LibraryBackupController.shared.busy else { return false }
         busy = true; problem = nil; result = nil; phase = "正在切换并记住资料库"
         defer { busy = false; feedbackContext = context }
         do {
-            try await local.openExistingLibrary(preview, selectedURL: url, workspace: workspace)
+            try await local.openExistingLibrary(preview, selectedURL: url, selectedOutputURL: outputURL, workspace: workspace)
             result = "已记住这个资料库。重新打开应用会回到这里；接收与自动处理已暂停，核对后再继续。"
             return true
         } catch { problem = error.localizedDescription; return false }
@@ -49,7 +53,8 @@ final class LibraryLocationController: ObservableObject {
 private struct SelectedLibrary: Identifiable {
     let url: URL
     let preview: LibraryLocationPreview
-    var id: String { preview.id }
+    var outputURL: URL? = nil
+    var id: String { url.path }
 }
 
 struct LibraryLocationSection: View {
@@ -98,14 +103,28 @@ struct LibraryLocationSection: View {
                         Text(verbatim: item.preview.dataDirectory).textSelection(.enabled)
                         count("原音", item.preview.recordings)
                         count("笔记", item.preview.notes)
+                        if let inputs = item.preview.localInputs, inputs > 0 { count("本地输入", inputs) }
                         count("导入资料", item.preview.documents)
                         count("记忆（含待确认与停用）", item.preview.memories)
                         count("待确认记忆", item.preview.pendingMemories)
                     }
                     Section("文字保存位置") {
-                        Text(verbatim: item.preview.outputDirectory).textSelection(.enabled)
+                        Button("重新关联文字资料夹…") { chooseOutput(for: item) }
+                            .disabled(controller.busy || backup.busy)
+                        if let previous = item.preview.previousOutputDirectory {
+                            Text("此前保存的位置").font(.caption).foregroundStyle(.secondary)
+                            Text(verbatim: previous).font(.caption).textSelection(.enabled)
+                            Text("将关联的位置").font(.headline)
+                        }
+                        Text(verbatim: item.preview.outputDirectory).textSelection(.enabled).id(item.preview.outputDirectory)
                         if !item.preview.outputAvailable {
-                            Text("文字资料夹暂不可用，请连接存储位置后重试，或从备份还原。")
+                            Text("资料夹搬动后可重新关联已有文字位置；暂时离线时，请连接存储后重新核对。")
+                        }
+                        if let files = item.preview.relocationFiles {
+                            Text(LF("已核对 %d 份文件；其中 %d 份与登记内容不同，保留当前文件。", files, item.preview.modifiedFiles ?? 0))
+                                .font(.callout)
+                            Text("打开时仅重新关联位置，不复制、合并或覆盖资料。请确认这是同一资料库搬动后的完整文字资料夹。")
+                                .font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     Section("打开后") {
@@ -115,11 +134,22 @@ struct LibraryLocationSection: View {
                 }.formStyle(.grouped)
                     .safeAreaInset(edge: .top, spacing: 0) {
                         VStack(alignment: .leading, spacing: 8) {
-                            Text("记住位置、保留原库；接收与自动处理先暂停。").font(.callout)
+                            if item.preview.previousOutputDirectory != nil {
+                                Text("将关联的位置").font(.headline)
+                                Text(verbatim: item.preview.outputDirectory).font(.callout)
+                                    .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                                    .id("selected-output:" + item.preview.outputDirectory)
+                            } else {
+                                Text("记住位置、保留原库；接收与自动处理先暂停。").font(.callout)
+                            }
                             if workspace.hasUnfinishedEdits {
                                 Text("还有未完成的编辑。请先保存或复制内容，并关闭编辑页面，再切换或备份资料库。").font(.callout)
                             }
                             if controller.busy || controller.problem != nil { messages }
+                            if controller.problem != nil {
+                                Button("重新核对") { inspect(item.url, outputURL: item.outputURL) }
+                                    .disabled(controller.busy || backup.busy)
+                            }
                         }.frame(maxWidth: .infinity, alignment: .leading).padding(16).background(AppPalette.surface)
                     }
                     .navigationTitle(L("核对启动资料库"))
@@ -129,7 +159,7 @@ struct LibraryLocationSection: View {
                         }
                         ToolbarItem(placement: .confirmationAction) {
                             Button("打开并记住") {
-                                Task { if await controller.open(item.preview, url: item.url, workspace: workspace) { selected = nil } }
+                                Task { if await controller.open(item.preview, url: item.url, outputURL: item.outputURL, workspace: workspace) { selected = nil } }
                             }.disabled(controller.busy || backup.busy || !item.preview.outputAvailable || controller.problem != nil || workspace.hasUnfinishedEdits)
                         }
                     }
@@ -162,6 +192,22 @@ struct LibraryLocationSection: View {
         panel.prompt = L("核对此资料库")
         panel.message = L("选择已有迹库资料库的文件夹。普通文档请使用资料导入，备份压缩包请使用备份还原。")
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        Task { if let preview = await controller.inspect(url) { selected = SelectedLibrary(url: url, preview: preview) } }
+        inspect(url)
+    }
+    private func inspect(_ url: URL, outputURL: URL? = nil) {
+        Task {
+            if let preview = await controller.inspect(url, outputURL: outputURL) {
+                selected = SelectedLibrary(url: url, preview: preview, outputURL: outputURL)
+            }
+        }
+    }
+    private func chooseOutput(for item: SelectedLibrary) {
+        let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false; panel.canCreateDirectories = false
+        panel.directoryURL = item.outputURL ?? item.url
+        panel.prompt = L("核对此文字资料夹")
+        panel.message = L("选择已搬动的完整文字资料夹。先核对文件，确认打开时才更新位置；不会复制或覆盖资料。")
+        guard panel.runModal() == .OK, let output = panel.url else { return }
+        inspect(item.url, outputURL: output)
     }
 }

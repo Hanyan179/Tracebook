@@ -56,7 +56,7 @@ def library_database(directory, writable=False):
     finally:db.close()
 
 
-def read_identity(root, db, identity, objects):
+def read_identity(root, db, identity, objects, output_directory=None):
     settings=dict(db.execute("SELECT key,value FROM settings WHERE key IN ('nodeID','timeZone','outputDirectory')"))
     require(set(settings)=={'nodeID','timeZone','outputDirectory'}, '资料库缺少必要的位置或身份信息。')
     node_id=str(uuid.UUID(settings['nodeID']))
@@ -64,41 +64,58 @@ def read_identity(root, db, identity, objects):
     raw=Path(settings['outputDirectory'])
     require(raw.is_absolute() and str(raw)!='/', '资料库中的文字保存位置无效，请先核对原资料。')
     output=raw.resolve()
-    snapshot=hashlib.sha256(json.dumps([str(root),identity,node_id,str(output)],separators=(',',':')).encode()).hexdigest()
+    previous=str(output);relocation=None
+    if output_directory is not None and (Path(output_directory).is_symlink() or Path(output_directory).resolve()!=output):
+        from library_relocation import output_snapshot
+        relocation=output_snapshot(db,objects,output_directory,str(raw))
+        output=Path(output_directory).resolve()
+    snapshot_input=[str(root),identity,node_id,str(output)]
+    if relocation:snapshot_input.extend([previous,relocation['digest']])
+    snapshot=hashlib.sha256(json.dumps(snapshot_input,separators=(',',':')).encode()).hexdigest()
+    # File hashing can take longer than a database query; give the following
+    # bounded metadata queries their own deadline.
+    deadline=time.monotonic()+10
+    db.set_progress_handler(lambda:int(time.monotonic()>deadline),10000)
     counts={}
-    for key,table in [('recordings','recordings'),('notes','notes'),('memories','candidates'),('documents','documents')]:
+    for key,table in [('recordings','recordings'),('notes','notes'),('memories','candidates'),('documents','documents'),('localInputs','local_inputs')]:
         if table not in objects:counts[key]=0;continue
         kind,sql=objects[table]
         require(kind=='table' and not sql.lstrip().upper().startswith('CREATE VIRTUAL TABLE'), '资料库包含不支持的数据结构。')
         counts[key]=db.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]
     pending=db.execute("SELECT COUNT(*) FROM candidates WHERE state='pending'").fetchone()[0]
     return {'id':snapshot,'snapshot':snapshot,'nodeID':settings['nodeID'],'dataDirectory':str(root),
-            'outputDirectory':str(output),'outputAvailable':output.is_dir() and not raw.is_symlink(),
+            'outputDirectory':str(output),'outputAvailable':output.is_dir() and (relocation is not None or not raw.is_symlink()),
+            'previousOutputDirectory':str(raw) if relocation else None,
+            'relocationFiles':relocation['files'] if relocation else None,
+            'modifiedFiles':relocation['modifiedFiles'] if relocation else None,
             'timeZone':settings['timeZone'],'pendingMemories':pending,**counts}
 
 
-def inspect_library(directory):
+def inspect_library(directory, output_directory=None):
     with library_database(directory) as (root,db,identity,objects):
         db.execute('BEGIN')
-        result=read_identity(root,db,identity,objects)
+        result=read_identity(root,db,identity,objects,output_directory)
         require(db.execute('PRAGMA quick_check(1)').fetchone()[0]=='ok', '资料库检查未通过，请保留原目录并从备份还原。')
         return result
 
 
-def prepare_library(directory, expected_snapshot):
+def prepare_library(directory, expected_snapshot, output_directory=None):
     """Pause external work only after explicit library-selection confirmation."""
     with offline(directory) as root, library_database(directory,writable=True) as (_,db,identity,objects):
         with db:
             db.execute('BEGIN IMMEDIATE')
-            result=read_identity(root,db,identity,objects)
-            require(result['snapshot']==expected_snapshot, '资料库身份或文字位置在核对后发生变化，请重新选择。')
+            result=read_identity(root,db,identity,objects,output_directory)
+            require(result['snapshot']==expected_snapshot, '资料库、文字位置或文件在核对后变化，请重新核对。')
             require(result['outputAvailable'], '文字资料夹暂不可用，请连接存储位置后重试，或从备份还原。')
             require(db.execute('PRAGMA quick_check(1)').fetchone()[0]=='ok', '资料库检查未通过，请保留原目录并从备份还原。')
+            if result['previousOutputDirectory'] is not None:
+                from library_relocation import relink_output
+                relink_output(db,objects,result['previousOutputDirectory'],result['outputDirectory'])
             for key,value in [('dailyEnabled','false'),('analysisEnabled','false'),('speechAutomatic',''),('memoryDeliveryPaused','true')]:
                 db.execute('INSERT OR REPLACE INTO settings VALUES (?,?)',(key,value))
             message='切换资料库后，请核对范围与服务再继续。'
             if 'memory_delivery' in objects:
-                db.execute("UPDATE memory_delivery SET pending=1,problem=?",('切换资料库后，请核对并重新写入记忆文件。',))
+                db.execute("UPDATE memory_delivery SET pending=1")
             if 'memory_file_operations' in objects:
                 db.execute("UPDATE memory_file_operations SET state='blocked' WHERE state='pending'")
             if 'speech_jobs' in objects:
@@ -109,7 +126,7 @@ def prepare_library(directory, expected_snapshot):
             if 'memory_batches' in objects:
                 db.execute("UPDATE memory_batches SET status='paused',problem=? WHERE status IN ('queued','running','pausing')",(message,))
             if 'memory_batch_items' in objects:db.execute("UPDATE memory_batch_items SET status='queued' WHERE status='running'")
-            for table in ('memory_extractions','answer_jobs','daily_analysis'):
+            for table in ('memory_extractions','answer_jobs','daily_analysis','memory_reviews'):
                 if table in objects:db.execute('UPDATE '+table+" SET status='interrupted',problem=? WHERE status IN ('queued','running')",(message,))
         db.execute('PRAGMA wal_checkpoint(FULL)')
         sync_directory(root)

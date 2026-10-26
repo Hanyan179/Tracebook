@@ -311,6 +311,7 @@ final class LocalNodeController: ObservableObject {
         if receivingAllowed { NodeSyncController.shared.refresh(); await FolderSyncController.shared.refresh() }
     }
     func openExistingLibrary(_ preview: LibraryLocationPreview, selectedURL: URL,
+                             selectedOutputURL: URL? = nil,
                              workspace: NodeWorkspaceStore) async throws {
         let chosen = selectedURL.standardizedFileURL.resolvingSymlinksInPath()
         guard chosen.path == preview.dataDirectory, preview.outputAvailable else {
@@ -320,8 +321,15 @@ final class LocalNodeController: ObservableObject {
         var keepAccess = false
         defer { if access && !keepAccess { selectedURL.stopAccessingSecurityScopedResource() } }
         let bookmark = try selectedURL.bookmarkData(options: .withSecurityScope, includingResourceValuesForKeys: nil, relativeTo: nil)
-        var outputURL: URL?
-        if preview.outputDirectory != chosen.path && !preview.outputDirectory.hasPrefix(chosen.path + "/") {
+        var outputURL = selectedOutputURL
+        if let outputURL {
+            guard outputURL.standardizedFileURL.resolvingSymlinksInPath().path == preview.outputDirectory else {
+                throw NodeFailure(message: "所选文字位置与核对结果不一致，请重新选择。")
+            }
+        } else if preview.previousOutputDirectory != nil {
+            throw NodeFailure(message: "请重新选择并核对搬动后的文字资料夹。")
+        }
+        if outputURL == nil, preview.outputDirectory != chosen.path && !preview.outputDirectory.hasPrefix(chosen.path + "/") {
             let panel = NSOpenPanel(); panel.canChooseFiles = false; panel.canChooseDirectories = true
             panel.allowsMultipleSelection = false; panel.canCreateDirectories = false
             panel.directoryURL = URL(fileURLWithPath: preview.outputDirectory)
@@ -341,8 +349,10 @@ final class LocalNodeController: ObservableObject {
         try await beginMaintenance(workspace: workspace)
         do {
             startupCommand.reset()
+            var arguments = ["prepare", "--data", chosen.path, "--snapshot", preview.snapshot]
+            if preview.previousOutputDirectory != nil { arguments += ["--output", preview.outputDirectory] }
             let checked = try await startupCommand.run("library_location_cli",
-                arguments: ["prepare", "--data", chosen.path, "--snapshot", preview.snapshot], as: LibraryLocationPreview.self)
+                arguments: arguments, as: LibraryLocationPreview.self)
             try NodeSyncController.shared.prepareForLibrarySwitch()
             let saved = RememberedLibrary(bookmark: bookmark, basePath: chosen.path, baseNodeID: checked.nodeID,
                 baseOutputDirectory: checked.outputDirectory, baseOutputBookmark: outputBookmark, port: port, receivingPaused: true)

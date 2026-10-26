@@ -183,7 +183,7 @@ class Memories:
             paused = self.delivery_paused()
             problem = row['problem']
             # Older restored libraries stored the pause notice as a write error.
-            if paused and problem == '从备份恢复后，请核对并重新写入记忆文件。':
+            if paused and problem in ('从备份恢复后，请核对并重新写入记忆文件。','切换资料库后，请核对并重新写入记忆文件。'):
                 problem = None
             same_root = row['output_root'] == str(self.s.output)
             pending = bool(row['pending']) or not same_root

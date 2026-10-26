@@ -679,6 +679,12 @@
 			"path" = "node/library_location_cli.py";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"3F5598D44D07D74F42C29776" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "text.script.python";
+			"path" = "node/library_relocation.py";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"8305DB94823FD416601AB578" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "text.script.python";
@@ -1700,6 +1706,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "E614975FAE067BFCD3F098FF";
 		};
+		"4E5835C40C38C1B49865ACCA" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "3F5598D44D07D74F42C29776";
+		};
 		"308F62AED88CCDE4905D39DA" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "8305DB94823FD416601AB578";
@@ -1867,6 +1877,7 @@
 				"D7DD5DE30140E9558B0A9BBF",
 				"E40254DF772A62BA52B35343",
 				"3C5423A45F531206A4ABAD3E",
+				"4E5835C40C38C1B49865ACCA",
 				"308F62AED88CCDE4905D39DA",
 				"9804351DB257F46281DE5AB4",
 				"DD4F8ADF26D8B75E010E4233",
@@ -2225,6 +2236,7 @@
 				"B8827A8D3C0E92168ECD4F85",
 				"A37DCC4965827E386CB7F4F1",
 				"E614975FAE067BFCD3F098FF",
+				"3F5598D44D07D74F42C29776",
 				"8305DB94823FD416601AB578",
 				"EBEA2448E15C9F6BE44B69BD",
 				"2672544570D51F670AF4BBAF",

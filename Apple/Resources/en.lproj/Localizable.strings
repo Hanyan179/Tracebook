@@ -2240,7 +2240,7 @@
 
 "关系核对" = "Memory review";
 "记忆文件更新已暂停" = "Memory file updates paused";
-"恢复副本的记忆文件更新已暂停，原记忆文件保留。新修订仍保存在资料库；核对内容后，可恢复写入资料夹。" = "Memory file updates are paused for this restored copy. Existing memory files are preserved, and new revisions still save in the library. Resume file updates after reviewing the content.";
+"当前资料库的记忆文件更新已暂停，原记忆文件保留。新修订仍保存在资料库；核对内容后，可恢复写入资料夹。" = "Memory file updates are paused for this library. Existing memory files are preserved, and new revisions still save in the library. Resume file updates after reviewing the content.";
 "恢复文件更新后，可核对人工修改与新生成的版本。" = "Resume file updates to compare your edits with newly generated versions.";
 "恢复记忆文件更新" = "Resume memory file updates";
 "恢复后补写已保存的记忆和历史；人工修改会保留并另存新版本。接收与模型自动处理保持原设置。" = "Resuming writes saved memories and history, preserving manual edits and saving new versions separately. Receiving and automatic model processing keep their existing settings.";
@@ -2268,3 +2268,46 @@
 "找不到这份文件的扫描记录。请返回扫描详情刷新。" = "The scan record for this file is no longer available. Return to Scan details and refresh.";
 "扫描记录已更新，请重新读取跳过位置。" = "The scan record has changed. Reload the skipped locations.";
 "当前节点不支持记录位置，请更新电脑应用。" = "This node does not support record locations. Update the Mac app.";
+
+"此前保存的位置" = "Previous saved location";
+
+"将关联的位置" = "Folder to reconnect";
+
+"已核对 %d 份文件；其中 %d 份与登记内容不同，保留当前文件。" = "Files checked: %d. Changed since registration: %d. Current files will be preserved.";
+
+"打开时仅重新关联位置，不复制、合并或覆盖资料。请确认这是同一资料库搬动后的完整文字资料夹。" = "Opening only reconnects the location. Files are not copied, merged or overwritten. Confirm that this is the complete text folder moved from the same library.";
+
+"重新关联文字资料夹…" = "Reconnect text folder…";
+
+"核对此文字资料夹" = "Check this text folder";
+"重新核对" = "Recheck";
+"资料库、文字位置或文件在核对后变化，请重新核对。" = "The library, text location or files changed after review. Check them again.";
+"资料夹搬动后可重新关联已有文字位置；暂时离线时，请连接存储后重新核对。" = "If the folder moved, reconnect its existing text location. If storage is temporarily offline, reconnect it and check again.";
+
+"选择已搬动的完整文字资料夹。先核对文件，确认打开时才更新位置；不会复制或覆盖资料。" = "Choose the complete text folder after moving it. Files are checked first; the location changes only when you confirm opening. Files are not copied or overwritten.";
+
+"所选文字位置与核对结果不一致，请重新选择。" = "The selected text location does not match the preview. Select it again.";
+
+"请重新选择并核对搬动后的文字资料夹。" = "Select and check the moved text folder again.";
+
+"请选择已搬动的文字资料夹，不要选择空目录或文件链接。" = "Choose the moved text folder, not an empty folder or a symbolic link.";
+
+"这个位置已有不同的文件登记，请核对原资料或从备份恢复到新副本。" = "This location already has a different file registration. Check the original material or restore a new copy from backup.";
+
+"资料库的本地来源登记不完整，请先核对。" = "The local source registration is incomplete. Check the library first.";
+
+"资料库包含不支持的文字位置，请从备份还原。" = "The library contains an unsupported text location. Restore from backup.";
+
+"资料夹超过当前核对范围，请使用备份还原。" = "The folder exceeds the current verification limit. Use backup restore.";
+
+"文字资料夹包含文件链接，未重新关联。请保留原文件并核对。" = "The text folder contains symbolic links and was not reconnected. Preserve and check the original files.";
+
+"资料夹在核对期间变化，请重新选择。" = "The folder changed during verification. Select it again.";
+
+"文字资料夹含不可读取的文件，未重新关联。" = "The text folder contains unreadable files and was not reconnected.";
+
+"文件在核对期间变化，请重新选择。" = "A file changed during verification. Select it again.";
+
+"文字资料夹不可完整读取，请核对权限、连接与文件链接。" = "The text folder could not be fully read. Check permissions, connectivity and symbolic links.";
+
+"所选资料夹缺少已登记的文字或原件，未重新关联。请选择完整搬动后的资料夹。" = "The selected folder is missing registered text or originals and was not reconnected. Choose the complete moved folder.";

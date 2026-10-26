@@ -69,7 +69,7 @@ private struct MemoryFileDeliveryView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                         }.font(.headline)
                         if value.isPaused {
-                            Text("恢复副本的记忆文件更新已暂停，原记忆文件保留。新修订仍保存在资料库；核对内容后，可恢复写入资料夹。")
+                            Text("当前资料库的记忆文件更新已暂停，原记忆文件保留。新修订仍保存在资料库；核对内容后，可恢复写入资料夹。")
                         }
                         if let issue = value.problem { Text(L(issue)) }
                         else if value.isPaused { EmptyView() }
