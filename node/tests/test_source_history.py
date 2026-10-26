@@ -81,7 +81,9 @@ class SourceHistoryTests(unittest.TestCase):
         note = self.changed(); value = self.read(note)
         history = self.store.output/'.history'/note['path']/value['locator']
         history.write_text('same name, different body')
-        self.assertEqual(self.read(note)['state'], 'missing')
+        result = self.read(note)
+        self.assertEqual(result['state'], 'incomplete')
+        self.assertEqual(result['skipped'], 1)
         with self.assertRaises(StoreError): self.read(note, locator=value['locator'])
         for locator in ['../outside.md', '/etc/passwd', 'revision-1']:
             with self.assertRaises(StoreError): self.read(note, locator=locator)

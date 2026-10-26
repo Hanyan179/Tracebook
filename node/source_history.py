@@ -171,6 +171,7 @@ class SourceHistory:
                             if identity(os.fstat(fd)) != scan['identity']: self.error(409, CHANGED)
                             self.drop(cursor)
                             return self.page(row, body, 'historical', offset, limit, entry.name)
+                        if body is not None: scan['skipped'] += 1
                         if files_read >= 4: break
                     if identity(os.fstat(fd)) != scan['identity']: self.error(409, CHANGED)
                     return {'state': 'searching', 'nextCursor': cursor, 'checked': scan['checked'], 'skipped': scan['skipped']}
