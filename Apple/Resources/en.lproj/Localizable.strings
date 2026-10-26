@@ -2417,3 +2417,11 @@
 "本机识别出文字的页：%@" = "Pages with recognized text: %@";
 "达到本次识别上限，尚未识别的页：%@" = "Recognition limit reached. Pages not yet recognized: %@";
 "仅识别无文字层的页面；已有文字页中的图片未处理。中英文识别可能有错漏，复杂版式、手写与表格请核对原件。" = "Only pages without embedded text were recognized; images on existing text pages were not processed. Chinese and English results may have errors or omissions. Check complex layouts, handwriting and tables against the original.";
+
+// Archive location recovery.
+"文字资料夹暂不可用。请连接原存储位置后重试；资料搬动后请重新关联，应用不会新建替代目录。" = "The text folder is unavailable. Reconnect the original storage and retry, or relink the folder if it moved. No replacement folder will be created.";
+"文字资料夹已被替换或指向其他位置。请重新关联并核对完整资料，应用未继续写入。" = "The text folder was replaced or points elsewhere. Relink it and check the complete library before writing continues.";
+"文字资料夹无法写入。请检查存储连接与文件夹权限，恢复后重试；已有资料保留。" = "The text folder is not writable. Check the storage connection and folder permissions, then retry. Existing files are preserved.";
+"备份已保存，但资料库暂未重新打开：%@" = "Backup saved, but the library could not reopen yet: %@";
+"归档文件的位置在保存期间变化，请重新读取后重试。原文件和处理记录仍保留。" = "The archive file location changed while saving. Reload and retry. The original files and operation records are preserved.";
+"资料夹在保存原件前变化，请重新核对。" = "The folder changed before the original could be saved. Review it again.";

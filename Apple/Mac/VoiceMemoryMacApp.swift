@@ -90,16 +90,21 @@ struct MacWorkspaceView: View {
                         && (local.starting || local.maintenance || !local.hasAttemptedStartup) {
                         ProgressView(L("正在准备资料库"))
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if useLocal && !workspace.connected && !workspace.hasUnfinishedEdits && local.problem != nil {
+                    } else if useLocal && !workspace.connected && !workspace.hasUnfinishedEdits && (local.problem != nil || workspace.status?.outputIssue != nil) {
                         ContentUnavailableView {
                             Label("无法打开资料库", systemImage: "externaldrive.badge.exclamationmark")
                         } description: {
-                            Text(L(local.problem ?? "资料库暂未重新连接，请在侧栏重试。"))
-                            if local.hasRememberedLocation || local.isRestoredLibrary {
+                            Text(L(workspace.status?.outputIssue ?? local.problem ?? "资料库暂未重新连接，请在侧栏重试。"))
+                            if let output = workspace.status?.outputIssue != nil ? workspace.status?.outputDirectory : local.problemOutputDirectory {
+                                Text(verbatim: output).font(.caption).textSelection(.enabled)
+                            } else if local.hasRememberedLocation || local.isRestoredLibrary {
                                 Text(verbatim: local.dataDirectory.path).font(.caption).textSelection(.enabled)
                             }
                         } actions: {
-                            Button("重新打开") { Task { await local.start(workspace: workspace) } }
+                            Button("重新打开") { Task {
+                                if local.running { await workspace.refresh() }
+                                else { await local.start(workspace: workspace) }
+                            } }
                             Button("选择或还原资料库") {
                                 UserDefaults.standard.set("数据与隐私", forKey: "settings.section"); openSettings()
                             }

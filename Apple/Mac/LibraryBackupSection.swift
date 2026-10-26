@@ -68,7 +68,10 @@ final class LibraryBackupController: ObservableObject {
             } catch { problem = error.localizedDescription }
             phase = "正在重新打开资料库"
             await local.finishMaintenance(workspace: workspace)
-            if !local.running { problem = local.problem ?? "资料库暂未重新连接，请在侧栏重试。" }
+            if !local.running {
+                let reason = local.problem ?? "资料库暂未重新连接，请在侧栏重试。"
+                problem = savedFile == nil ? (problem ?? reason) : LF("备份已保存，但资料库暂未重新打开：%@", L(reason))
+            }
         } catch { problem = error.localizedDescription }
     }
     func inspect(_ file: URL) async -> LibraryBackupReceipt? {
@@ -222,7 +225,10 @@ struct LibraryBackupSection: View {
         }
     }
     @ViewBuilder private var actions: some View {
-        Button("创建备份…") { chooseBackup() }.disabled(controller.busy || location.busy || local.archiveFolderBusy || local.starting || !workspace.connected || !local.managesProcess || workspace.hasUnfinishedEdits)
+        Button("创建备份…") { chooseBackup() }
+            .disabled(controller.busy || location.busy || local.archiveFolderBusy || local.starting
+                      || (local.running && !local.managesProcess) || workspace.hasUnfinishedEdits
+                      || !FileManager.default.fileExists(atPath: local.dataDirectory.appendingPathComponent("node.sqlite3").path))
         Button("选择备份还原…") { chooseRestore() }.disabled(controller.busy || location.busy || local.archiveFolderBusy || local.starting)
     }
     private func backupValue(_ label: String, _ value: String) -> some View {

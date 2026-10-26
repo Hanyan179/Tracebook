@@ -64,12 +64,20 @@ def read_identity(root, db, identity, objects, output_directory=None):
     raw=Path(settings['outputDirectory'])
     require(raw.is_absolute() and str(raw)!='/', '资料库中的文字保存位置无效，请先核对原资料。')
     output=raw.resolve()
+    from output_root import issue, inspect_root, OutputRootError
+    output_problem=issue(db,raw)
     previous=str(output);relocation=None
-    if output_directory is not None and (Path(output_directory).is_symlink() or Path(output_directory).resolve()!=output):
+    if output_directory is not None and (output_problem or Path(output_directory).is_symlink() or Path(output_directory).resolve()!=output):
         from library_relocation import output_snapshot
-        relocation=output_snapshot(db,objects,output_directory,str(raw))
+        relocation=output_snapshot(db,objects,output_directory,str(raw),allow_registered=Path(output_directory).resolve()==output)
         output=Path(output_directory).resolve()
+        try:inspect_root(output)
+        except OutputRootError as error:raise BackupError(str(error))
+        output_problem=None
+    try:output_identity=inspect_root(output) if output_problem is None else None
+    except OutputRootError as error:output_identity=None;output_problem=str(error)
     snapshot_input=[str(root),identity,node_id,str(output)]
+    snapshot_input.append(output_identity)
     if relocation:snapshot_input.extend([previous,relocation['digest']])
     snapshot=hashlib.sha256(json.dumps(snapshot_input,separators=(',',':')).encode()).hexdigest()
     # File hashing can take longer than a database query; give the following
@@ -95,7 +103,8 @@ def read_identity(root, db, identity, objects, output_directory=None):
                 receipt={'id':saved['id'],'outputDirectory':str(raw)}
         except (ValueError,TypeError,KeyError):pass
     return {'id':snapshot,'snapshot':snapshot,'nodeID':settings['nodeID'],'dataDirectory':str(root),
-            'outputDirectory':str(output),'outputAvailable':output.is_dir() and (relocation is not None or not raw.is_symlink()),
+            'outputDirectory':str(output),'outputAvailable':output_problem is None,
+            'outputIssue':output_problem,'outputIdentity':output_identity,
             'previousOutputDirectory':str(raw) if relocation else None,
             'relocationFiles':relocation['files'] if relocation else None,
             'modifiedFiles':relocation['modifiedFiles'] if relocation else None,
@@ -123,6 +132,9 @@ def prepare_library(directory, expected_snapshot, output_directory=None):
             if result['previousOutputDirectory'] is not None:
                 from library_relocation import relink_output
                 relink_output(db,objects,result['previousOutputDirectory'],result['outputDirectory'])
+            from output_root import bind_root, OutputRootError
+            try:bind_root(db,result['outputDirectory'],result['outputIdentity'])
+            except OutputRootError as error:raise BackupError(str(error))
             for key,value in [('dailyEnabled','false'),('analysisEnabled','false'),('speechAutomatic',''),('memoryDeliveryPaused','true')]:
                 db.execute('INSERT OR REPLACE INTO settings VALUES (?,?)',(key,value))
             message='切换资料库后，请核对范围与服务再继续。'

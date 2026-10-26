@@ -440,10 +440,11 @@ class DocumentImports:
         return {'cancelled': True}
 
     def _retain_original(self, item):
+        self.s.require_output(True)
         try:
             raw = base64.b64decode(item['originalData'], validate=True)
             return retain_original(self.s.output, item['id'], item['format'], raw,
-                                   item['details']['originalFileSHA256'])
+                                   item['details']['originalFileSHA256'], root_guard=self.s.output_root)
         except (ValueError, binascii.Error, OriginalError) as error:
             self.error(409, str(error) if isinstance(error, OriginalError) else '原件内容与预览不一致，请重新选择文件。')
 
@@ -462,6 +463,7 @@ class DocumentImports:
     def original(self, identifier):
         from store import canonical_id
         with self.s.lock:
+            self.s.require_output()
             rid = canonical_id(identifier)
             row = self.s.db.execute('SELECT title,format,details FROM documents WHERE id=?', (rid,)).fetchone()
             if not row:self.error(404, '找不到这份资料。')

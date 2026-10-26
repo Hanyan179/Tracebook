@@ -39,7 +39,10 @@ struct PhoneSyncScreen: View {
                                     HStack {
                                         Text("\(sync.pendingCount) 条等待同步").font(.caption).foregroundStyle(AppPalette.muted)
                                         Spacer()
-                                        Button("重试") { sync.retry() }
+                                        Button("重试") {
+                                            sync.retry()
+                                            Task { await workspace.refresh() }
+                                        }.disabled(workspace.loading)
                                     }
                                     if let problem = sync.problem ?? workspace.problem {
                                         Text(L(problem)).font(.footnote).foregroundStyle(.secondary)

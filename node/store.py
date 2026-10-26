@@ -99,6 +99,7 @@ def validate_manifest(manifest, expected_id=None):
 class Store:
     def __init__(self, data_dir, output_dir=None):
         self.data = Path(data_dir).expanduser().resolve()
+        existing_library = (self.data/'node.sqlite3').is_file()
         self.data.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.recordings = self.data / 'recordings'
         self.recordings.mkdir(exist_ok=True)
@@ -123,7 +124,15 @@ class Store:
             if output_dir:
                 self.db.execute('UPDATE settings SET value=? WHERE key=?', (str(Path(output_dir).expanduser().resolve()), 'outputDirectory'))
         self.output = Path(self.setting('outputDirectory'))
-        self.output.mkdir(parents=True, exist_ok=True)
+        from output_root import OutputRoot, OutputRootError, saved_identity, bind_root
+        try:
+            if not existing_library or output_dir:
+                self.output.mkdir(parents=True, exist_ok=True)
+            with self.db:
+                identity = bind_root(self.db, self.output, None if output_dir else saved_identity(self.db))
+            self.output_root = OutputRoot(self.output, identity)
+        except OutputRootError as error:
+            self.db.close();raise StoreError(503, str(error))
         self._initialize_files()
         self._recover_received()
         for row in self.db.execute('SELECT id FROM recordings'):
@@ -174,11 +183,17 @@ class Store:
         return self.db.execute('SELECT value FROM settings WHERE key=?', (key,)).fetchone()[0]
 
     def _path(self, relative):
+        self.require_output()
         root = self.output.resolve()
         path = (root / relative).resolve()
         if root not in path.parents:
             raise StoreError(400, '文件位置不在归档目录中。')
         return path
+
+    def require_output(self, writable=False):
+        from output_root import OutputRootError
+        try:self.output_root.check(writable)
+        except OutputRootError as error:raise StoreError(503,str(error))
 
     def _initialize_files(self):
         for name, text in PROMPTS.items():
@@ -193,8 +208,13 @@ class Store:
             if not self._path(name).exists():
                 self.export(name, '# 长期记忆\n' if name == 'memory.md' else '# 待确认记忆\n', 'empty')
 
-    @staticmethod
-    def _atomic(path, data):
+    def _atomic(self, path, data):
+        from output_root import OutputRootError
+        try:relative = path.relative_to(self.output)
+        except ValueError:relative = None
+        if relative is not None:
+            try:return self.output_root.atomic(relative, data)
+            except OutputRootError as error:raise StoreError(503,str(error))
         path.parent.mkdir(parents=True, exist_ok=True)
         temp = path.with_name('.' + path.name + '.' + secrets.token_hex(6) + '.tmp')
         try:
@@ -267,7 +287,8 @@ class Store:
                 self.db.execute('INSERT INTO recordings VALUES (?,?,?,?)', (rid, manifest['audioSHA256'], json.dumps(manifest), stamp()))
             self._ensure_transcript(rid)
             self.catalog.index_recording(rid)
-            self.catalog.index_daily(self.day_for(manifest['recording']))
+            try:self.catalog.index_daily(self.day_for(manifest['recording']))
+            except (OSError, StoreError):pass  # Durable audio does not depend on the text folder.
             self.transcription.wake.set()
             return self.receipt(rid)
 
@@ -520,8 +541,10 @@ class Store:
 
     def status(self):
         with self.lock:
+            from output_root import issue
             conflicts = [dict(r) for r in self.db.execute("SELECT path,state,generated_path AS generatedPath FROM exports WHERE root=? AND state='conflict'", (str(self.output),))]
             return {'nodeID': self.setting('nodeID'), 'timeZone': self.setting('timeZone'), 'outputDirectory': str(self.output),
+                    'outputIssue': issue(self.db,self.output),
                     'recognitionEnabled': self.transcription.state()['automatic'],
                     'transcriptionConfigured': self.transcription.configuration is not None,
                     'summaryMode': 'sourceDraft', 'conflicts': conflicts,
@@ -532,6 +555,7 @@ class Store:
 
     def configure(self, values):
         with self.lock:
+            self.require_output(True)
             if values.get('archiveSourceNodeID',self.setting('nodeID'))!=self.setting('nodeID'):
                 raise StoreError(409,'资料库已变化，未复制。请重新连接并核对。')
             previous_timezone=self.setting('timeZone')
@@ -565,6 +589,8 @@ class Store:
                 except BackupError as error:raise StoreError(409,str(error),getattr(error,'path',None))
                 except OSError:raise StoreError(409,'复制未完成。原目录仍在使用，已完成的副本保留，可重新选择同一目录重试。')
                 self.output=output
+                from output_root import OutputRoot, saved_identity
+                self.output_root=OutputRoot(self.output,saved_identity(self.db))
             else:
                 try:
                     row=self.db.execute("SELECT value FROM settings WHERE key='archiveCopyReceipt'").fetchone()

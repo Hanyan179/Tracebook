@@ -70,6 +70,7 @@ struct NodeStatus: Codable, Sendable {
     var transcriptionConfigured: Bool?
     var archiveCopySupported: Bool?
     var memoryDelivery: MemoryFileDelivery?
+    var outputIssue: String?
     let conflicts: [NodeConflict]
 }
 
@@ -162,7 +163,13 @@ final class NodeWorkspaceStore: ObservableObject {
         loading = true
         defer { if configurationRevision == revision { loading = false } }
         do {
-            async let status = client.read("v1/status", as: NodeStatus.self)
+            let status = try await client.read("v1/status", as: NodeStatus.self)
+            guard revision == configurationRevision else { return }
+            self.status = status
+            if let issue = status.outputIssue {
+                connected = false; problem = L(issue)
+                return
+            }
             async let records = client.read("v1/library/recording", as: LibraryPage<NodeRecord>.self)
             async let days = client.read("v1/library/daily", as: LibraryPage<NodeDaily>.self)
             async let candidates = client.read("v1/library/memory", as: LibraryPage<NodeCandidate>.self)

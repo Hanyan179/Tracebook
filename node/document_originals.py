@@ -37,11 +37,17 @@ def original_metadata(identifier, extension, details):
 
 
 @contextmanager
-def original_directory(output, create=False):
+def original_directory(output, create=False, root_guard=None):
+    if root_guard:root_guard.check(writable=create)
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
     directory = os.open(str(Path(output)), flags)
     try:
+        if root_guard:
+            entry=os.fstat(directory)
+            if (entry.st_dev,entry.st_ino)!=(root_guard.identity['device'],root_guard.identity['inode']):
+                raise OriginalError('资料夹在保存原件前变化，请重新核对。')
         for part in ('originals', 'documents'):
+            if root_guard:root_guard.check(writable=create)
             if create:
                 try:os.mkdir(part, 0o700, dir_fd=directory)
                 except FileExistsError:pass
@@ -80,15 +86,17 @@ def read_original(output, identifier, extension, details):
         raise OriginalError('原件副本不可读取，请核对资料夹及文件链接。')
 
 
-def retain_original(output, identifier, extension, raw, digest):
+def retain_original(output, identifier, extension, raw, digest, root_guard=None):
     name = original_name(identifier, extension)
     if not isinstance(raw, bytes) or not 0 < len(raw) <= MAX_ORIGINAL or hashlib.sha256(raw).hexdigest() != digest:
         raise OriginalError('原件内容与预览不一致，请重新选择文件。')
     expected = {'sha256': digest, 'byteCount': len(raw)}
     try:
-        with original_directory(output, create=True) as directory:
+        with original_directory(output, create=True, root_guard=root_guard) as directory:
+            if root_guard:root_guard.check_parent(('originals','documents'),directory)
             try:
                 read_at(directory, name, expected)
+                if root_guard:root_guard.check_parent(('originals','documents'),directory)
                 return expected
             except FileNotFoundError:pass
             temporary = '.' + name + '.' + uuid.uuid4().hex + '.tmp'
@@ -96,6 +104,7 @@ def retain_original(output, identifier, extension, raw, digest):
             try:
                 with os.fdopen(fd, 'wb') as target:
                     target.write(raw);target.flush();os.fsync(target.fileno())
+                if root_guard:root_guard.check_parent(('originals','documents'),directory)
                 try:
                     os.link(temporary, name, src_dir_fd=directory, dst_dir_fd=directory, follow_symlinks=False)
                     os.fsync(directory)
@@ -103,6 +112,7 @@ def retain_original(output, identifier, extension, raw, digest):
                     read_at(directory, name, expected)
             finally:
                 os.unlink(temporary, dir_fd=directory)
+            if root_guard:root_guard.check_parent(('originals','documents'),directory)
             return expected
     except OSError:
         raise OriginalError('原件副本未保存，请核对资料夹权限及文件链接后重试。')

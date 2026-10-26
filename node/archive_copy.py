@@ -85,6 +85,7 @@ def publish_file(source, destination, relative, entry):
 
 
 def copy_archive(store, destination, request_id, timezone):
+    store.require_output(True)
     previous=str(store.output);output=Path(destination).absolute()
     require(not output.is_symlink(),'目标资料夹是文件链接，未复制。请选择实际资料夹。')
     output=output.resolve();source=store.output.resolve()
@@ -128,6 +129,8 @@ def copy_archive(store, destination, request_id, timezone):
     receipt={'id':request_id,'nodeID':store.setting('nodeID'),'sourceDirectory':previous,'outputDirectory':str(output),'timeZone':timezone,
              'totalFiles':len(entries),'copiedFiles':copied,'reusedFiles':len(entries)-copied}
     with store.db:
+        from output_root import bind_root
+        bind_root(store.db,output,{'path':str(output),'device':target['identity'][0],'inode':target['identity'][1]})
         store.db.execute('''INSERT OR REPLACE INTO exports(root,path,last_hash,semantic_hash,state,generated_path,updated_at)
             SELECT ?,path,last_hash,semantic_hash,state,generated_path,updated_at FROM exports WHERE root=?''',(str(output),previous))
         for table,column in [('memory_file_operations','root'),('transcript_reviews','root'),('memory_delivery','output_root'),('speech_jobs','output_root')]:

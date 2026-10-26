@@ -10,6 +10,7 @@ final class LocalNodeController: ObservableObject {
     @Published private(set) var starting = false
     @Published private(set) var managesProcess = false
     @Published private(set) var problem: String?
+    @Published private(set) var problemOutputDirectory: String?
     @Published var allowLAN: Bool = UserDefaults.standard.bool(forKey: "node.allowLAN")
     private var process: Process?
     @Published private(set) var dataDirectory: URL
@@ -108,7 +109,7 @@ final class LocalNodeController: ObservableObject {
             problem = "还有未完成的编辑。请先保存或复制内容，并关闭编辑页面，再切换或备份资料库。"
             return
         }
-        starting = true; hasAttemptedStartup = true; problem = nil
+        starting = true; hasAttemptedStartup = true; problem = nil; problemOutputDirectory = nil
         workspace.prepareForLocalStartup()
         defer { starting = false }
         do {
@@ -140,6 +141,10 @@ final class LocalNodeController: ObservableObject {
                 let checked = try await startupCommand.run("library_location_cli", arguments: ["inspect", "--data", dataDirectory.path], as: LibraryLocationPreview.self)
                 let expectedID = isRestoredLibrary ? saved.activeNodeID : saved.baseNodeID
                 let expectedOutput = isRestoredLibrary ? saved.activeOutputDirectory : saved.baseOutputDirectory
+                if let issue = checked.outputIssue {
+                    problemOutputDirectory = checked.outputDirectory
+                    throw NodeFailure(message: issue)
+                }
                 guard checked.nodeID.lowercased() == expectedID?.lowercased(), checked.outputDirectory == expectedOutput,
                       checked.outputAvailable else {
                     throw NodeFailure(message: "上次选择的资料库身份或文字位置已变化，请重新选择并核对。")
@@ -147,6 +152,15 @@ final class LocalNodeController: ObservableObject {
                 if recoverArchive { try locationPreferences.save(saved); rememberedLocation = saved }
             } else {
                 try FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true)
+                if FileManager.default.fileExists(atPath: dataDirectory.appendingPathComponent("node.sqlite3").path) {
+                    startupCommand.reset()
+                    let checked = try await startupCommand.run("library_location_cli", arguments: ["inspect", "--data", dataDirectory.path], as: LibraryLocationPreview.self)
+                    if let issue = checked.outputIssue {
+                        problemOutputDirectory = checked.outputDirectory
+                        throw NodeFailure(message: issue)
+                    }
+                    guard checked.outputAvailable else { throw NodeFailure(message: "文字资料夹暂不可用。请连接原存储位置后重试；资料搬动后请重新关联，应用不会新建替代目录。") }
+                }
             }
             let tokenURL = dataDirectory.appendingPathComponent("connection-token")
             if let token = try? String(contentsOf: tokenURL, encoding: .utf8).trimmingCharacters(in: .whitespacesAndNewlines),

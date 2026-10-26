@@ -107,6 +107,7 @@ class Catalog:
 
     def reconcile(self):
         with self.s.lock:
+            self.s.require_output()
             for row in self.db.execute('SELECT id FROM recordings').fetchall():self.index_recording(row['id'])
             for row in self.db.execute('SELECT id FROM candidates').fetchall():self.index_memory(row['id'])
             for row in self.db.execute('SELECT id FROM notes').fetchall():self.index_note(row['id'])

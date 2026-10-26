@@ -118,6 +118,7 @@ struct LibraryLocationSection: View {
                         }
                         Text(verbatim: item.preview.outputDirectory).textSelection(.enabled).id(item.preview.outputDirectory)
                         if !item.preview.outputAvailable {
+                            if let issue = item.preview.outputIssue { Text(L(issue)).foregroundStyle(.secondary) }
                             Text("资料夹搬动后可重新关联已有文字位置；暂时离线时，请连接存储后重新核对。")
                         }
                         if let files = item.preview.relocationFiles {

@@ -10,6 +10,7 @@ struct LibraryLocationPreview: Decodable, Identifiable, Sendable {
     let dataDirectory: String
     let outputDirectory: String
     let outputAvailable: Bool
+    var outputIssue: String?
     let previousOutputDirectory: String?
     let relocationFiles: Int?
     let modifiedFiles: Int?

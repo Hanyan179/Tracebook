@@ -216,6 +216,9 @@ def create_backup(directory, destination, progress=lambda _:None):
                 '资料库结构与当前版本不一致，请先用当前应用打开后再备份。')
             output = Path(db.execute("SELECT value FROM settings WHERE key='outputDirectory'").fetchone()[0])
             require(output.is_absolute(), '资料文件夹位置无效。')
+            from output_root import issue
+            output_problem=issue(db,output,writable=False)
+            require(output_problem is None,output_problem or '')
             require(not destination.is_relative_to(directory) and not destination.is_relative_to(output.resolve()),
                     '请把备份保存到资料库和文字资料夹之外。')
             files = inventory(directory, output, db)
