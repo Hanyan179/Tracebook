@@ -142,6 +142,8 @@ def prepare_library(directory, expected_snapshot, output_directory=None):
                 db.execute("UPDATE memory_delivery SET pending=1")
             if 'memory_file_operations' in objects:
                 db.execute("UPDATE memory_file_operations SET state='blocked' WHERE state='pending'")
+            if 'recording_repairs' in objects:
+                db.execute("UPDATE recording_repairs SET state='blocked' WHERE state!='done'")
             if 'transcript_reviews' in objects:
                 db.execute("UPDATE transcript_reviews SET state='blocked' WHERE state='pending'")
             if 'speech_jobs' in objects:

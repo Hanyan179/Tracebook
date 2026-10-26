@@ -68,6 +68,7 @@ final class NodeSyncController: ObservableObject {
     @Published private(set) var verifiedReceiver: Receiver?
     @Published private(set) var checkingReceiver = false
     @Published private var activeRecordingIDs = Set<UUID>()
+    @Published private(set) var retainedRecordings: [Recording] = []
     @Published var foreground = false
     private var receivers: [String: Receiver] = [:]
     private var receiverStorageFailed = false
@@ -217,6 +218,7 @@ final class NodeSyncController: ObservableObject {
         let records: [Recording]
         do {
             records = try library.load().recordings.filter { $0.isPlayable && $0.trashedAt == nil }
+            retainedRecordings = records
             activeRecordingIDs = Set(records.map(\.id))
         } catch { problem = error.localizedDescription; return }
         guard !receiverStorageFailed else { return }
@@ -261,7 +263,7 @@ final class NodeSyncController: ObservableObject {
                     let checksum = try await Task.detached { try AudioDigest.sha256(audio) }.value
                     guard current(client, revision: expected) else { return }
                     job.audioSHA256 = checksum; job.markersSHA256 = record.markersSHA256
-                    job.receiverNodeID = receiver.nodeID; job.state = .awaitingReceipt
+                    job.bindReceiver(receiver.nodeID); job.state = .awaitingReceipt
                     job.message = nil; job.nextAttemptAt = nil; job.attempts += 1
                     try persist(job)
                     do {
@@ -271,7 +273,8 @@ final class NodeSyncController: ObservableObject {
                     } catch let failure as NodeFailure where failure.statusCode == 404 {
                         job.state = .queued
                     } catch let failure as NodeFailure where failure.statusCode == 409 {
-                        job.message = failure.message; problem = failure.message
+                        if job.repairRequestID != nil { job.state = .queued }
+                        else { job.message = failure.message; problem = failure.message }
                     } catch let failure as RecordingIngress.IngressError {
                         job.message = failure.localizedDescription; problem = failure.localizedDescription
                     }
@@ -298,7 +301,11 @@ final class NodeSyncController: ObservableObject {
         var job = pending
         let library = self.library, folder = root.appendingPathComponent(job.id), recordingID = job.recordingID
         do {
+            let repair = job.repairRequestID
             let output = try await Task.detached {
+                if repair != nil, FileManager.default.fileExists(atPath: folder.path) {
+                    try FileManager.default.removeItem(at: folder)
+                }
                 let manifest = folder.appendingPathComponent("\(recordingID.uuidString).json")
                 if FileManager.default.fileExists(atPath: manifest.path) {
                     return RecordingExport(audioURL: folder.appendingPathComponent("\(recordingID.uuidString).caf"), manifestURL: manifest)
@@ -309,18 +316,35 @@ final class NodeSyncController: ObservableObject {
                   activeRecordingIDs.contains(recordingID) else { return }
             let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
             let manifest = try decoder.decode(RecordingExportManifest.self, from: Data(contentsOf: output.manifestURL))
+            if repair != nil && (manifest.audioSHA256 != pending.audioSHA256 || manifest.recording.markersSHA256 != pending.markersSHA256) {
+                throw NodeFailure(message: "本机原音在预览后已变化，未修复；请重新核对。", statusCode: 409)
+            }
             job.audioSHA256 = manifest.audioSHA256; job.markersSHA256 = manifest.recording.markersSHA256
             job.receiverNodeID = receiver; job.attempts += 1; job.state = .sending
             job.message = nil; job.updatedAt = .now; job.nextAttemptAt = nil
             try persist(job)
-            let request = try await client.uploadRequest(output, receiver: receiver)
+            let request: URLRequest
+            if let repair, let snapshot = job.repairSnapshot {
+                let source = RecordingRepairSource(audioSHA256: manifest.audioSHA256, byteCount: manifest.recording.byteCount,
+                                                   markersSHA256: manifest.recording.markersSHA256, snapshot: snapshot)
+                let status = try await client.prepareRecordingRepair(recordingID, requestID: repair, receiver: receiver, source: source)
+                guard current(client, revision: expected) else { return }
+                if status.state == "done" {
+                    let receipt = try await client.recordingReceipt(recordingID, receiver: receiver)
+                    guard current(client, revision: expected) else { return }
+                    try job.acknowledge(receipt); try persist(job)
+                    try? FileManager.default.removeItem(at: folder)
+                    refreshAgain = true; return
+                }
+                request = client.recordingRepairUpload(recordingID, requestID: repair, receiver: receiver)
+            } else { request = try await client.uploadRequest(output, receiver: receiver) }
             guard current(client, revision: expected), verifiedReceiver?.nodeID == receiver else { return }
             let task = session.uploadTask(with: request, fromFile: output.audioURL)
             task.taskDescription = "\(job.id)/\(job.attempts)"
             task.resume()
         } catch {
             guard current(client, revision: expected) else { return }
-            job.fail(error.localizedDescription); try? persist(job); problem = error.localizedDescription
+            repairFailure(&job, error: error); try? persist(job); problem = error.localizedDescription
             verifiedReceiver = nil; checkedReceipts = []
         }
     }
@@ -358,14 +382,14 @@ final class NodeSyncController: ObservableObject {
             if let error = result.error { throw NodeFailure(message: error) }
             guard 200..<300 ~= result.status else {
                 struct ErrorBody: Decodable { let error: String }
-                throw NodeFailure(message: (try? JSONDecoder().decode(ErrorBody.self, from: result.data).error) ?? "节点未确认接收，将自动重试。")
+                throw NodeFailure(message: (try? JSONDecoder().decode(ErrorBody.self, from: result.data).error) ?? "节点未确认接收，将自动重试。", statusCode: result.status)
             }
             let receipt = try JSONDecoder().decode(TransferReceipt.self, from: result.data)
             try job.acknowledge(receipt)
             try persist(job)
             try? FileManager.default.removeItem(at: root.appendingPathComponent(job.id))
             problem = nil
-        } catch { job.fail(error.localizedDescription); try? persist(job); problem = error.localizedDescription }
+        } catch { repairFailure(&job, error: error); try? persist(job); problem = error.localizedDescription }
         refresh()
     }
     func retry() {
@@ -378,6 +402,74 @@ final class NodeSyncController: ObservableObject {
         }
         checkedReceipts = []; verifiedReceiver = nil
         resumePending(force: true)
+    }
+    private func repairFailure(_ job: inout TransferJob, error: Error) {
+        if job.repairRequestID != nil, let failure = error as? NodeFailure,
+           let status = failure.statusCode, [400, 404, 409, 422].contains(status) {
+            job.repairRequestID = nil; job.repairSnapshot = nil
+            job.state = .awaitingReceipt; job.message = error.localizedDescription; job.nextAttemptAt = nil
+        } else { job.fail(error.localizedDescription) }
+    }
+    func job(for id: UUID) -> TransferJob? { jobs.first { $0.target == endpoint && $0.recordingID == id } }
+    var recordingsNeedingRepair: [Recording] {
+        retainedRecordings.filter { record in
+            guard let job = job(for: record.id) else { return false }
+            return job.repairRequestID != nil || (job.state == .awaitingReceipt && job.message != nil)
+        }
+    }
+    var recentlyRepairedRecordings: [Recording] {
+        Array(retainedRecordings.filter { job(for: $0.id)?.lastRepairRequestID != nil && job(for: $0.id)?.state == .delivered }.prefix(10))
+    }
+    var hasRepairRecords: Bool { !recordingsNeedingRepair.isEmpty || !recentlyRepairedRecordings.isEmpty }
+    func previewRepair(_ id: UUID) async throws -> RecordingRepairPlan {
+        guard let client, let receiver = verifiedReceiver, receiverReview == nil else {
+            throw NodeFailure(message: "请先核对接收资料库，再修复原音。")
+        }
+        let expected = revision
+        let status = try await client.read("v1/status", as: NodeStatus.self)
+        guard status.nodeID == receiver.nodeID, status.recordingRepairSupported == true else {
+            throw NodeFailure(message: "请先更新并核对电脑端，再修复接收文件。")
+        }
+        let record = try library.recording(id: id), audio = library.audioURL(for: try library.recording(id: id))
+        guard record.isPlayable, record.trashedAt == nil else { throw RecordingLibrary.LibraryError.invalidMetadata }
+        let checksum = try await Task.detached { try AudioDigest.sha256(audio) }.value
+        try Task.checkCancellation()
+        let source = RecordingRepairSource(audioSHA256: checksum, byteCount: record.byteCount, markersSHA256: record.markersSHA256)
+        let preview = try await client.previewRecordingRepair(id, receiver: receiver.nodeID, source: source)
+        guard current(client, revision: expected), verifiedReceiver?.nodeID == receiver.nodeID,
+              preview.nodeID == receiver.nodeID, preview.recordingID == id,
+              preview.audioSHA256 == checksum, preview.markersSHA256 == record.markersSHA256 else {
+            throw RecordingIngress.IngressError.receiverChanged
+        }
+        try Task.checkCancellation()
+        return RecordingRepairPlan(preview: preview, source: source, endpoint: client.endpoint)
+    }
+    func beginRepair(_ plan: RecordingRepairPlan) throws {
+        guard let receiver = verifiedReceiver, receiverReview == nil, receiver.endpoint == plan.endpoint.absoluteString,
+              receiver.nodeID == plan.preview.nodeID, plan.preview.canRepair,
+              var job = job(for: plan.preview.recordingID), job.repairRequestID == nil else {
+            throw NodeFailure(message: "修复范围已变化，请重新核对；已有任务与原音仍保留。")
+        }
+        job.bindReceiver(receiver.nodeID)
+        job.repairRequestID = plan.preview.pendingRequestID ?? UUID(); job.repairSnapshot = plan.preview.snapshot
+        job.audioSHA256 = plan.source.audioSHA256; job.markersSHA256 = plan.source.markersSHA256
+        job.state = .queued; job.message = nil; job.nextAttemptAt = nil; job.updatedAt = .now
+        try persist(job); checkedReceipts.insert(job.recordingID); refresh()
+    }
+    func retryRepair(_ id: UUID) {
+        guard var job = job(for: id), job.repairRequestID != nil, job.state != .sending else { return }
+        job.state = .queued; job.nextAttemptAt = nil; job.message = nil
+        do { try persist(job); refresh() } catch { problem = error.localizedDescription }
+    }
+    func repairStatus(_ id: UUID, requestID: UUID) async throws -> RecordingRepairStatus {
+        guard receiverReview == nil else { throw RecordingIngress.IngressError.receiverChanged }
+        guard let client, let receiver = verifiedReceiver else { throw NodeFailure(message: "电脑暂未连接，修复任务与原音仍保留。") }
+        let expected = revision
+        let result = try await client.recordingRepairStatus(id, requestID: requestID, receiver: receiver.nodeID)
+        guard current(client, revision: expected), result.recordingID == id, result.requestID == requestID else {
+            throw RecordingIngress.IngressError.receiverChanged
+        }
+        return result
     }
     private func resumePending(force: Bool) {
         for var job in jobs where job.target == endpoint && job.state == .failed {
@@ -410,6 +502,7 @@ final class NodeSyncController: ObservableObject {
         if verifiedReceiver == nil || job.receiverNodeID != verifiedReceiver?.nodeID || !checkedReceipts.contains(id) {
             return "接收状态待核对"
         }
+        if job.repairRequestID != nil { return job.state == .failed ? "修复等待重试" : "正在修复接收文件" }
         switch job.state {
         case .awaitingReceipt: return job.message == nil ? "正在核对接收" : "接收文件待检查"
         case .queued: return "等待同步"

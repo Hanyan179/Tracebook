@@ -176,6 +176,9 @@ class Store:
         from transcript_reviews import TranscriptReviews
         self.transcript_reviews = TranscriptReviews(self)
         self.transcript_reviews.recover()
+        from recording_repairs import RecordingRepairs
+        self.recording_repairs = RecordingRepairs(self)
+        self.recording_repairs.recover()
 
     def _ensure_transcript(self, rid):
         try:
@@ -398,8 +401,12 @@ class Store:
                     finally:os.close(directory)
                 except (OSError,ValueError,UnicodeError):
                     raise StoreError(409,'电脑上的接收文件缺失或已变化，暂不能确认接收；请在电脑检查，发送设备的原音仍保留。')
-            return {'recordingID': canonical_id(rid), 'audioSHA256': row['checksum'], 'nodeID': self.setting('nodeID'), 'durable': True,
+            result={'recordingID': canonical_id(rid), 'audioSHA256': row['checksum'], 'nodeID': self.setting('nodeID'), 'durable': True,
                     'markersSHA256':markers_checksum(manifest['recording'])}
+            if hasattr(self,'recording_repairs'):
+                repair=self.db.execute("SELECT id FROM recording_repairs WHERE recording_id=? AND state='done' ORDER BY rowid DESC LIMIT 1",(canonical_id(rid),)).fetchone()
+                if repair:result['repairRequestID']=repair['id']
+            return result
 
     def manifest(self, rid):
         row = self.db.execute('SELECT manifest FROM recordings WHERE id=?', (canonical_id(rid),)).fetchone()
@@ -653,6 +660,7 @@ class Store:
                     'memoryDelivery': self.memories.delivery_status(),
                     'archiveCopySupported':True,
                     'recordingIdentitySupported':True,
+                    'recordingRepairSupported':True,
                     'analysisConfigured':hasattr(self,'analysis') and self.analysis.configuration is not None,
                     'answerConfigured':self.answers.configuration is not None}
 

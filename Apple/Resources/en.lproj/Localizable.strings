@@ -12,7 +12,7 @@
 "%lld 已接收" = "%lld received";
 "%lld 条录音" = "%lld recordings";
 "%lld 条来源" = "%lld sources";
-"%lld 条等待同步" = "%lld pending transfers";
+"%lld 条等待同步" = "Transfers pending: %lld";
 "%lld 条记忆" = "%lld memories";
 "%lld 等待接收" = "%lld awaiting receipt";
 "30 天" = "30 days";
@@ -2566,3 +2566,123 @@
 "本机原音与原资料库中的副本都会保留。" = "Original audio on this device and copies in the previous library are kept.";
 
 "使用此资料库" = "Use this library";
+
+"与接收登记一致" = "Matches the received record";
+
+"从备份恢复后，请重新核对原音再修复。" = "After restoring a backup, review the original audio again before repairing.";
+
+"保留旧副本并修复" = "Keep old copies and repair";
+
+"保留电脑现有副本后，用本机原音恢复这条录音及接收信息。文字、记忆和历史继续保留。" = "Keep the existing copies on the computer, then restore this recording and its metadata from the original on this device. Text, memories and history are preserved.";
+
+"保留的接收文件" = "Retained received files";
+
+"保留的旧文件位于电脑资料库，并会纳入完整备份。" = "Old files are kept in the computer library and included in full backups.";
+
+"修复等待重试" = "Repair needs a retry";
+
+"修复范围" = "Repair scope";
+
+"修复范围已变化，请重新核对。" = "The repair scope changed. Review it again.";
+
+"修复范围已变化，请重新核对；已有任务与原音仍保留。" = "The repair scope changed. Review it again; existing tasks and original audio are kept.";
+
+"修复记录" = "Repair record";
+
+"修复资料库已变化，未接收原音。" = "The repair library changed. Audio was not accepted.";
+
+"修复进度" = "Repair progress";
+
+"内容已变化" = "Content changed";
+
+"原音修复编号不匹配。" = "The audio repair identifier does not match.";
+
+"原音修复记录" = "Audio repair records";
+
+"可以返回，修复任务和本机原音都会保留。" = "You can go back. The repair task and original audio on this device are kept.";
+
+"将保留的旧文件" = "Old files to keep";
+
+"待恢复的原音副本不完整，原文件仍保留。" = "The replacement audio is incomplete. Original files are kept.";
+
+"待恢复的原音副本已变化，请重新核对；原文件仍保留。" = "The replacement audio changed. Review it again; original files are kept.";
+
+"找不到这次原音修复操作。" = "This audio repair operation was not found.";
+
+"找不到这次原音修复记录。" = "This audio repair record was not found.";
+
+"接收信息" = "Received metadata";
+
+"接收文件在修复期间已变化，请重新核对；旧副本仍保留。" = "Received files changed during repair. Review them again; old copies are kept.";
+
+"接收文件在预览后已变化，请重新核对；原文件未被替换。" = "Received files changed after preview. Review them again; no original files were replaced.";
+
+"接收文件尚未修复完成，请检查电脑存储后继续同次修复。" = "Repair is not complete. Check storage on the computer, then continue this repair.";
+
+"接收文件已变化，上次预览不再适用。" = "Received files changed. The previous preview is no longer valid.";
+
+"接收文件已完整，无需修复。" = "Received files are complete. No repair is needed.";
+
+"接收文件已核验完整" = "Received files verified";
+
+"接收文件需处理" = "Received files need attention";
+
+"接收登记已变化，未替换原音。" = "The received record changed. No audio was replaced.";
+
+"接收目录内容已变化，请在电脑核对；旧副本仍保留。" = "The receiving folder changed. Check it on the computer; old copies are kept.";
+
+"接收目录含有额外文件、链接或不可读取内容，请在电脑核对；没有修改文件。" = "The receiving folder contains extra files, links or unreadable content. Check it on the computer; no files were changed.";
+
+"文件大小" = "File size";
+
+"文件缺失" = "File missing";
+
+"旧副本位置" = "Old copy location";
+
+"更新接收状态" = "Refresh receipt status";
+
+"最近修复" = "Recent repairs";
+
+"本机原音" = "Original on this device";
+
+"本机原音及重点标记已匹配接收登记。" = "Local audio and marked moments match the received record.";
+
+"本机原音在预览后已变化，未修复；请重新核对。" = "Local audio changed after preview. No repair was made; review it again.";
+
+"本机原音或重点标记与接收登记不一致，未修复；两端文件均保留。" = "Local audio or marked moments differ from the received record. No repair was made; files on both devices are kept.";
+
+"核对原音修复" = "Review audio repair";
+
+"核对原音修复：%@" = "Review audio repair: %@";
+
+"正在修复接收文件" = "Repairing received files";
+
+"正在核对本机原音与接收文件" = "Checking local and received audio";
+
+"用于修复的原音校验未通过，原文件仍保留。" = "The repair audio did not pass verification. Original files are kept.";
+
+"电脑接收文件" = "Received files on computer";
+
+"继续同次修复" = "Continue this repair";
+
+"请先更新并核对电脑端，再修复接收文件。" = "Update and verify the computer app before repairing received files.";
+
+"请先核对接收文件后再修复。" = "Review the received files before repairing.";
+
+"请先核对接收资料库，再修复原音。" = "Verify the receiving library before repairing audio.";
+
+"资料库位置已变化，已保留的副本不受影响。" = "The library location changed. Retained copies are preserved.";
+
+"资料库位置已变化，未修复接收文件。" = "The library location changed. Received files were not repaired.";
+
+"这条原音已有待完成的修复，请继续同一次处理。" = "This recording already has an unfinished repair. Continue that operation.";
+
+"这次修复的资料库或预览已变化，请重新核对。" = "The repair library or preview changed. Review it again.";
+
+"有尚未完成的原音修复，请先继续修复再创建备份。" = "An audio repair is unfinished. Continue it before creating a backup.";
+
+"等待电脑重新连接" = "Waiting to reconnect to your computer";
+"电脑暂未连接，修复任务与原音仍保留。" = "Your computer is not connected. The repair task and original audio are kept.";
+
+"原音文件" = "Audio file";
+"保留的接收文件缺失或已变化，请先核对再备份。" = "Retained received files are missing or changed. Review them before backing up.";

@@ -21,12 +21,14 @@ public struct TransferReceipt: Codable, Sendable {
     public let nodeID: String
     public let durable: Bool
     public let markersSHA256: String?
-    public init(recordingID: UUID, audioSHA256: String, nodeID: String, durable: Bool, markersSHA256: String? = nil) {
+    public let repairRequestID: UUID?
+    public init(recordingID: UUID, audioSHA256: String, nodeID: String, durable: Bool, markersSHA256: String? = nil, repairRequestID: UUID? = nil) {
         self.recordingID = recordingID
         self.audioSHA256 = audioSHA256
         self.nodeID = nodeID
         self.durable = durable
         self.markersSHA256 = markersSHA256
+        self.repairRequestID = repairRequestID
     }
 }
 

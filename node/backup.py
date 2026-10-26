@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from document_originals import OriginalError, original_metadata, original_name, original_directory
 
 FORMAT = 'tracebook-library-backup'
-VERSION = 8
+VERSION = 9
 MAX_FILES = 100000
 MAX_TOTAL = 256 * 1024 ** 3
 MAX_MANIFEST = 16 * 1024 ** 2
@@ -33,7 +33,7 @@ TABLES = (
     'memory_details', 'memory_versions', 'memory_operations', 'memory_relations', 'memory_delivery',
     'memory_file_operations', 'import_batches', 'note_origins', 'conversations', 'conversation_turns',
     'library_categories', 'library_items', 'library_tags', 'daily_analysis', 'memory_extractions',
-    'memory_batches', 'memory_batch_items', 'answer_jobs', 'speech_jobs', 'speech_parts', 'memory_reviews', 'transcript_reviews', 'memory_review_batches',
+    'memory_batches', 'memory_batch_items', 'answer_jobs', 'speech_jobs', 'speech_parts', 'memory_reviews', 'transcript_reviews', 'memory_review_batches', 'recording_repairs',
 )
 SETTINGS = {'nodeID', 'timeZone', 'outputDirectory', 'dailyEnabled', 'dailyTime', 'dailyLastRun',
             'analysisEnabled', 'speechAutomatic', 'speechAfter', 'memoryDeliveryPaused'}
@@ -101,6 +101,12 @@ def archive_file(name):
         try:
             rid = str(uuid.UUID(p.parts[2])).upper()
             return rid == p.parts[2] and p.name in (rid+'.caf', 'manifest.json')
+        except ValueError:return False
+    if len(p.parts)==5 and p.parts[:2]==('node','recording-repairs') and p.parts[3]=='original':
+        try:
+            operation=str(uuid.UUID(p.parts[2])).upper()
+            valid=p.name=='manifest.json' or (p.suffix=='.caf' and str(uuid.UUID(p.stem)).upper()==p.stem)
+            return operation==p.parts[2] and valid
         except ValueError:return False
     return False
 
@@ -183,6 +189,23 @@ def inventory(directory, output, db):
         require(archive_file('node/imports/'+path.name) and path.is_file() and not path.is_symlink(),
                 '已导入的原始聊天文件缺失，未创建备份。')
         found.append(('node/imports/'+path.name, path, fingerprint(path)))
+    require(db.execute("SELECT count(*) FROM recording_repairs WHERE state IN ('prepared','archived')").fetchone()[0]==0,
+            '有尚未完成的原音修复，请先继续修复再创建备份。')
+    repairs={row[0]:row[1] for row in db.execute('SELECT id,recording_id FROM recording_repairs')}
+    history=directory/'recording-repairs'
+    if history.exists() or history.is_symlink():
+        require(history.is_dir() and not history.is_symlink(),'原音修复目录不可读取，未创建备份。')
+        for operation in history.iterdir():
+            require(operation.name in repairs and operation.is_dir() and not operation.is_symlink(),'原音修复目录含有未登记内容，请先核对。')
+            require(set(p.name for p in operation.iterdir())<={'original','replacement'},'原音修复目录含有额外文件，请先核对。')
+            original=operation/'original'
+            if not original.exists() and not original.is_symlink():continue
+            require(original.is_dir() and not original.is_symlink(),'保留的原音副本不可读取，未创建备份。')
+            for path in original.iterdir():
+                require(path.name in ('manifest.json',repairs[operation.name]+'.caf') and not path.is_symlink(),
+                        '保留的原音副本含有额外文件或链接，请先核对。')
+                name='node/recording-repairs/'+operation.name+'/original/'+path.name
+                found.append((name,path,fingerprint(path)))
     names = {name for name, _, _ in found}
     expected_originals = {'library/originals/documents/' + original_name(rid, extension)
                           for rid, extension, _ in retained_originals(db)}
@@ -228,6 +251,8 @@ def create_backup(directory, destination, progress=lambda _:None):
                 'includesAudio':True, 'encrypted':False, 'externalSourcesIncluded':False,
                 'externalDocumentCount':db.execute('SELECT COUNT(*) FROM documents').fetchone()[0],
                 'originalDocuments':sum(1 for _ in retained_originals(db)),
+                'recordingRepairs':db.execute('SELECT count(*) FROM recording_repairs').fetchone()[0],
+                'retainedRecordingFiles':sum(name.startswith('node/recording-repairs/') for name,_,_ in files),
                 'unconfirmedImportsIncluded':False}
             with destination.open('xb') as target:
                 os.chmod(destination, 0o600);created = (destination.stat().st_dev, destination.stat().st_ino)
@@ -302,7 +327,7 @@ def inspect_backup(file, scratch, expected_hash=None, progress=lambda _:None):
         require('manifest.json' in by_name and by_name['manifest.json'].file_size<=MAX_MANIFEST, '找不到有效的备份清单。')
         manifest=parse_json(archive.read('manifest.json'))
         require(isinstance(manifest,dict) and manifest.get('format')==FORMAT
-                and type(manifest.get('version')) is int and manifest['version'] in (1, 2, 3, 4, 5, 6, 7, VERSION),
+                and type(manifest.get('version')) is int and manifest['version'] in (1, 2, 3, 4, 5, 6, 7, 8, VERSION),
                 '这不是当前版本支持的迹库备份。')
         require(str(uuid.UUID(manifest.get('id',''))).upper()==manifest['id']
                 and dt.datetime.fromisoformat(manifest.get('createdAt','').replace('Z','+00:00')).tzinfo is not None,
@@ -310,7 +335,8 @@ def inspect_backup(file, scratch, expected_hash=None, progress=lambda _:None):
         tables = tuple(t for t in TABLES if (t != 'memory_reviews' or manifest['version'] >= 3)
                        and (t != 'local_source_issues' or manifest['version'] >= 4)
                        and (t != 'transcript_reviews' or manifest['version'] >= 5)
-                       and (t != 'memory_review_batches' or manifest['version'] >= 6))
+                       and (t != 'memory_review_batches' or manifest['version'] >= 6)
+                       and (t != 'recording_repairs' or manifest['version'] >= 9))
         require(isinstance(manifest.get('files'),list) and isinstance(manifest.get('tables'),dict)
                 and set(manifest['tables'])==set(tables), '备份资料结构不完整。')
         require({name for name in by_name if name.startswith('tables/')} == {'tables/'+table+'.jsonl' for table in tables},
@@ -339,6 +365,12 @@ def inspect_backup(file, scratch, expected_hash=None, progress=lambda _:None):
         for table in tables:
             count=sum(1 for _ in read_table(archive,table,expected[table]))
             require(count==manifest['tables'][table]['rows'], '备份中的资料数量与清单不一致。')
+        retained=sum(item['path'].startswith('node/recording-repairs/') for item in manifest['files'])
+        if manifest['version']>=9:
+            require(type(manifest.get('recordingRepairs')) is int and manifest['recordingRepairs']==manifest['tables']['recording_repairs']['rows']
+                    and type(manifest.get('retainedRecordingFiles')) is int and manifest['retainedRecordingFiles']==retained,
+                    '备份中的原音修复记录与副本数量不一致。')
+        else:require(retained==0,'原音修复副本需要新版备份格式。')
         originals = {}
         for values in read_table(archive, 'documents', expected['documents']):
             row = dict(zip(expected['documents'], values));details = parse_json(row['details'])
@@ -364,6 +396,7 @@ def inspect_backup(file, scratch, expected_hash=None, progress=lambda _:None):
             'modelReviews':manifest['tables'].get('memory_reviews',{}).get('rows',0),
             'localInputs':manifest['tables']['local_inputs']['rows'],
             'sourceIssuePositions':manifest['tables'].get('local_source_issues',{}).get('rows',0),
+            'recordingRepairs':manifest.get('recordingRepairs',0),'retainedRecordingFiles':manifest.get('retainedRecordingFiles',0),
             'externalDocumentCount':manifest.get('externalDocumentCount',0),'originalDocuments':len(originals),
             'modifiedOriginalDocuments':modified_originals,
             'includesCredentials':False,'encrypted':False}
@@ -393,6 +426,14 @@ def mapped_row(table, columns, row, output, directory, old_output):
         require(value['root']==old_output, '备份包含其他资料库的文件操作。')
         value['root']=str(output)
     if table in ('memory_file_operations','transcript_reviews') and value['state']!='done':value['state']='blocked'
+    if table=='recording_repairs':
+        require(str(uuid.UUID(value['id'])).upper()==value['id'] and str(uuid.UUID(value['recording_id'])).upper()==value['recording_id'],
+                '原音修复编号无效。')
+        document=parse_json(value['document'])
+        require(isinstance(document,dict) and isinstance(document.get('before'),dict),'原音修复记录无效。')
+        if value['state']!='done':
+            value['state']='blocked';document['problem']='从备份恢复后，请重新核对原音再修复。'
+            value['document']=json.dumps(document,ensure_ascii=False)
     if table=='memory_delivery':
         value['output_root']=str(output);value['pending']=1
         value['problem']=None  # Pausing restored projections is intentional, not a failed write.
@@ -438,6 +479,38 @@ def verify_restored(directory, output, db, restored=True):
         audio=directory/'recordings'/rid/(rid+'.caf')
         require(audio.is_file() and audio.stat().st_size==manifest['recording']['byteCount']
                 and digest_file(audio)==checksum==manifest['audioSHA256'], '恢复后的原音校验未通过。')
+    repairs={}
+    for key,rid,raw,state in db.execute('SELECT id,recording_id,document,state FROM recording_repairs'):
+        require(str(uuid.UUID(key)).upper()==key and rid in recorded and state in ('upload','prepared','archived','done','blocked'),
+                '原音修复记录无效。')
+        document=parse_json(raw)
+        require(isinstance(document,dict) and isinstance(document.get('before'),dict)
+                and isinstance(document['before'].get('files'),dict),'原音修复记录无效。')
+        require(set(document['before']['files'])<={rid+'.caf','manifest.json'},'原音修复记录包含未知文件。')
+        for item in document['before']['files'].values():
+            require(isinstance(item,dict) and type(item.get('bytes')) is int and 0<=item['bytes']<=2*1024**3,
+                    '保留的接收文件大小无效。')
+        if state=='done':
+            original=directory/'recording-repairs'/key/'original'
+            expected=document['before']['files']
+            require(not original.is_symlink(), '保留的接收文件缺失或已变化，请先核对再备份。')
+            names={p.name for p in original.iterdir()} if original.is_dir() else set()
+            require(names==set(expected), '保留的接收文件缺失或已变化，请先核对再备份。')
+            for name,info in expected.items():
+                path=original/name
+                require(path.is_file() and not path.is_symlink() and path.stat().st_size==info['bytes']
+                        and digest_file(path)==info.get('sha256'), '保留的接收文件缺失或已变化，请先核对再备份。')
+        repairs[key]=rid
+    history=directory/'recording-repairs'
+    if history.exists() or history.is_symlink():
+        require(history.is_dir() and not history.is_symlink(),'原音修复目录无效。')
+        for operation in history.iterdir():
+            require(operation.name in repairs and operation.is_dir() and not operation.is_symlink(),'原音修复目录含有未知记录。')
+            original=operation/'original'
+            if original.exists() or original.is_symlink():
+                require(original.is_dir() and not original.is_symlink(),'保留的接收目录无效。')
+                require(all(p.name in (repairs[operation.name]+'.caf','manifest.json') and p.is_file() and not p.is_symlink()
+                            for p in original.iterdir()),'保留的接收文件无效。')
     for table,folder in [('notes','notes'),('documents','documents'),('recordings','transcripts')]:
         for rid, in db.execute('SELECT id FROM '+table):
             require(str(uuid.UUID(rid)).upper()==rid and (output/folder/(rid+'.md')).is_file(), '恢复后的文字资料缺失。')

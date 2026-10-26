@@ -177,7 +177,10 @@ class DocumentOriginalTests(unittest.TestCase):
         try:self.assertEqual(base64.b64decode(restored.documents.original(source['id'])['data']), raw)
         finally:restored.close()
         with zipfile.ZipFile(archive) as z:entries = {n: z.read(n) for n in z.namelist()}
-        manifest = json.loads(entries['manifest.json']);self.assertEqual(manifest['version'], 8)
+        manifest = json.loads(entries['manifest.json']);self.assertEqual(manifest['version'], 9)
+        manifest['tables'].pop('recording_repairs');entries.pop('tables/recording_repairs.jsonl')
+        manifest['files'] = [item for item in manifest['files'] if item['path'] != 'tables/recording_repairs.jsonl']
+        manifest.pop('recordingRepairs', None);manifest.pop('retainedRecordingFiles', None)
         manifest['tables'].pop('memory_review_batches');entries.pop('tables/memory_review_batches.jsonl')
         manifest['files'] = [item for item in manifest['files'] if item['path'] != 'tables/memory_review_batches.jsonl']
         manifest['tables'].pop('transcript_reviews');entries.pop('tables/transcript_reviews.jsonl')
@@ -198,6 +201,9 @@ class DocumentOriginalTests(unittest.TestCase):
         item, _ = self.item(retain=False);self.save(item);archive, _ = self.backup()
         with zipfile.ZipFile(archive) as z:entries = {n: z.read(n) for n in z.namelist()}
         manifest = json.loads(entries['manifest.json']);manifest['version'] = 1;manifest.pop('originalDocuments')
+        manifest['tables'].pop('recording_repairs');entries.pop('tables/recording_repairs.jsonl')
+        manifest['files'] = [item for item in manifest['files'] if item['path'] != 'tables/recording_repairs.jsonl']
+        manifest.pop('recordingRepairs', None);manifest.pop('retainedRecordingFiles', None)
         manifest['tables'].pop('memory_review_batches');entries.pop('tables/memory_review_batches.jsonl')
         manifest['files'] = [item for item in manifest['files'] if item['path'] != 'tables/memory_review_batches.jsonl']
         manifest['tables'].pop('transcript_reviews');entries.pop('tables/transcript_reviews.jsonl')

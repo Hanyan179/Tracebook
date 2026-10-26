@@ -168,6 +168,18 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200,store.transcription.set_automatic(self.body_json()))
         if len(parts)==4 and parts[:2]==['v1','recordings'] and parts[3]=='prepare' and self.command=='POST':
             return self.send_json(200,store.prepare_recording_upload(parts[2],self.body_json(256*1024)))
+        if len(parts)>=4 and parts[:2]==['v1','recordings'] and parts[3] in ('repair-preview','repair'):
+            if self.headers.get('X-Recording-Node-ID')!=store.setting('nodeID'):
+                self.close_connection=True
+                raise StoreError(409,'请先核对接收资料库，再修复原音。')
+            if len(parts)==4 and parts[3]=='repair-preview' and self.command=='POST':
+                return self.send_json(200,store.recording_repairs.preview(parts[2],self.body_json(16384)))
+            if len(parts)==5 and parts[3]=='repair':
+                if self.command=='POST':return self.send_json(200,store.recording_repairs.prepare(parts[2],parts[4],self.body_json(16384)))
+                if self.command=='GET':return self.send_json(200,store.recording_repairs.status(parts[2],parts[4]))
+            if len(parts)==6 and parts[3]=='repair' and parts[5]=='audio' and self.command=='PUT':
+                return self.receive_audio(parts[2],repair=parts[4])
+            raise StoreError(404,'找不到这次原音修复操作。')
         if len(parts) in (3,4) and parts[:2] == ['v1','transcriptions']:
             if len(parts) == 3:
                 if self.command == 'GET':return self.send_json(200,store.transcription.status(parts[2]))
@@ -452,13 +464,19 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(200, store.edit_document(relative, b.get('text'), b.get('etag')))
         raise StoreError(404, '找不到这个操作。')
 
-    def receive_audio(self, rid):
+    def receive_audio(self, rid, repair=None):
         prepared = self.headers.get('X-Recording-Upload')
         encoded = self.headers.get('X-Recording-Manifest', '')
         if len(encoded) > 24000 or (prepared and encoded):
             raise StoreError(400, '录音信息过大。')
         try:
-            manifest = self.server.store.prepared_recording_upload(rid,prepared) if prepared else json.loads(base64.b64decode(encoded, validate=True))
+            if repair:
+                row=self.server.store.recording_repairs.row(repair)
+                document=json.loads(row['document'])
+                if row['recording_id']!=canonical_id(rid) or document['nodeID']!=self.server.store.setting('nodeID'):
+                    raise StoreError(409,'修复资料库已变化，未接收原音。')
+                manifest=document['manifest']
+            else:manifest = self.server.store.prepared_recording_upload(rid,prepared) if prepared else json.loads(base64.b64decode(encoded, validate=True))
             size = int(self.headers.get('Content-Length', '-1'))
         except (ValueError, UnicodeError):
             raise StoreError(400, '录音请求格式不正确。')
@@ -469,16 +487,23 @@ class Handler(BaseHTTPRequestHandler):
             raise StoreError(503, '节点正在接收其他音频，请稍后重试。')
         temp = None
         try:
-            fd, temp = tempfile.mkstemp(dir=self.server.store.staging, prefix='upload-')
-            with os.fdopen(fd, 'wb') as out:
+            def receive_into(out):
                 remaining = size
                 while remaining:
                     block = self.rfile.read(min(1024 * 1024, remaining))
-                    if not block:
-                        raise StoreError(400, '音频未传输完整。')
+                    if not block:raise StoreError(400, '音频未传输完整。')
                     out.write(block);remaining -= len(block)
                 out.flush();os.fsync(out.fileno())
-            receipt = self.server.store.accept(manifest, temp)
+            if repair:
+                try:
+                    with self.server.store.recording_repairs.incoming() as source:
+                        with os.fdopen(os.dup(source),'wb') as out:receive_into(out)
+                        receipt=self.server.store.recording_repairs.accept(rid,repair,source)
+                except OSError:raise StoreError(503,'接收文件尚未修复完成，请检查电脑存储后继续同次修复。')
+            else:
+                fd,temp=tempfile.mkstemp(dir=self.server.store.staging,prefix='upload-')
+                with os.fdopen(fd,'wb') as out:receive_into(out)
+                receipt=self.server.store.accept(manifest,temp)
             if prepared:
                 with self.server.store.lock:
                     try:(self.server.store.staging/'recording-manifests'/(prepared+'.json')).unlink(missing_ok=True)

@@ -72,6 +72,7 @@ struct NodeStatus: Codable, Sendable {
     var transcriptionConfigured: Bool?
     var archiveCopySupported: Bool?
     var recordingIdentitySupported: Bool?
+    var recordingRepairSupported: Bool?
     var memoryDelivery: MemoryFileDelivery?
     var outputIssue: String?
     let conflicts: [NodeConflict]

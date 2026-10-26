@@ -65,6 +65,7 @@ struct PhoneSyncScreen: View {
                         }
                     }
                 }.transition(.opacity)
+                if route == SyncRoute.direct.rawValue { RecordingRepairSection(sync: sync) }
                 VStack(alignment: .leading, spacing: 20) {
                     SectionHeading(title: route == SyncRoute.local.rawValue ? "最近的保存" : "最近的同步")
                     ForEach(recentRecords) { record in

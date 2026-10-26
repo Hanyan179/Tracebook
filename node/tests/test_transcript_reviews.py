@@ -181,6 +181,8 @@ class TranscriptReviewTests(unittest.TestCase):
         rid,_,_=self.conflict();self.store.close();archive=self.root/'latest.zip';create_backup(self.root/'node',archive)
         with zipfile.ZipFile(archive) as z:members={name:z.read(name) for name in z.namelist()}
         manifest=json.loads(members['manifest.json']);manifest['version']=4
+        manifest['tables'].pop('recording_repairs');members.pop('tables/recording_repairs.jsonl')
+        manifest['files']=[i for i in manifest['files'] if i['path']!='tables/recording_repairs.jsonl']
         manifest['tables'].pop('memory_review_batches');members.pop('tables/memory_review_batches.jsonl')
         manifest['files'] = [item for item in manifest['files'] if item['path'] != 'tables/memory_review_batches.jsonl']
         manifest['tables'].pop('transcript_reviews');members.pop('tables/transcript_reviews.jsonl')

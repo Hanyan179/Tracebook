@@ -15,6 +15,9 @@ public struct TransferJob: Codable, Identifiable, Sendable {
     public var markersSHA256: String?
     /// Direct uploads bind receipts to the selected library, not only its address.
     public var receiverNodeID: String?
+    public var repairRequestID: UUID?
+    public var repairSnapshot: String?
+    public var lastRepairRequestID: UUID?
     public var message: String?
     public var updatedAt: Date = .now
     public var id: String {
@@ -40,10 +43,18 @@ public struct TransferJob: Codable, Identifiable, Sendable {
             throw RecordingIngress.IngressError.checksum
         }
         guard receipt.markersSHA256 == markersSHA256 else { throw RecordingIngress.IngressError.markerConflict }
+        if let repair = receipt.repairRequestID { lastRepairRequestID = repair }
+        repairRequestID = nil; repairSnapshot = nil
         state = .delivered
         message = nil
         nextAttemptAt = nil
         updatedAt = .now
+    }
+    public mutating func bindReceiver(_ nodeID: String) {
+        if receiverNodeID != nodeID {
+            repairRequestID = nil; repairSnapshot = nil; lastRepairRequestID = nil
+        }
+        receiverNodeID = nodeID
     }
 }
 

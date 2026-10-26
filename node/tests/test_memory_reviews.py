@@ -239,7 +239,7 @@ class MemoryReviewTests(unittest.TestCase):
         with self.assertRaises(BackupError):inspect_backup(invalid,self.root)
         for version in [1,2,3]:
             legacy=dict(members);manifest=json.loads(legacy['manifest.json']);manifest['version']=version
-            removed=['local_source_issues','transcript_reviews','memory_review_batches']+(['memory_reviews'] if version<3 else [])
+            removed=['local_source_issues','transcript_reviews','memory_review_batches','recording_repairs']+(['memory_reviews'] if version<3 else [])
             for table in removed:
                 manifest['tables'].pop(table);legacy.pop('tables/'+table+'.jsonl')
             manifest['files']=[x for x in manifest['files'] if x['path'] not in {'tables/'+t+'.jsonl' for t in removed}]

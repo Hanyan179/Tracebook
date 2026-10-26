@@ -19,6 +19,8 @@ struct LibraryBackupReceipt: Decodable, Identifiable, Sendable {
     let sourceIssuePositions: Int?
     let originalDocuments: Int?
     let modifiedOriginalDocuments: Int?
+    let recordingRepairs: Int?
+    let retainedRecordingFiles: Int?
     var date: String {
         ISO8601DateFormatter().date(from: createdAt)?.formatted(
             Date.FormatStyle(date: .abbreviated, time: .shortened).locale(AppLanguage.current.locale)) ?? createdAt
@@ -167,6 +169,10 @@ struct LibraryBackupSection: View {
                     Section("备份内容") {
                         backupValue("备份时间", item.receipt.date)
                         backupValue("原音", String(item.receipt.recordings))
+                        if let count = item.receipt.recordingRepairs, count > 0 {
+                            backupValue("原音修复记录", String(count))
+                            backupValue("保留的接收文件", String(item.receipt.retainedRecordingFiles ?? 0))
+                        }
                         backupValue("导入资料", String(item.receipt.documents))
                         backupValue("文档原件副本", String(item.receipt.originalDocuments ?? 0))
                         if let modified = item.receipt.modifiedOriginalDocuments, modified > 0 {

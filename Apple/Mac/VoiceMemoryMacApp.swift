@@ -257,6 +257,7 @@ struct MacWorkspaceView: View {
                     }
                     SyncJourney().frame(maxWidth: .infinity).padding(.vertical, 8)
                     if sync.receiverReview != nil { SurfaceCard { ReceiverReviewView(sync: sync) } }
+                    RecordingRepairSection(sync: sync)
                     if geometry.size.width >= 1050 {
                         HStack(alignment: .top, spacing: 24) {
                             FolderSetupCard(folder: folder, isDesktop: true).frame(maxWidth: .infinity)

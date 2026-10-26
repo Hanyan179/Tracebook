@@ -155,6 +155,8 @@ class ReviewBatchTests(unittest.TestCase):
         finally:restored.close()
         with zipfile.ZipFile(archive) as z:members={n:z.read(n) for n in z.namelist()}
         manifest=json.loads(members['manifest.json']);manifest['version']=5
+        manifest['tables'].pop('recording_repairs');members.pop('tables/recording_repairs.jsonl')
+        manifest['files']=[i for i in manifest['files'] if i['path']!='tables/recording_repairs.jsonl']
         manifest['tables'].pop('memory_review_batches');members.pop('tables/memory_review_batches.jsonl')
         manifest['files']=[i for i in manifest['files'] if i['path']!='tables/memory_review_batches.jsonl']
         members['manifest.json']=json.dumps(manifest).encode();legacy=self.root/'five.zip'
