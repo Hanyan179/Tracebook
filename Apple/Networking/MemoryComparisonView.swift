@@ -5,14 +5,29 @@ private struct RelatedMemories: Decodable {
         let id: UUID
         let text: String
         let reasons: [String]
+        let rank: [Double]?
+        let scanIndex: Int?
         var reason: String {
             reasons.map { L($0 == "sharedSource" ? "引用同一份资料" : $0 == "sameWording" ? "文字基本相同" : "文字相近") }.joined(separator: " · ")
         }
     }
-    let items: [Item]
+    var items: [Item]
     let checkedCount: Int
     let totalCount: Int
     let truncated: Bool
+    let scannedCount: Int?
+    let nextCursor: String?
+    let snapshot: String?
+    var checkedTotal: Int { scannedCount ?? checkedCount }
+
+    mutating func includeEarlierPage(_ previous: RelatedMemories) {
+        var seen = Set<UUID>()
+        items = Array((previous.items + items).filter { seen.insert($0.id).inserted }.sorted {
+            let left = $0.rank ?? [], right = $1.rank ?? []
+            if left != right { return right.lexicographicallyPrecedes(left) }
+            return ($0.scanIndex ?? 0) < ($1.scanIndex ?? 0)
+        }.prefix(5))
+    }
 }
 
 struct MemoryRelation: Codable, Identifiable, Sendable {
@@ -54,6 +69,7 @@ struct MemoryComparisonSheet: View {
     @State private var suggestions: RelatedMemories?
     @State private var suggestionsLoading = false
     @State private var suggestionsProblem: String?
+    @State private var suggestionRequest = UUID()
     @State private var browseAll = false
     private var incoming: NodeCandidate { proposal ?? candidate }
     private var filter: LibraryFilter { var value = LibraryFilter(); value.query = query; value.state = "confirmed"; return value }
@@ -89,10 +105,15 @@ struct MemoryComparisonSheet: View {
                                         }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                                     }.buttonStyle(.plain).disabled(busy)
                                 }
-                                if suggestions.items.isEmpty { Text("没有找到相关项，仍可在下方搜索已有记忆。") }
-                                Text(LF("在本机检查了最近 %d / %d 条已确认记忆，最多显示 5 条。", suggestions.checkedCount, suggestions.totalCount))
+                                if suggestions.items.isEmpty {
+                                    Text(suggestions.truncated ? "已检查部分暂未找到相关项。" : "没有找到相关项，仍可在下方搜索已有记忆。")
+                                }
+                                Text(LF("已在本机检查 %d / %d 条已确认记忆，累计保留最多 5 条相关项。", suggestions.checkedTotal, suggestions.totalCount))
                                     .font(.footnote).foregroundStyle(.secondary)
-                                if suggestions.truncated {
+                                if suggestions.nextCursor != nil {
+                                    Button("继续检查更早记忆") { Task { await loadSuggestions(continuing: true) } }
+                                        .disabled(busy || suggestionsLoading)
+                                } else if suggestions.truncated {
                                     Text("更早的记忆尚未比较，请使用下方搜索继续核对。")
                                         .font(.footnote).foregroundStyle(.secondary)
                                 }
@@ -102,10 +123,10 @@ struct MemoryComparisonSheet: View {
                         }
                         Section("选择已确认记忆") {
                             TextField("搜索已有记忆", text: $query).disabled(busy)
-                            if query.isEmpty && suggestions?.items.isEmpty != true {
+                            if query.isEmpty {
                                 Button(browseAll ? "收起全部记忆" : "浏览全部已确认记忆") { browseAll.toggle() }.disabled(busy)
                             }
-                            if !query.isEmpty || suggestions?.items.isEmpty == true || browseAll {
+                            if !query.isEmpty || browseAll {
                                 Text("选择需要对照的记忆；列表不代表系统已判断它们存在冲突。")
                                     .font(.footnote).foregroundStyle(.secondary)
                                 ForEach(loader.items.filter { $0.id != candidate.id }) { item in
@@ -163,6 +184,7 @@ struct MemoryComparisonSheet: View {
         .task(id: workspace.endpoint + filter.signature) { await loader.reload(client: workspace.client, kind: "memory", filter: filter) }
         .task(id: workspace.endpoint + candidate.id.uuidString) { await loadSuggestions() }
         .onAppear { workspace.memoryNotice = nil }
+        .onDisappear { suggestionRequest = UUID(); suggestionsLoading = false }
         .interactiveDismissDisabled(busy)
         .sheet(item: $evidence) { item in
             if item.quote.isEmpty {
@@ -213,15 +235,32 @@ struct MemoryComparisonSheet: View {
             problem = fresh.state == "pending" && previous.state == "confirmed" ? nil : "新旧记忆已被修改，请重新读取并核对后再处理。"
         } catch { problem = error.localizedDescription }
     }
-    private func loadSuggestions() async {
-        suggestions = nil; suggestionsProblem = nil
+    private func loadSuggestions(continuing: Bool = false) async {
+        let previous = continuing ? suggestions : nil
+        if continuing && previous?.nextCursor == nil { return }
+        let request = UUID(); suggestionRequest = request
+        let endpoint = workspace.endpoint
+        if !continuing { suggestions = nil }
+        suggestionsProblem = nil
         guard let client = workspace.client else { suggestionsProblem = "请先连接资料库。"; return }
         suggestionsLoading = true
-        defer { suggestionsLoading = false }
+        defer { if suggestionRequest == request { suggestionsLoading = false } }
         do {
-            let result = try await client.read("v1/candidates/\(candidate.id.uuidString)/related", as: RelatedMemories.self)
-            if !Task.isCancelled { suggestions = result }
-        } catch { if !Task.isCancelled { suggestionsProblem = error.localizedDescription } }
+            let parameters = previous?.nextCursor.map { ["cursor": $0] } ?? [:]
+            var result = try await client.read("v1/candidates/\(candidate.id.uuidString)/related", query: parameters, as: RelatedMemories.self)
+            guard !Task.isCancelled, suggestionRequest == request, endpoint == workspace.endpoint else { return }
+            if let previous {
+                guard previous.snapshot == result.snapshot, result.checkedTotal > previous.checkedTotal else {
+                    suggestions = nil; suggestionsProblem = "记忆已变化，请重新查找相关记忆。"; return
+                }
+                result.includeEarlierPage(previous)
+            }
+            suggestions = result
+        } catch {
+            guard !Task.isCancelled, suggestionRequest == request, endpoint == workspace.endpoint else { return }
+            if let code = (error as? NodeFailure)?.statusCode, code == 400 || code == 409 { suggestions = nil }
+            suggestionsProblem = error.localizedDescription
+        }
     }
     private func resolve(_ kind: String) {
         guard let client = workspace.client, let target, let revision = incoming.memoryRevision,

@@ -2175,3 +2175,13 @@
 "备份未加密，请妥善保存。应用的模型密钥、设备连接口令和外部读取授权不随备份迁移。" = "The backup is not encrypted. Keep it secure. The app’s model keys, device connection tokens and external read permissions are excluded.";
 "包含转写、笔记、对话、每日记录与分析、记忆、提示词和聊天导入原文件；不包含原音、文档原件和应用密钥。" = "Includes transcripts, notes, conversations, daily records and analyses, memories, prompts and original chat imports. Audio, document originals and app keys are excluded.";
 "此资料库尚不支持保留原件副本，请更新电脑应用后重试。" = "This library does not support original copies yet. Update the Mac app and try again.";
+
+"已检查部分暂未找到相关项。" = "No related items in the checked portion yet.";
+
+"已在本机检查 %d / %d 条已确认记忆，累计保留最多 5 条相关项。" = "Checked %d of %d confirmed memories locally. Keeping up to 5 related results across checked pages.";
+
+"继续检查更早记忆" = "Check earlier memories";
+
+"记忆已变化，请重新查找相关记忆。" = "Memories changed. Find related memories again to review the current versions.";
+
+"记忆查找进度无效，请重新查找。" = "This search progress is invalid. Find related memories again.";

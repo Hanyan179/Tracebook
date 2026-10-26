@@ -1,6 +1,7 @@
 """User-reviewed memories with immutable source excerpts and revision history."""
 from __future__ import annotations
 import hashlib
+import base64
 import json
 import unicodedata
 import uuid
@@ -243,10 +244,10 @@ class Memories:
                            'createdAt': row['created_at']})
         return values
 
-    def related(self, cid):
+    def related(self, cid, cursor=None):
         """Local retrieval hints only: neither shared wording nor a source proves identity."""
         from store import canonical_id
-        from catalog import normalized
+        from catalog import normalized, encoded
         def wording(text):
             return ''.join(c for c in normalized(text) if unicodedata.category(c)[0] in ('L','N','M'))
         def grams(text):
@@ -262,10 +263,30 @@ class Memories:
             sources={(e['kind'],e['id']) for e in current['evidence']}
             where="c.state='confirmed' AND c.id!=? AND coalesce(l.archived,0)=0"
             joins=" FROM candidates c LEFT JOIN library_items l ON l.kind='memory' AND l.id=c.id "
-            total=self.db.execute('SELECT count(*)'+joins+'WHERE '+where,(cid,)).fetchone()[0]
-            rows=self.db.execute('SELECT c.*'+joins+'WHERE '+where+' ORDER BY c.updated_at DESC,c.id DESC LIMIT 500',(cid,)).fetchall()
+            # Check membership and revisions without loading all evidence/text. A changed
+            # set invalidates continuation, including edits to an already scanned page.
+            digest=hashlib.sha256(json.dumps([self.s.setting('nodeID'),cid,current['memoryRevision']]).encode())
+            total=0
+            for item in self.db.execute('SELECT c.id,c.updated_at,coalesce(d.revision,0)'+joins+
+                    'LEFT JOIN memory_details d ON d.id=c.id WHERE '+where+' ORDER BY c.updated_at DESC,c.id DESC',(cid,)):
+                digest.update(json.dumps(tuple(item),separators=(',',':')).encode());total+=1
+            snapshot=digest.hexdigest();offset=0
+            if cursor is not None:
+                try:
+                    if not isinstance(cursor,str) or not 0<len(cursor)<=512:raise ValueError()
+                    decoded=json.loads(base64.b64decode(cursor+'='*(-len(cursor)%4),altchars=b'-_',validate=True))
+                    if (not isinstance(decoded,list) or len(decoded)!=3 or decoded[0]!=1 or
+                        not isinstance(decoded[1],str) or len(decoded[1])!=64 or
+                        type(decoded[2]) is not int or decoded[2]<=0 or decoded[2]%500):raise ValueError()
+                except (ValueError,TypeError,UnicodeError):
+                    self.error(400,'记忆查找进度无效，请重新查找。')
+                if decoded[1]!=snapshot or decoded[2]>=total:
+                    self.error(409,'记忆已变化，请重新查找相关记忆。')
+                offset=decoded[2]
+            rows=self.db.execute('SELECT c.*'+joins+'WHERE '+where+
+                ' ORDER BY c.updated_at DESC,c.id DESC LIMIT 500 OFFSET ?',(cid,offset)).fetchall()
             matches=[]
-            for other in rows:
+            for index,other in enumerate(rows,offset):
                 value=self.data(other);other_text=wording(value['text']);other_tokens=grams(other_text)
                 shared=bool(sources & {(e['kind'],e['id']) for e in value['evidence']})
                 exact=len(text)>=4 and text==other_text
@@ -275,10 +296,14 @@ class Memories:
                 if not (shared or exact or similar):continue
                 reasons=(['sameWording'] if exact else ['similarWording'] if similar else [])+(['sharedSource'] if shared else [])
                 matches.append(((exact,shared,similarity),{'id':value['id'],'text':value['text'],
-                    'memoryRevision':value['memoryRevision'],'reasons':reasons}))
+                    'memoryRevision':value['memoryRevision'],'reasons':reasons,
+                    'rank':[int(exact),int(shared),similarity],'scanIndex':index}))
             matches.sort(key=lambda item:item[0],reverse=True)
+            scanned=offset+len(rows)
             return {'items':[value for _,value in matches[:5]],'checkedCount':len(rows),'totalCount':total,
-                    'truncated':total>len(rows),'memoryRevision':current['memoryRevision']}
+                    'truncated':total>scanned,'memoryRevision':current['memoryRevision'],
+                    'scannedCount':scanned,'snapshot':snapshot,
+                    'nextCursor':encoded([1,snapshot,scanned]) if scanned<total else None}
 
     def resolve(self, cid, values):
         """An explicit human decision commits both states, history and receipt together."""
