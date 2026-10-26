@@ -71,6 +71,7 @@ struct NodeStatus: Codable, Sendable {
     var answerConfigured: Bool?
     var transcriptionConfigured: Bool?
     var archiveCopySupported: Bool?
+    var recordingIdentitySupported: Bool?
     var memoryDelivery: MemoryFileDelivery?
     var outputIssue: String?
     let conflicts: [NodeConflict]
@@ -167,6 +168,16 @@ final class NodeWorkspaceStore: ObservableObject {
         do {
             let status = try await client.read("v1/status", as: NodeStatus.self)
             guard revision == configurationRevision else { return }
+            if let previous = self.status, previous.nodeID != status.nodeID {
+                configurationRevision = UUID(); loading = false; connected = false
+                for url in audioCache.values { try? FileManager.default.removeItem(at: url) }
+                audioCache = [:]; playback.stop()
+                records = []; days = []; candidates = []; overview = nil; libraryRevision = UUID()
+                self.status = status
+                NotificationCenter.default.post(name: .nodeReceiverChanged, object: endpoint)
+                Task { await self.refresh() }
+                return
+            }
             self.status = status
             if let issue = status.outputIssue {
                 connected = false; problem = L(issue)

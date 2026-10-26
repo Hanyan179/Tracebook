@@ -10,6 +10,7 @@ import re
 import secrets
 import shutil
 import sqlite3
+import stat
 import threading
 import time
 import uuid
@@ -358,13 +359,47 @@ class Store:
         validate_manifest(manifest,rid)
         return manifest
 
-    def receipt(self, rid):
+    def receipt(self, rid, verify_files=False):
         with self.lock:
             row = self.db.execute('SELECT checksum,manifest FROM recordings WHERE id=?', (canonical_id(rid),)).fetchone()
             if not row:
                 raise StoreError(404, '找不到这条录音。')
+            manifest=json.loads(row['manifest'])
+            if verify_files:
+                # A receipt recheck must not confuse a database row with durable files.
+                rid=canonical_id(rid);folder=self.recordings/rid
+                try:
+                    directory=os.open(folder,os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+                    try:
+                        fd=os.open('manifest.json',os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory)
+                        with os.fdopen(fd,'rb') as stream:
+                            metadata=os.fstat(stream.fileno())
+                            if not stat.S_ISREG(metadata.st_mode):raise ValueError()
+                            raw=stream.read(256*1024+1)
+                        if len(raw)>256*1024 or json.loads(raw)!=manifest:raise ValueError()
+                        fd=os.open(rid+'.caf',os.O_RDONLY|os.O_NOFOLLOW|os.O_NONBLOCK,dir_fd=directory)
+                        with os.fdopen(fd,'rb') as stream:
+                            before=os.fstat(stream.fileno())
+                            if not stat.S_ISREG(before.st_mode) or before.st_size!=manifest['recording']['byteCount']:raise ValueError()
+                            checksum=hashlib.sha256()
+                            remaining=before.st_size
+                            while remaining:
+                                block=stream.read(min(remaining,1024*1024))
+                                if not block:raise ValueError()
+                                checksum.update(block);remaining-=len(block)
+                            after=os.fstat(stream.fileno())
+                            if (before.st_size,before.st_mtime_ns,before.st_ctime_ns)!=(after.st_size,after.st_mtime_ns,after.st_ctime_ns) or checksum.hexdigest()!=row['checksum']:raise ValueError()
+                            current=os.stat(rid+'.caf',dir_fd=directory,follow_symlinks=False)
+                            if (current.st_dev,current.st_ino,current.st_size,current.st_mtime_ns)!=(after.st_dev,after.st_ino,after.st_size,after.st_mtime_ns):raise ValueError()
+                        current=os.stat('manifest.json',dir_fd=directory,follow_symlinks=False)
+                        if (current.st_dev,current.st_ino,current.st_size,current.st_mtime_ns,current.st_ctime_ns)!=(metadata.st_dev,metadata.st_ino,metadata.st_size,metadata.st_mtime_ns,metadata.st_ctime_ns):raise ValueError()
+                        actual=os.stat(folder,follow_symlinks=False);opened=os.fstat(directory)
+                        if (actual.st_dev,actual.st_ino)!=(opened.st_dev,opened.st_ino):raise ValueError()
+                    finally:os.close(directory)
+                except (OSError,ValueError,UnicodeError):
+                    raise StoreError(409,'电脑上的接收文件缺失或已变化，暂不能确认接收；请在电脑检查，发送设备的原音仍保留。')
             return {'recordingID': canonical_id(rid), 'audioSHA256': row['checksum'], 'nodeID': self.setting('nodeID'), 'durable': True,
-                    'markersSHA256':markers_checksum(json.loads(row['manifest'])['recording'])}
+                    'markersSHA256':markers_checksum(manifest['recording'])}
 
     def manifest(self, rid):
         row = self.db.execute('SELECT manifest FROM recordings WHERE id=?', (canonical_id(rid),)).fetchone()
@@ -617,6 +652,7 @@ class Store:
                     'summaryMode': 'sourceDraft', 'conflicts': conflicts,
                     'memoryDelivery': self.memories.delivery_status(),
                     'archiveCopySupported':True,
+                    'recordingIdentitySupported':True,
                     'analysisConfigured':hasattr(self,'analysis') and self.analysis.configuration is not None,
                     'answerConfigured':self.answers.configuration is not None}
 

@@ -2536,3 +2536,33 @@
 "已标记 %d · %@" = "%d marked · %@";
 
 "重点标记尚未保存，原音仍保留。请检查设备空间后重试。" = "The marker was not saved. Your audio is preserved. Check device storage and retry.";
+
+"接收资料库已变化，请在同步页核对后继续。原音仍保留在这台设备。" = "The receiving library changed. Review it in Sync before continuing. Original audio remains on this device.";
+
+"电脑上的接收文件缺失或已变化，暂不能确认接收；请在电脑检查，发送设备的原音仍保留。" = "Received files on the computer are missing or changed. Check them on the computer; original audio remains on the sending device.";
+
+"接收资料库记录无法读取，原音仍保留。请恢复本机连接记录后重试。" = "The saved receiving-library record cannot be read. Restore the local connection record and retry. Original audio is kept.";
+
+"请先更新电脑端以核对接收资料库；原音仍保留在这台设备。" = "Update the computer app to verify its receiving library. Original audio remains on this device.";
+
+"接收资料库待核对" = "Review receiving library";
+
+"接收状态待核对" = "Receipt needs verification";
+
+"正在核对接收" = "Verifying receipt";
+
+"接收文件待检查" = "Check received files";
+
+"核对接收资料库" = "Review receiving library";
+
+"电脑的资料库身份尚未确认，已暂停发送。请核对保存位置；继续后会核验已有录音，并补传缺失的原音。" = "Sending is paused until the library is verified. Check its location. Continuing will verify existing recordings and send missing audio.";
+
+"接收位置与编号" = "Location and library ID";
+
+"资料库编号 %@" = "Library ID: %@";
+
+"核对并使用此资料库" = "Use this library";
+
+"本机原音与原资料库中的副本都会保留。" = "Original audio on this device and copies in the previous library are kept.";
+
+"使用此资料库" = "Use this library";

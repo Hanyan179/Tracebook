@@ -29,10 +29,14 @@ struct PhoneSyncScreen: View {
                     else if route == SyncRoute.direct.rawValue {
                         SurfaceCard {
                             VStack(alignment: .leading, spacing: 18) {
+                                if sync.receiverReview != nil {
+                                    ReceiverReviewView(sync: sync)
+                                } else {
                                 Image(systemName: "laptopcomputer.and.iphone").font(.title2)
                                 Text("电脑在身边时").font(.title3.weight(.semibold))
                                 Text("同一网络下直接传输。离开这个网络后，原音留在手机等待重连。")
                                     .font(.subheadline).foregroundStyle(AppPalette.muted)
+                                }
                                 NavigationLink("设置电脑连接") { NodeConnectionView(store: workspace) }
                                     .font(.subheadline.weight(.semibold))
                                 if workspace.configured {

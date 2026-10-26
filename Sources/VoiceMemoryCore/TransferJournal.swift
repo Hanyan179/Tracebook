@@ -13,6 +13,8 @@ public struct TransferJob: Codable, Identifiable, Sendable {
     public var nextAttemptAt: Date?
     public var audioSHA256: String?
     public var markersSHA256: String?
+    /// Direct uploads bind receipts to the selected library, not only its address.
+    public var receiverNodeID: String?
     public var message: String?
     public var updatedAt: Date = .now
     public var id: String {
@@ -30,6 +32,9 @@ public struct TransferJob: Codable, Identifiable, Sendable {
         nextAttemptAt = now.addingTimeInterval(min(600, pow(2, Double(min(attempts, 8))) * 3))
     }
     public mutating func acknowledge(_ receipt: TransferReceipt) throws {
+        if let receiverNodeID, receipt.nodeID != receiverNodeID {
+            throw RecordingIngress.IngressError.receiverChanged
+        }
         guard receipt.durable, receipt.recordingID == recordingID,
               let audioSHA256, receipt.audioSHA256 == audioSHA256 else {
             throw RecordingIngress.IngressError.checksum

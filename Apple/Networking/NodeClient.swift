@@ -92,19 +92,35 @@ struct NodeClient: Sendable {
         try Self.validate(data, response)
         return data
     }
-    func uploadRequest(_ output: RecordingExport) async throws -> URLRequest {
+    func recordingReceipt(_ id: UUID, receiver: String) async throws -> TransferReceipt {
+        var req = request("v1/recordings/\(id.uuidString)/receipt")
+        req.setValue(receiver, forHTTPHeaderField: "X-Recording-Node-ID")
+        let (data, response) = try await URLSession.shared.data(for: req)
+        try Self.validate(data, response)
+        return try JSONDecoder().decode(TransferReceipt.self, from: data)
+    }
+    func uploadRequest(_ output: RecordingExport, receiver: String) async throws -> URLRequest {
         let data = try Data(contentsOf: output.manifestURL)
         let decoder = JSONDecoder(); decoder.dateDecodingStrategy = .iso8601
         let manifest = try decoder.decode(RecordingExportManifest.self, from: data)
         var req = request("v1/recordings/\(manifest.recording.id.uuidString)", method: "PUT")
+        req.setValue(receiver, forHTTPHeaderField: "X-Recording-Node-ID")
         if manifest.schemaVersion == 2 || data.base64EncodedString().count > 24000 {
             struct Prepared: Decodable { let manifestID: String; let nodeID: String }
             let response: Data
-            do { response = try await sendData("v1/recordings/\(manifest.recording.id.uuidString)/prepare", method: "POST", body: data) }
+            do {
+                var prepare = request("v1/recordings/\(manifest.recording.id.uuidString)/prepare", method: "POST")
+                prepare.setValue(receiver, forHTTPHeaderField: "X-Recording-Node-ID")
+                prepare.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                prepare.httpBody = data
+                let (body, reply) = try await URLSession.shared.data(for: prepare)
+                try Self.validate(body, reply); response = body
+            }
             catch let error as NodeFailure where error.statusCode == 404 || error.statusCode == 405 {
                 throw NodeFailure(message: "接收端尚不支持这份录音信息，请更新接收端后重试；原音与标记仍保留。")
             }
             let prepared = try JSONDecoder().decode(Prepared.self, from: response)
+            guard prepared.nodeID == receiver else { throw RecordingIngress.IngressError.receiverChanged }
             guard prepared.manifestID.count == 64, prepared.manifestID.allSatisfy({ $0.isHexDigit }) else {
                 throw NodeFailure(message: "录音上传准备信息不正确。")
             }
@@ -116,8 +132,8 @@ struct NodeClient: Sendable {
         req.timeoutInterval = 3600
         return req
     }
-    func upload(_ output: RecordingExport) async throws -> TransferReceipt {
-        let request = try await uploadRequest(output)
+    func upload(_ output: RecordingExport, receiver: String) async throws -> TransferReceipt {
+        let request = try await uploadRequest(output, receiver: receiver)
         let (data, response) = try await URLSession.shared.upload(for: request, fromFile: output.audioURL)
         try Self.validate(data, response)
         return try JSONDecoder().decode(TransferReceipt.self, from: data)
@@ -147,4 +163,5 @@ struct NodeClient: Sendable {
 extension Notification.Name {
     static let nodeConfigurationChanged = Notification.Name("VoiceMemory.nodeConfigurationChanged")
     static let nodeConnectionRestored = Notification.Name("VoiceMemory.nodeConnectionRestored")
+    static let nodeReceiverChanged = Notification.Name("VoiceMemory.nodeReceiverChanged")
 }

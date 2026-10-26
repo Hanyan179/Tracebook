@@ -1,4 +1,41 @@
 import SwiftUI
+
+struct ReceiverReviewView: View {
+    @ObservedObject var sync: NodeSyncController
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        if let receiver = sync.receiverReview {
+            VStack(alignment: .leading, spacing: 12) {
+                Label("核对接收资料库", systemImage: "externaldrive.badge.questionmark").font(.headline)
+                Text("电脑的资料库身份尚未确认，已暂停发送。请核对保存位置；继续后会核验已有录音，并补传缺失的原音。")
+                    .font(.subheadline).fixedSize(horizontal: false, vertical: true)
+                Text(verbatim: URL(fileURLWithPath: receiver.outputDirectory).deletingLastPathComponent().lastPathComponent
+                     + " / " + URL(fileURLWithPath: receiver.outputDirectory).lastPathComponent)
+                    .font(.subheadline.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
+                DisclosureGroup("接收位置与编号") {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(verbatim: receiver.outputDirectory)
+                        Text(verbatim: receiver.endpoint)
+                        Text(LF("资料库编号 %@", receiver.nodeID))
+                    }.font(.caption).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                }
+                Button { Task { await sync.approveReceiver(receiver) } } label: {
+                    Text("使用此资料库").padding(.horizontal, 16).padding(.vertical, 8)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .foregroundStyle(AppPalette.actionText(scheme))
+                        .background(AppPalette.actionFill(scheme), in: RoundedRectangle(cornerRadius: 14))
+                }
+                    .buttonStyle(.plain).frame(maxWidth: 320).disabled(sync.checkingReceiver)
+                    .opacity(sync.checkingReceiver ? 0.55 : 1)
+                    .accessibilityLabel("核对并使用此资料库")
+                    .accessibilityIdentifier("sync.receiver.approve")
+                Text("本机原音与原资料库中的副本都会保留。")
+                    .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
 import CryptoKit
 #if os(macOS)
 import AppKit

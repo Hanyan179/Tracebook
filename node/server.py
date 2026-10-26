@@ -97,6 +97,11 @@ class Handler(BaseHTTPRequestHandler):
         if not hmac.compare_digest(authorization, 'Bearer ' + self.server.token):
             self.close_connection = True
             raise StoreError(401, '连接口令不正确。')
+        if parts[:2] == ['v1','recordings']:
+            receiver = self.headers.get('X-Recording-Node-ID')
+            if receiver is not None and receiver != store.setting('nodeID'):
+                self.close_connection = True  # Do not parse a body meant for another library.
+                raise StoreError(409,'接收资料库已变化，请在同步页核对后继续。原音仍保留在这台设备。')
         if parts[:2] == ['v1','local-sources']:
             if not ipaddress.ip_address(self.client_address[0]).is_loopback:
                 raise StoreError(403,'请在资料库所在电脑管理本地来源。')
@@ -377,7 +382,7 @@ class Handler(BaseHTTPRequestHandler):
             if len(parts) == 3 and self.command == 'PUT':
                 return self.receive_audio(rid)
             if len(parts) == 4 and parts[3] == 'receipt' and self.command == 'GET':
-                return self.send_json(200, store.receipt(rid))
+                return self.send_json(200, store.receipt(rid, verify_files=self.headers.get('X-Recording-Node-ID') is not None))
             if len(parts) == 4 and parts[3] == 'audio' and self.command == 'GET':
                 p = store.audio_path(rid)
                 self.send_response(200)

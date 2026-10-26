@@ -67,13 +67,14 @@ public enum RecordingIngress {
     }
 
     public enum IngressError: Error, LocalizedError {
-        case invalidManifest, checksum, conflict, markerConflict
+        case invalidManifest, checksum, conflict, markerConflict, receiverChanged
         public var errorDescription: String? {
             switch self {
             case .invalidManifest: "收到的录音信息不完整，原音仍保留在发送设备。"
             case .checksum: "音频校验未通过，等待重新传输。"
             case .conflict: "相同编号对应不同音频，原有录音没有被覆盖。"
             case .markerConflict: "接收方的重点标记不一致或尚未确认，原音与标记仍保留在发送设备。"
+            case .receiverChanged: "接收资料库已变化，请在同步页核对后继续。原音仍保留在这台设备。"
             }
         }
     }
