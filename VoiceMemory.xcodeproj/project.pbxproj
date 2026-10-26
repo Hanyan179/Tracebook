@@ -175,6 +175,12 @@
 			"path" = "Apple/Mac/LocalNodeController.swift";
 			"sourceTree" = "SOURCE_ROOT";
 		};
+		"F61A3F710E10488FB2A6D866" = {
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"path" = "Apple/Mac/LocalSourceIssuesView.swift";
+			"sourceTree" = "SOURCE_ROOT";
+		};
 		"0FBF0B6A49DC2742F3CE1443" = {
 			"isa" = "PBXFileReference";
 			"lastKnownFileType" = "sourcecode.swift";
@@ -1438,6 +1444,10 @@
 			"isa" = "PBXBuildFile";
 			"fileRef" = "86007B4F04BC8C13787A7875";
 		};
+		"D784B46D34A4DABC7865869E" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "F61A3F710E10488FB2A6D866";
+		};
 		"B9534CD409040BF5996F2BFD" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "0FBF0B6A49DC2742F3CE1443";
@@ -1779,6 +1789,7 @@
 				"414FB9C603ED408C5B39710A",
 				"119CB3584450BBA10FD59152",
 				"447ABBDD68701B2197140FDC",
+				"D784B46D34A4DABC7865869E",
 				"B9534CD409040BF5996F2BFD",
 				"4425F35CECED2BD0D736A38C",
 				"AA27A81FE05D121F4FA3AF13",
@@ -2193,6 +2204,7 @@
 				"EEBCD34C50040AA17662972A",
 				"F1B27260CB06CDE05790079C",
 				"F37D03F30ADD8BEE281C5886",
+				"F61A3F710E10488FB2A6D866",
 				"F83818AC070D95DE8177180D",
 				"F96EA3F77652D32C12371A24",
 				"FA131A6380B6279245B6A25B",

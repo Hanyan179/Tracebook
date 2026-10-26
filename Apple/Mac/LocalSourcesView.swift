@@ -593,6 +593,7 @@ private struct LocalSourceCoverageView: View {
     @State private var retrying: String?
     @State private var problem: String?
     @State private var result: String?
+    @State private var issueFile: LocalSourceFile?
     private var path: String { "v1/local-sources/" + source.id }
     private struct Page: Decodable, Sendable {
         let items: [LocalSourceFile]
@@ -600,6 +601,7 @@ private struct LocalSourceCoverageView: View {
         let nextOffset: Int?
         let summary: LocalSourceSummary
         let importActive: Bool
+        let issuePositionsSupported: Bool?
     }
     var body: some View {
         NavigationStack {
@@ -648,6 +650,14 @@ private struct LocalSourceCoverageView: View {
                             if file.issues.malformed > 0 { Text(LF("%d 条记录格式不完整或无法解析。", file.issues.malformed)) }
                             if file.issues.invalidDates > 0 { Text(LF("%d 条本人输入缺少有效时间，未推测归档日期。", file.issues.invalidDates)) }
                             if file.issues.other > 0 { Text(LF("%d 条记录未被识别，或旧扫描未区分原因。", file.issues.other)) }
+                            if file.issues.oversized + file.issues.malformed + file.issues.invalidDates + file.issues.other > 0 {
+                                Button("查看跳过记录的位置") { issueFile = file }
+                                    .disabled(page?.issuePositionsSupported != true)
+                                    .accessibilityLabel(L("查看跳过记录的位置") + " · " + file.path)
+                                if page?.issuePositionsSupported != true {
+                                    Text("当前节点不支持记录位置，请更新电脑应用。").font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
                             Text(byteProgress(file)).font(.caption).foregroundStyle(.secondary)
                             HStack(spacing: 10) {
                                 Button("重新检查此文件") { retry(file) }
@@ -663,6 +673,9 @@ private struct LocalSourceCoverageView: View {
                     Section { Button("加载更多") { Task { await load(offset: next) } }.disabled(loading || retrying != nil) }
                 }
             }.formStyle(.grouped)
+                .sheet(item: $issueFile) { file in
+                    LocalSourceIssuesView(workspace: workspace, sourceID: source.id, filePath: file.path).appLanguage()
+                }
                 .navigationTitle(L("扫描详情"))
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) { Button("关闭") { dismiss() }.disabled(retrying != nil) }

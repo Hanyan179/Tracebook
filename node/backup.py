@@ -22,14 +22,14 @@ from zoneinfo import ZoneInfo
 from document_originals import OriginalError, original_metadata, original_name, original_directory
 
 FORMAT = 'tracebook-library-backup'
-VERSION = 3
+VERSION = 4
 MAX_FILES = 100000
 MAX_TOTAL = 256 * 1024 ** 3
 MAX_MANIFEST = 16 * 1024 ** 2
 MAX_ROW = 32 * 1024 ** 2
 TABLES = (
     'settings', 'recordings', 'notes', 'candidates', 'exports', 'documents', 'document_locations',
-    'local_sources', 'local_source_files', 'local_inputs', 'local_source_jobs',
+    'local_sources', 'local_source_files', 'local_inputs', 'local_source_jobs', 'local_source_issues',
     'memory_details', 'memory_versions', 'memory_operations', 'memory_relations', 'memory_delivery',
     'memory_file_operations', 'import_batches', 'note_origins', 'conversations', 'conversation_turns',
     'library_categories', 'library_items', 'library_tags', 'daily_analysis', 'memory_extractions',
@@ -299,12 +299,13 @@ def inspect_backup(file, scratch, expected_hash=None, progress=lambda _:None):
         require('manifest.json' in by_name and by_name['manifest.json'].file_size<=MAX_MANIFEST, '找不到有效的备份清单。')
         manifest=parse_json(archive.read('manifest.json'))
         require(isinstance(manifest,dict) and manifest.get('format')==FORMAT
-                and type(manifest.get('version')) is int and manifest['version'] in (1, 2, VERSION),
+                and type(manifest.get('version')) is int and manifest['version'] in (1, 2, 3, VERSION),
                 '这不是当前版本支持的迹库备份。')
         require(str(uuid.UUID(manifest.get('id',''))).upper()==manifest['id']
                 and dt.datetime.fromisoformat(manifest.get('createdAt','').replace('Z','+00:00')).tzinfo is not None,
                 '备份编号或时间无效。')
-        tables = TABLES if manifest['version'] >= 3 else tuple(t for t in TABLES if t != 'memory_reviews')
+        tables = tuple(t for t in TABLES if (t != 'memory_reviews' or manifest['version'] >= 3)
+                       and (t != 'local_source_issues' or manifest['version'] >= 4))
         require(isinstance(manifest.get('files'),list) and isinstance(manifest.get('tables'),dict)
                 and set(manifest['tables'])==set(tables), '备份资料结构不完整。')
         require({name for name in by_name if name.startswith('tables/')} == {'tables/'+table+'.jsonl' for table in tables},
@@ -356,6 +357,8 @@ def inspect_backup(file, scratch, expected_hash=None, progress=lambda _:None):
             'bytes':total,'recordings':manifest['tables']['recordings']['rows'],'documents':manifest['tables']['documents']['rows'],
             'notes':manifest['tables']['notes']['rows'],'memories':manifest['tables']['candidates']['rows'],
             'modelReviews':manifest['tables'].get('memory_reviews',{}).get('rows',0),
+            'localInputs':manifest['tables']['local_inputs']['rows'],
+            'sourceIssuePositions':manifest['tables'].get('local_source_issues',{}).get('rows',0),
             'externalDocumentCount':manifest.get('externalDocumentCount',0),'originalDocuments':len(originals),
             'modifiedOriginalDocuments':modified_originals,
             'includesCredentials':False,'encrypted':False}
@@ -473,7 +476,7 @@ def restore_backup(file, destination, expected_hash, scratch, progress=lambda _:
                 with store.db:
                     for table in TABLES:store.db.execute('DELETE FROM '+table)
                     for table in TABLES:
-                        if table not in manifest['tables']:continue  # Known pre-v3 backups have no model comparisons.
+                        if table not in manifest['tables']:continue  # Known older formats have no comparison or scan-position table.
                         columns=expected[table];count=0
                         sql='INSERT INTO '+table+' ('+','.join(columns)+') VALUES ('+','.join('?' for _ in columns)+')'
                         for row in read_table(archive,table,columns):

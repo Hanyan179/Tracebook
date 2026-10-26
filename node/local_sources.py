@@ -14,6 +14,7 @@ from compressed_io import SourceReaders, SOURCE_ERRORS, logical_size, pyzstd
 
 NAMESPACE = uuid.UUID('ba66e4b3-5f85-482b-9cf5-649ff5abe7a5')
 SCAN_BYTES = 32 * 1024 * 1024
+SCAN_ISSUES = 1000
 LINE_BYTES = 2 * 1024 * 1024
 MAX_FILES = 4000
 MAX_INPUT = 160000
@@ -83,6 +84,11 @@ class LocalSources:
                 config TEXT NOT NULL DEFAULT '{}',revision INTEGER NOT NULL DEFAULT 0);
             CREATE TABLE IF NOT EXISTS local_source_files(
                 source_id TEXT NOT NULL,path TEXT NOT NULL,state TEXT NOT NULL,PRIMARY KEY(source_id,path));
+            CREATE TABLE IF NOT EXISTS local_source_issues(
+                source_id TEXT NOT NULL,path TEXT NOT NULL,byte_offset INTEGER NOT NULL CHECK(byte_offset>=0),
+                line_number INTEGER CHECK(line_number IS NULL OR line_number>0),
+                reason TEXT NOT NULL CHECK(reason IN ('recordTooLarge','inputTooLarge','invalidJSON','invalidDate','invalidReply')),
+                PRIMARY KEY(source_id,path,byte_offset));
             CREATE TABLE IF NOT EXISTS local_inputs(
                 id TEXT PRIMARY KEY,source_id TEXT NOT NULL,session_id TEXT NOT NULL,message_id TEXT NOT NULL,
                 timestamp TEXT NOT NULL,day TEXT NOT NULL,text TEXT NOT NULL,source_path TEXT NOT NULL,
@@ -182,7 +188,7 @@ class LocalSources:
                     # Returning the first N names here permanently hid later files.
         return sorted(found, key=lambda item: item[1].st_mtime_ns, reverse=True), limited
 
-    def event(self, provider, record, state, relative, source_id):
+    def event(self, provider, record, state, relative, source_id, issue=None):
         if not isinstance(record, dict):
             return None
         payload = record.get('payload') if isinstance(record.get('payload'), dict) else {}
@@ -238,6 +244,7 @@ class LocalSources:
         if len(text) > MAX_INPUT:
             state['skipped'] += 1
             state['oversized'] = state.get('oversized', 0)+1
+            if issue:issue('inputTooLarge')
             return None
         try:
             parsed = dt.datetime.fromisoformat(moment.replace('Z', '+00:00'))
@@ -245,6 +252,7 @@ class LocalSources:
                 raise ValueError()
         except (ValueError, TypeError, AttributeError):
             state['invalidDates'] += 1
+            if issue:issue('invalidDate')
             return None
         # Retain only the actual answer from a structured user reply, not its transport wrapper.
         if text.strip().startswith('<send_user_message_question_reply>'):
@@ -253,6 +261,7 @@ class LocalSources:
                 text = '\n\n'.join('提问：'+str(x.get('question', ''))+'\n本人回答：'+str(x['answer']) for x in replies if isinstance(x, dict) and 'answer' in x)
             except (ValueError, TypeError):
                 state['skipped'] += 1
+                if issue:issue('invalidReply')
                 return None
         text, hidden = redact(text.strip())
         timestamp = parsed.astimezone(dt.timezone.utc).isoformat()
@@ -285,10 +294,13 @@ class LocalSources:
         files.sort(key=lambda pair: (max(0, old.get(pair[0], {}).get('size', pair[1].st_size)-old.get(pair[0], {}).get('offset', 0)) > SCAN_BYTES,
                                      -pair[1].st_mtime_ns))
         budget = SCAN_BYTES
+        issue_budget = SCAN_ISSUES
         visited = 0
         messages = {}
         states = dict(old) if retry_path is not None else {}
         checks = {}
+        issue_positions = {}
+        reset_issue_paths = set()
         for relative, info in files:
             state = dict(old.get(relative, {}))
             if retry_path is not None and self.file_complete(state):
@@ -305,8 +317,11 @@ class LocalSources:
                 state.get('offset', 0) > info.st_size or
                 (state.get('size') == info.st_size and state.get('mtime') != info.st_mtime_ns) or rewritten)):
                 state = {'offset': 0, 'discarding': False, 'session': sha(relative)[:32],
-                         'skipped': 0, 'malformed': 0, 'invalidDates': 0}
+                         'skipped': 0, 'malformed': 0, 'invalidDates': 0, 'nextLine': 1}
+                reset_issue_paths.add(relative)
                 self.readers.discard(root/relative)
+            if state.get('offset',0) == 0 and not state.get('discarding'):
+                state.setdefault('nextLine',1)
             state.update({'identity': identity, 'storedSize': info.st_size, 'mtime': info.st_mtime_ns, 'compressed': compressed})
             try:
                 size = (None if state.get('unknownSize') else state['size']) if compressed and 'size' in state else logical_size(root/relative, info)
@@ -317,7 +332,7 @@ class LocalSources:
                 states[relative] = state
                 continue
             done = state.get('eof', False) if compressed else state['offset'] >= state['size']
-            if budget <= 0 or done or visited >= MAX_FILES:
+            if budget <= 0 or issue_budget <= 0 or done or visited >= MAX_FILES:
                 limited = limited or (visited >= MAX_FILES and not done)
                 states[relative] = state
                 continue
@@ -327,6 +342,7 @@ class LocalSources:
             close_stream = False
             before_read = dict(state)
             file_events = {}
+            file_issues = []
             try:
                 if root not in path.resolve().parents:
                     raise OSError()
@@ -336,8 +352,13 @@ class LocalSources:
                     state.pop('awaitingTail', None)
                     read_start = state['offset']
                     digest = hashlib.sha256()
-                    while budget > 0:
+                    while budget > 0 and issue_budget > 0:
                         start = stream.tell()
+                        line_number = state.get('nextLine')
+                        def issue(reason):
+                            nonlocal issue_budget
+                            file_issues.append({'offset':start,'line':line_number,'reason':reason})
+                            issue_budget -= 1
                         # Finish this bounded line even at a batch boundary. A
                         # compressed stream must not replay its prefix per batch.
                         line = stream.readline(LINE_BYTES+1)
@@ -351,13 +372,16 @@ class LocalSources:
                             digest.update(line)
                             state['offset'] = stream.tell()
                             state['discarding'] = not line.endswith(b'\n')
+                            if line_number is not None and line.endswith(b'\n'):state['nextLine'] += 1
                             continue
                         if len(line) > LINE_BYTES:
                             digest.update(line)
                             state['skipped'] += 1
                             state['oversized'] = state.get('oversized', 0)+1
+                            issue('recordTooLarge')
                             state['offset'] = stream.tell()
                             state['discarding'] = not line.endswith(b'\n')
+                            if line_number is not None and line.endswith(b'\n'):state['nextLine'] += 1
                             continue
                         try:
                             value = json.loads(line)
@@ -369,12 +393,15 @@ class LocalSources:
                                 break
                             if line.strip():
                                 state['malformed'] += 1
+                                issue('invalidJSON')
                             digest.update(line)
                             state['offset'] = stream.tell()
+                            if line_number is not None and line.endswith(b'\n'):state['nextLine'] += 1
                             continue
                         state['offset'] = stream.tell()
+                        if line_number is not None and line.endswith(b'\n'):state['nextLine'] += 1
                         digest.update(line)
-                        event = self.event(provider, value, state, relative, source_id)
+                        event = self.event(provider, value, state, relative, source_id, issue)
                         if event:
                             file_events[event['id']] = event
                     read_end = state['offset']
@@ -385,6 +412,7 @@ class LocalSources:
                         self.readers.discard(path)
                     for key, event in file_events.items():
                         messages.setdefault(key, event)
+                    issue_positions[relative] = file_issues
             except SOURCE_ERRORS:
                 state = before_read
                 state['unreadable'] = True
@@ -421,6 +449,7 @@ class LocalSources:
                 'removedPaths': sorted(set(old)-set(states)),
                 'events': clean, 'summary': summary, 'added': added, 'updated': updated,
                 'checks': checks, 'baseRevision': base_revision, 'automatic': automatic,
+                'issuePositions': issue_positions, 'resetIssuePaths': sorted(reset_issue_paths),
                 'config': self.config_summary(provider, root),
                 'samples': [{'text': i['text'][:240], 'timestamp': i['timestamp']} for i in clean[:5]]}
 
@@ -526,12 +555,18 @@ class LocalSources:
                         VALUES (?,?,?,?,?,?,?,?,?,?,?)''', tuple(item[k] for k in ['id','source_id','session_id','message_id','timestamp','day','text','source_path','format','signature','redacted']))
                 self.s.catalog.index_input(item['id'])
             with self.s.db:
+                for relative in batch.get('resetIssuePaths', []):
+                    self.s.db.execute('DELETE FROM local_source_issues WHERE source_id=? AND path=?', (batch['sourceID'], relative))
+                for relative, issues in batch.get('issuePositions', {}).items():
+                    self.s.db.executemany('INSERT OR REPLACE INTO local_source_issues VALUES (?,?,?,?,?)',
+                        [(batch['sourceID'],relative,item['offset'],item['line'],item['reason']) for item in issues])
                 for relative, state in batch['states'].items():
                     self.s.db.execute('INSERT OR REPLACE INTO local_source_files VALUES (?,?,?)', (batch['sourceID'], relative, json.dumps(state)))
                 # Drop obsolete checkpoints only. Archived input files, their original
                 # source paths, and memory evidence survive source-file removal.
                 for relative in batch.get('removedPaths', []):
                     self.s.db.execute('DELETE FROM local_source_files WHERE source_id=? AND path=?', (batch['sourceID'], relative))
+                    self.s.db.execute('DELETE FROM local_source_issues WHERE source_id=? AND path=?', (batch['sourceID'], relative))
                 self.s.db.execute('UPDATE local_sources SET summary=?,revision=revision+1 WHERE id=?', (json.dumps(batch['summary']), batch['sourceID']))
             index = self.s.export('sources/'+batch['provider']+'/'+batch['sourceID']+'/index.json',
                           json.dumps({'provider': batch['provider'], 'statistics': batch['summary'], 'configuration': batch['config'],
@@ -585,6 +620,8 @@ class LocalSources:
         with self.s.lock:
             source = self.s.db.execute('SELECT summary FROM local_sources WHERE id=?', (rid,)).fetchone()
             if source is None:self.error(404, '找不到这个资料来源。')
+            known = {row['path']:row['count'] for row in self.s.db.execute(
+                'SELECT path,count(*) AS count FROM local_source_issues WHERE source_id=? GROUP BY path', (rid,))}
             items = []
             for row in self.s.db.execute('SELECT path,state FROM local_source_files WHERE source_id=? ORDER BY path', (rid,)):
                 state = json.loads(row['state'])
@@ -596,12 +633,40 @@ class LocalSources:
                 if parameters.get('attention', 'true') != 'false' and status == 'complete':continue
                 items.append({'path': row['path'], 'stateVersion': sha(json.dumps(state, sort_keys=True)),
                               'status': status, 'issues': issues, 'processedBytes': state['offset'],
+                              'locatedIssues': known.get(row['path'],0),
+                              'unlocatedIssues': max(0,sum(issues.values())-known.get(row['path'],0)),
                               'totalBytes': None if state.get('unknownSize') else state['size']})
             job = self.job(rid)
             return {'items': items[offset:offset+limit], 'total': len(items),
+                    'issuePositionsSupported': True,
                     'nextOffset': offset+limit if len(items) > offset+limit else None,
                     'summary': json.loads(source['summary']) or self.summarize([], {}),
                     'importActive': bool(job and job['state'] in ('queued', 'running', 'pausing'))}
+
+    def file_issues(self, rid, parameters):
+        """Paginated metadata for the last committed scan, without reading source contents."""
+        path = parameters.get('path')
+        if not isinstance(path,str):self.error(400,'请选择需要核对的会话文件。')
+        try:
+            limit = min(80,max(1,int(parameters.get('limit',40))))
+            after = int(parameters.get('after',-1))
+            if not -1 <= after <= 9223372036854775807:raise ValueError()
+        except (ValueError,TypeError):self.error(400,'读取位置不正确。')
+        with self.s.lock:
+            row = self.s.db.execute('SELECT state FROM local_source_files WHERE source_id=? AND path=?',(rid,path)).fetchone()
+            if row is None:self.error(404,'找不到这份文件的扫描记录。请返回扫描详情刷新。')
+            state=json.loads(row['state']);version=sha(json.dumps(state,sort_keys=True))
+            expected=parameters.get('stateVersion')
+            if (after>=0 and expected is None) or (expected is not None and expected!=version):
+                self.error(409,'扫描记录已更新，请重新读取跳过位置。')
+            total=self.s.db.execute('SELECT count(*) FROM local_source_issues WHERE source_id=? AND path=?',(rid,path)).fetchone()[0]
+            rows=self.s.db.execute('''SELECT byte_offset AS offset,line_number AS line,reason FROM local_source_issues
+                WHERE source_id=? AND path=? AND byte_offset>? ORDER BY byte_offset LIMIT ?''',(rid,path,after,limit+1)).fetchall()
+            skipped=sum(state.get(k,0) for k in ('skipped','malformed','invalidDates'))
+            return {'items':[dict(r) for r in rows[:limit]], 'total':total,
+                    'unlocatedCount':max(0,skipped-total), 'stateVersion':version,
+                    'compressed':bool(state.get('compressed')), 'complete':self.file_complete(state),
+                    'nextAfter':rows[limit-1]['offset'] if len(rows)>limit else None}
 
     def retry_file(self, rid, values):
         path, version = values.get('path'), values.get('stateVersion')

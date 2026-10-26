@@ -229,7 +229,7 @@ class MemoryReviewTests(unittest.TestCase):
             self.assertIsNone(restored.analysis.configuration)
             self.assertEqual(restored.memory_reviews.preview({'pair':values['pair']})['id'],state['id'])
         finally:restored.close()
-        # Known v1/v2 schemas lack only this new table. Other missing tables still fail.
+        # Known older schemas lack comparison and/or source-position tables.
         with zipfile.ZipFile(archive) as z:members={n:z.read(n) for n in z.namelist()}
         mislabeled=dict(members);manifest=json.loads(mislabeled['manifest.json']);manifest['version']=2
         manifest['tables'].pop('memory_reviews');mislabeled['manifest.json']=json.dumps(manifest).encode()
@@ -237,18 +237,22 @@ class MemoryReviewTests(unittest.TestCase):
         with zipfile.ZipFile(invalid,'w') as z:
             for name,raw in mislabeled.items():z.writestr(name,raw)
         with self.assertRaises(BackupError):inspect_backup(invalid,self.root)
-        for version in [1,2]:
+        for version in [1,2,3]:
             legacy=dict(members);manifest=json.loads(legacy['manifest.json']);manifest['version']=version
-            manifest['tables'].pop('memory_reviews');legacy.pop('tables/memory_reviews.jsonl')
-            manifest['files']=[x for x in manifest['files'] if x['path']!='tables/memory_reviews.jsonl']
+            removed=['local_source_issues']+(['memory_reviews'] if version<3 else [])
+            for table in removed:
+                manifest['tables'].pop(table);legacy.pop('tables/'+table+'.jsonl')
+            manifest['files']=[x for x in manifest['files'] if x['path'] not in {'tables/'+t+'.jsonl' for t in removed}]
             legacy['manifest.json']=json.dumps(manifest).encode();file=self.root/('legacy-'+str(version)+'.zip')
             with zipfile.ZipFile(file,'w') as z:
                 for name,raw in legacy.items():z.writestr(name,raw)
-            report=inspect_backup(file,self.root);self.assertEqual(report['modelReviews'],0)
+            report=inspect_backup(file,self.root);self.assertEqual(report['modelReviews'],0 if version<3 else 1)
             destination=self.root/('legacy-'+str(version))
             restore_backup(file,destination,report['archiveSHA256'],self.root)
             reopened=Store(destination)
-            try:self.assertEqual(reopened.db.execute('SELECT count(*) FROM memory_reviews').fetchone()[0],0)
+            try:
+                self.assertEqual(reopened.db.execute('SELECT count(*) FROM memory_reviews').fetchone()[0],0 if version<3 else 1)
+                self.assertEqual(reopened.db.execute('SELECT count(*) FROM local_source_issues').fetchone()[0],0)
             finally:reopened.close()
         self.store=Store(self.root/'node')
 

@@ -15,6 +15,8 @@ struct LibraryBackupReceipt: Decodable, Identifiable, Sendable {
     let notes: Int
     let memories: Int
     let modelReviews: Int?
+    let localInputs: Int?
+    let sourceIssuePositions: Int?
     let originalDocuments: Int?
     let modifiedOriginalDocuments: Int?
     var date: String {
@@ -170,6 +172,12 @@ struct LibraryBackupSection: View {
                                 .font(.footnote).foregroundStyle(.secondary)
                         }
                         backupValue("笔记", String(item.receipt.notes))
+                        if let inputs = item.receipt.localInputs, inputs > 0 {
+                            backupValue("本地输入", String(inputs))
+                        }
+                        if let positions = item.receipt.sourceIssuePositions, positions > 0 {
+                            backupValue("已保存的跳过位置", String(positions))
+                        }
                         backupValue("记忆（含待确认与停用）", String(item.receipt.memories))
                         if let reviews = item.receipt.modelReviews, reviews > 0 {
                             backupValue("模型核对记录", String(reviews))
