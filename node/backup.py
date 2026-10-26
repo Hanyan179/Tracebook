@@ -22,7 +22,7 @@ from zoneinfo import ZoneInfo
 from document_originals import OriginalError, original_metadata, original_name, original_directory
 
 FORMAT = 'tracebook-library-backup'
-VERSION = 5
+VERSION = 6
 MAX_FILES = 100000
 MAX_TOTAL = 256 * 1024 ** 3
 MAX_MANIFEST = 16 * 1024 ** 2
@@ -33,7 +33,7 @@ TABLES = (
     'memory_details', 'memory_versions', 'memory_operations', 'memory_relations', 'memory_delivery',
     'memory_file_operations', 'import_batches', 'note_origins', 'conversations', 'conversation_turns',
     'library_categories', 'library_items', 'library_tags', 'daily_analysis', 'memory_extractions',
-    'memory_batches', 'memory_batch_items', 'answer_jobs', 'speech_jobs', 'speech_parts', 'memory_reviews', 'transcript_reviews',
+    'memory_batches', 'memory_batch_items', 'answer_jobs', 'speech_jobs', 'speech_parts', 'memory_reviews', 'transcript_reviews', 'memory_review_batches',
 )
 SETTINGS = {'nodeID', 'timeZone', 'outputDirectory', 'dailyEnabled', 'dailyTime', 'dailyLastRun',
             'analysisEnabled', 'speechAutomatic', 'speechAfter', 'memoryDeliveryPaused'}
@@ -302,14 +302,15 @@ def inspect_backup(file, scratch, expected_hash=None, progress=lambda _:None):
         require('manifest.json' in by_name and by_name['manifest.json'].file_size<=MAX_MANIFEST, '找不到有效的备份清单。')
         manifest=parse_json(archive.read('manifest.json'))
         require(isinstance(manifest,dict) and manifest.get('format')==FORMAT
-                and type(manifest.get('version')) is int and manifest['version'] in (1, 2, 3, 4, VERSION),
+                and type(manifest.get('version')) is int and manifest['version'] in (1, 2, 3, 4, 5, VERSION),
                 '这不是当前版本支持的迹库备份。')
         require(str(uuid.UUID(manifest.get('id',''))).upper()==manifest['id']
                 and dt.datetime.fromisoformat(manifest.get('createdAt','').replace('Z','+00:00')).tzinfo is not None,
                 '备份编号或时间无效。')
         tables = tuple(t for t in TABLES if (t != 'memory_reviews' or manifest['version'] >= 3)
                        and (t != 'local_source_issues' or manifest['version'] >= 4)
-                       and (t != 'transcript_reviews' or manifest['version'] >= 5))
+                       and (t != 'transcript_reviews' or manifest['version'] >= 5)
+                       and (t != 'memory_review_batches' or manifest['version'] >= 6))
         require(isinstance(manifest.get('files'),list) and isinstance(manifest.get('tables'),dict)
                 and set(manifest['tables'])==set(tables), '备份资料结构不完整。')
         require({name for name in by_name if name.startswith('tables/')} == {'tables/'+table+'.jsonl' for table in tables},
@@ -408,7 +409,7 @@ def mapped_row(table, columns, row, output, directory, old_output):
         value['automatic']=0;value['problem']='从备份恢复后，请重新选择并预览来源目录。'
     if table=='local_source_jobs' and value['state'] in ('queued','running','pausing'):
         value['state']='paused';value['problem']='从备份恢复后，请重新选择来源再继续。'
-    if table=='memory_batches' and value['status'] in ('running','pausing','queued'):
+    if table in ('memory_batches','memory_review_batches') and value['status'] in ('running','pausing','queued'):
         value['status']='paused';value['problem']='从备份恢复后，请核对范围再继续。'
     if table=='memory_batch_items' and value['status']=='running':value['status']='queued'
     if table in ('memory_extractions','answer_jobs','daily_analysis','memory_reviews') and value['status'] in ('running','queued'):

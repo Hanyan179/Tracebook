@@ -152,6 +152,8 @@ def prepare_library(directory, expected_snapshot, output_directory=None):
             if 'memory_batches' in objects:
                 db.execute("UPDATE memory_batches SET status='paused',problem=? WHERE status IN ('queued','running','pausing')",(message,))
             if 'memory_batch_items' in objects:db.execute("UPDATE memory_batch_items SET status='queued' WHERE status='running'")
+            if 'memory_review_batches' in objects:
+                db.execute("UPDATE memory_review_batches SET status='paused',problem=? WHERE status IN ('queued','running','pausing')",(message,))
             for table in ('memory_extractions','answer_jobs','daily_analysis','memory_reviews'):
                 if table in objects:db.execute('UPDATE '+table+" SET status='interrupted',problem=? WHERE status IN ('queued','running')",(message,))
         db.execute('PRAGMA wal_checkpoint(FULL)')

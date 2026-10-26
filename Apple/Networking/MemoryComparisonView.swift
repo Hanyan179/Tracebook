@@ -55,6 +55,8 @@ struct MemoryComparisonSheet: View {
     @ObservedObject var workspace: NodeWorkspaceStore
     let candidate: NodeCandidate
     let saved: (NodeCandidate) -> Void
+    var selectedPair: ((NodeCandidate, NodeCandidate) -> Void)? = nil
+    var initialTargetID: UUID? = nil
     @Environment(\.dismiss) private var dismiss
     @StateObject private var loader = LibraryLoader<NodeCandidate>()
     @State private var query = ""
@@ -85,6 +87,14 @@ struct MemoryComparisonSheet: View {
                             Button("选择另一条记忆") { self.target = nil; problem = nil; retryDecision = nil; requestID = UUID() }
                                 .disabled(busy || retryDecision != nil)
                         }
+                        if let selectedPair {
+                            Section {
+                                Button("加入批量核对") { selectedPair(incoming, target); dismiss() }
+                                    .disabled(busy || problem != nil || incoming.state != "pending" || target.state != "confirmed")
+                                Text("这里只选择配对，下一步集中预览后再发送。")
+                                    .font(.footnote).foregroundStyle(.secondary)
+                            }
+                        } else {
                         Section("模型辅助核对") {
                             Text("可单独发送这两条记忆及依据，请模型提出关系建议。处理方式仍由你决定。")
                                 .font(.footnote).foregroundStyle(.secondary)
@@ -97,6 +107,7 @@ struct MemoryComparisonSheet: View {
                             decisionButton("重复，保留已有记忆", kind: "duplicate")
                             decisionButton("作为补充，保留两条", kind: "supplement")
                             decisionButton("用新建议替代旧记忆", kind: "replace")
+                        }
                         }
                     } else {
                         Section("可能相关的记忆") {
@@ -167,8 +178,10 @@ struct MemoryComparisonSheet: View {
                             }
                         }.id("comparisonProblem")
                     }
-                    Text("替代会确认新建议并停用旧记忆。补充会保留两条已确认记忆。重复只忽略新建议。原文与历史均保留。")
-                        .font(.footnote).foregroundStyle(.secondary)
+                    if selectedPair == nil {
+                        Text("替代会确认新建议并停用旧记忆。补充会保留两条已确认记忆。重复只忽略新建议。原文与历史均保留。")
+                            .font(.footnote).foregroundStyle(.secondary)
+                    }
                 }.formStyle(.grouped)
                     .onChange(of: problem) { _, value in
                         if value != nil { proxy.scrollTo("comparisonProblem", anchor: .top) }
@@ -189,7 +202,10 @@ struct MemoryComparisonSheet: View {
                 } message: { Text("请核对上方新旧内容。两条记忆中任何一条被修改时，本次处理会停止。") }
         }
         .task(id: workspace.endpoint + filter.signature) { await loader.reload(client: workspace.client, kind: "memory", filter: filter) }
-        .task(id: workspace.endpoint + candidate.id.uuidString) { await loadSuggestions() }
+        .task(id: workspace.endpoint + candidate.id.uuidString) {
+            if let initialTargetID { await readPair(initialTargetID) }
+            else { await loadSuggestions() }
+        }
         .onAppear { workspace.memoryNotice = nil }
         .onDisappear { suggestionRequest = UUID(); suggestionsLoading = false }
         .interactiveDismissDisabled(busy)

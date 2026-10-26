@@ -70,6 +70,11 @@ struct MemoryBatchView: View {
                     Text("每次最多选择 20 份资料。先核对发送范围，再逐份生成待确认建议。")
                         .font(.footnote).foregroundStyle(.secondary)
                 }
+                Section("记忆关系") {
+                    NavigationLink("批量核对记忆关系") { MemoryReviewBatchView(store: store) }
+                    Text("集中选择新旧记忆并预览，逐组获得建议，再逐条审阅。")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
                 Section("最近的批量整理") {
                     if batches.isEmpty { Text("还没有批量整理任务。").foregroundStyle(.secondary) }
                     ForEach(batches) { batch in

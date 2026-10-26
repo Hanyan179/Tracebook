@@ -177,7 +177,9 @@ class DocumentOriginalTests(unittest.TestCase):
         try:self.assertEqual(base64.b64decode(restored.documents.original(source['id'])['data']), raw)
         finally:restored.close()
         with zipfile.ZipFile(archive) as z:entries = {n: z.read(n) for n in z.namelist()}
-        manifest = json.loads(entries['manifest.json']);self.assertEqual(manifest['version'], 5)
+        manifest = json.loads(entries['manifest.json']);self.assertEqual(manifest['version'], 6)
+        manifest['tables'].pop('memory_review_batches');entries.pop('tables/memory_review_batches.jsonl')
+        manifest['files'] = [item for item in manifest['files'] if item['path'] != 'tables/memory_review_batches.jsonl']
         manifest['tables'].pop('transcript_reviews');entries.pop('tables/transcript_reviews.jsonl')
         manifest['files'] = [item for item in manifest['files'] if item['path'] != 'tables/transcript_reviews.jsonl']
         manifest['tables'].pop('local_source_issues');entries.pop('tables/local_source_issues.jsonl')
@@ -196,6 +198,8 @@ class DocumentOriginalTests(unittest.TestCase):
         item, _ = self.item(retain=False);self.save(item);archive, _ = self.backup()
         with zipfile.ZipFile(archive) as z:entries = {n: z.read(n) for n in z.namelist()}
         manifest = json.loads(entries['manifest.json']);manifest['version'] = 1;manifest.pop('originalDocuments')
+        manifest['tables'].pop('memory_review_batches');entries.pop('tables/memory_review_batches.jsonl')
+        manifest['files'] = [item for item in manifest['files'] if item['path'] != 'tables/memory_review_batches.jsonl']
         manifest['tables'].pop('transcript_reviews');entries.pop('tables/transcript_reviews.jsonl')
         manifest['files'] = [item for item in manifest['files'] if item['path'] != 'tables/transcript_reviews.jsonl']
         manifest['tables'].pop('local_source_issues');entries.pop('tables/local_source_issues.jsonl')

@@ -124,7 +124,7 @@ class MemoryReviews:
             if not row:self.error(404, '找不到这次模型核对。')
             return self.view(row)
 
-    def start(self, values, background=True):
+    def start(self, values, background=True, batch_id=None):
         from store import stamp
         if values.get('sendToModel') is not True:self.error(400, '请明确选择发送这两条记忆及其依据。')
         with self.s.lock:
@@ -137,6 +137,9 @@ class MemoryReviews:
                 self.error(409, '所选记忆或依据包含疑似凭证，请先移除凭证后重新核对。')
             if values.get('previewToken') != self.approval(identifier, config):
                 self.error(409, '核对范围或模型服务已变化，请重新预览后发送。')
+            active_batch = getattr(self.s, "memory_review_batches", None)
+            if active_batch and active_batch.active_id and active_batch.active_id != batch_id:
+                self.error(409, '另一组记忆正在核对，请稍后重试。')
             if self.stopping.is_set() or not self.run_lock.acquire(blocking=False):
                 self.error(409, '另一组记忆正在核对，请稍后重试。')
             owns_lock = True

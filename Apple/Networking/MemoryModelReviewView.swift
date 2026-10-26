@@ -17,7 +17,7 @@ struct MemoryReviewReference: Codable, Identifiable, Sendable {
     var date: Date? { ISO8601DateFormatter().date(from: completedAt ?? createdAt) }
 }
 
-private func memoryRelationTitle(_ relation: String) -> String {
+func memoryRelationTitle(_ relation: String) -> String {
     switch relation {
     case "duplicate": "可能重复"
     case "supplement": "可能形成补充"
@@ -27,7 +27,7 @@ private func memoryRelationTitle(_ relation: String) -> String {
     }
 }
 
-private struct MemoryReviewState: Decodable, Sendable {
+struct MemoryReviewState: Decodable, Sendable {
     struct Side: Decodable, Identifiable, Sendable {
         let side: String
         let id: UUID

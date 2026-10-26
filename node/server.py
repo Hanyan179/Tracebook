@@ -198,6 +198,19 @@ class Handler(BaseHTTPRequestHandler):
             if not ipaddress.ip_address(self.client_address[0]).is_loopback:raise StoreError(403,'请在资料库所在电脑配置回答模型。')
             if self.command=='POST':return self.send_json(200,store.answers.configure(self.body_json()))
             if self.command=='GET':return self.send_json(200,store.answers.configuration_state())
+        if parts==['v1','memory-review-batches']:
+            if self.command=='GET':return self.send_json(200,store.memory_review_batches.listing())
+            if self.command=='POST':return self.send_json(202,store.memory_review_batches.start(self.body_json()))
+        if parts==['v1','memory-review-batches','preview'] and self.command=='POST':
+            return self.send_json(200,store.memory_review_batches.preview(self.body_json().get('pairs')))
+        if len(parts)==3 and parts[:2]==['v1','memory-review-batches'] and self.command=='GET':
+            return self.send_json(200,store.memory_review_batches.status(parts[2]))
+        if len(parts)==4 and parts[:2]==['v1','memory-review-batches']:
+            if parts[3]=='preview' and self.command=='GET':return self.send_json(200,store.memory_review_batches.resume_preview(parts[2]))
+            if self.command=='POST':
+                values=self.body_json()
+                if parts[3]=='pause':return self.send_json(200,store.memory_review_batches.pause(parts[2]))
+                if parts[3]=='resume':return self.send_json(202,store.memory_review_batches.resume(parts[2],values))
         if parts==['v1','memory-reviews','preview'] and self.command=='POST':
             return self.send_json(200,store.memory_reviews.preview(self.body_json()))
         if parts==['v1','memory-reviews'] and self.command=='POST':

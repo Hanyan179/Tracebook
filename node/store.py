@@ -151,6 +151,8 @@ class Store:
         self.memory_segments = MemorySegments(self)
         self.memory_extraction = MemoryExtraction(self)
         self.memory_batches = MemoryBatches(self)
+        from memory_review_batches import MemoryReviewBatches
+        self.memory_review_batches = MemoryReviewBatches(self)
         self.transcription = Transcription(self)
         from transcript_reviews import TranscriptReviews
         self.transcript_reviews = TranscriptReviews(self)
@@ -173,8 +175,9 @@ class Store:
         sources_closed = self.local_sources.close()
         speech_closed = self.transcription.close()
         memories_closed = self.memory_extraction.close()
+        review_batches_closed = self.memory_review_batches.close()
         reviews_closed = self.memory_reviews.close()
-        if sources_closed and speech_closed and memories_closed and reviews_closed and batches_closed and answers_closed and documents_closed:
+        if sources_closed and speech_closed and memories_closed and reviews_closed and batches_closed and answers_closed and documents_closed and review_batches_closed:
             self.db.close()
             return True
         return False
