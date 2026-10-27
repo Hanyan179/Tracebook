@@ -1,12 +1,18 @@
 import SwiftUI
 
+struct NoteDraftCreation: Identifiable {
+    let id: UUID
+    let context: EditorDraftContext
+}
+
 struct NotesLibrary: View {
     @ObservedObject var workspace: NodeWorkspaceStore
     var initialSelection: UUID? = nil
     @StateObject private var loader = LibraryLoader<PersonalNote>()
     @State private var filter = LibraryFilter()
     @State private var selection: UUID?
-    @State private var creating = false
+    @State private var creation: NoteDraftCreation?
+    @State private var draftScope: EditorDraftContext?
     @State private var managing = false
     @State private var openedNote: PersonalNote?
     @FocusState private var searching: Bool
@@ -14,6 +20,7 @@ struct NotesLibrary: View {
     @FocusState private var listFocused: Bool
     #endif
     private var emptyTitle: String { filter.hasSearchFilters || filter.archived ? "没有匹配的笔记" : "还没有笔记" }
+    private var localScope: EditorDraftContext? { EditorDraftContext.noteScope(in: workspace) }
     var body: some View {
         Group {
             #if os(macOS)
@@ -32,7 +39,7 @@ struct NotesLibrary: View {
                         } actions: {
                             if loader.problem != nil { Button("重新读取") { Task { await reload() } } }
                             else if !loader.loading && !filter.hasSearchFilters && !filter.archived {
-                                Button("写下第一篇笔记") { creating = true }.disabled(!workspace.connected)
+                                Button("写下第一篇笔记") { beginNote() }.disabled(localScope == nil)
                             }
                         }
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -48,8 +55,8 @@ struct NotesLibrary: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .primaryAction) {
-                        Button { creating = true } label: { Image(systemName: "square.and.pencil") }
-                            .accessibilityLabel("新建笔记").disabled(!workspace.connected)
+                        Button { beginNote() } label: { Image(systemName: "square.and.pencil") }
+                            .accessibilityLabel("新建笔记").disabled(localScope == nil)
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
@@ -66,10 +73,13 @@ struct NotesLibrary: View {
         }.background(AppPalette.canvas)
             .task(id: filter.signature + workspace.endpoint + String(workspace.connected) + workspace.libraryRevision.uuidString) { await reload() }
             .onChange(of: initialSelection) { _, id in if let id { selection = id } }
-            .sheet(isPresented: $creating, onDismiss: { Task { await reload(); await workspace.refresh() } }) {
-                NoteEditor(workspace: workspace, noteID: nil) { id in
+            .sheet(item: $creation, onDismiss: { Task { await reload(); await workspace.refresh() } }) { creation in
+                NoteEditor(workspace: workspace, noteID: nil, initialContext: creation.context, initialDraftID: creation.id) { id in
                     filter = LibraryFilter(); selection = id
                 }.appLanguage()
+            }
+            .sheet(item: $draftScope, onDismiss: { Task { await reload() } }) { scope in
+                NoteDraftList(workspace: workspace, scope: scope).appLanguage()
             }
             .sheet(isPresented: $managing, onDismiss: { Task { await reload() } }) { CategoryManager(store: workspace, kind: "note").appLanguage() }
             #if os(macOS)
@@ -80,6 +90,7 @@ struct NotesLibrary: View {
     private var phoneList: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
+                draftEntry
                 LibraryFilters(filter: $filter, facets: loader.facets)
                 if loader.problem == nil, !loader.loading {
                     Text(filter.archived
@@ -111,7 +122,7 @@ struct NotesLibrary: View {
                     } else if filter.archived {
                         Button("返回笔记") { filter.archived = false }.frame(minHeight: 44)
                     } else {
-                        Button("写下第一篇笔记") { creating = true }.frame(minHeight: 44).disabled(!workspace.connected)
+                        Button("写下第一篇笔记") { beginNote() }.frame(minHeight: 44).disabled(localScope == nil)
                     }
                 }
                 if loader.nextCursor != nil, loader.problem == nil {
@@ -127,13 +138,14 @@ struct NotesLibrary: View {
             VStack(alignment: .leading, spacing: 14) {
                 HStack {
                     Text("笔记").font(.title3.weight(.semibold))
-                    Text(loader.total, format: .number).font(.caption).foregroundStyle(.secondary)
+                    if !loader.loading && loader.problem == nil { Text(loader.total, format: .number).font(.caption).foregroundStyle(.secondary) }
                     Spacer()
-                    Button { creating = true } label: { Image(systemName: "square.and.pencil") }
-                        .help("新建笔记").accessibilityLabel("新建笔记").disabled(!workspace.connected)
+                    Button { beginNote() } label: { Image(systemName: "square.and.pencil") }
+                        .help("新建笔记").accessibilityLabel("新建笔记").disabled(localScope == nil)
                         .keyboardShortcut("n", modifiers: [.command, .shift])
                 }
                 TextField("搜索笔记", text: $filter.query).textFieldStyle(.roundedBorder).focused($searching)
+                draftEntry
                 Picker("范围", selection: $filter.archived) { Text("资料库").tag(false); Text("已归档").tag(true) }
                     .pickerStyle(.segmented).labelsHidden()
                 HStack {
@@ -197,7 +209,10 @@ struct NotesLibrary: View {
                 Text(L(emptyTitle)).font(.callout).foregroundStyle(.secondary).padding(16)
             }
             if loader.nextCursor != nil { Button("再看 40 条") { Task { await loader.more(client: workspace.client, kind: "note", filter: filter) } }.padding(12).disabled(loader.loading) }
-            HStack { Text(LF("%d 条资料", loader.total)); Spacer(); Button("分类管理") { managing = true }.buttonStyle(.plain) }
+            HStack {
+                if !loader.loading && loader.problem == nil { Text(LF("%d 条资料", loader.total)) }
+                Spacer(); Button("分类管理") { managing = true }.buttonStyle(.plain)
+            }
                 .font(.caption).foregroundStyle(.secondary).padding(16)
         }.background(AppPalette.surface.opacity(0.5))
     }
@@ -228,8 +243,24 @@ struct NotesLibrary: View {
         }
     }
     private func reload() async {
+        if workspace.status == nil { await workspace.refresh() }
+        if let localScope, workspace.status?.nodeID == localScope.nodeID { try? localScope.rememberIdentity() }
         await loader.reload(client: workspace.client, kind: "note", filter: filter)
         if selection == nil || !loader.items.contains(where: { $0.id == selection }) { selection = loader.items.first { $0.id == initialSelection }?.id ?? loader.items.first?.id }
+    }
+    private var draftEntry: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if localScope != nil {
+                Button("本机草稿", systemImage: "doc.badge.clock") { draftScope = localScope }
+                if !workspace.connected { Text("可以先写本机草稿，恢复连接后再保存到资料库。").font(.caption).foregroundStyle(.secondary) }
+            } else if !workspace.connected {
+                Text("首次使用笔记前，请先连接并核对资料库。").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+    private func beginNote() {
+        guard let scope = localScope else { return }
+        let id = UUID(); creation = NoteDraftCreation(id: id, context: scope.noteContext(id: id))
     }
 }
 
@@ -317,6 +348,8 @@ struct NoteReader: View {
 struct NoteEditor: View {
     @ObservedObject var workspace: NodeWorkspaceStore
     let noteID: UUID?
+    var initialContext: EditorDraftContext? = nil
+    var initialDraftID: UUID? = nil
     var onSaved: ((UUID) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var draft = PersonalNoteDraft()
@@ -399,6 +432,17 @@ struct NoteEditor: View {
         return note
     }
     private func load(reloadID: UUID? = nil) async {
+        if reloadID == nil, let initialContext, let initialDraftID {
+            loaded = false; context = initialContext
+            do {
+                let saved = try PersonalNoteDraft.read(from: initialContext.url)
+                guard saved == nil || saved?.id == initialDraftID else { throw CocoaError(.fileReadCorruptFile) }
+                draft = saved ?? PersonalNoteDraft(id: initialDraftID)
+                error = saved == nil ? nil : "已恢复本机未提交草稿。"
+                loaded = true
+            } catch { self.error = "本机草稿文件暂时无法读取，原件仍保留。" }
+            return
+        }
         let requestedID = reloadID ?? noteID
         let path = "note-drafts/" + (requestedID?.uuidString ?? "new")
         let endpoint = workspace.endpoint
@@ -453,7 +497,8 @@ struct NoteEditor: View {
         }
     }
     private func save() async {
-        guard let context, let client = workspace.client, persistDraft() else { return }
+        guard let context, persistDraft() else { return }
+        guard let client = workspace.client else { error = "请先连接并核对资料库，草稿仍保留。"; return }
         let revision = workspace.connectionRevision
         saving = true; defer { saving = false }
         do {

@@ -2814,3 +2814,12 @@
 "请更新电脑端后继续编辑笔记，已有草稿仍保留。" = "Update the Mac app to continue editing notes. Existing drafts are retained.";
 "保存结果尚未核对，草稿仍保留。请重试核对。" = "The save is not yet verified. Your draft is retained; retry to check it.";
 "本机草稿暂时无法移除，请重试。" = "The local draft could not be removed. Please retry.";
+"本机草稿" = "Local drafts";
+"仅存本机；连接后保存到原资料库。" = "On this device only. Reconnect to save to the original library.";
+"部分本机草稿文件无法读取，原件仍保留。" = "Some local draft files could not be read. The originals are retained.";
+"未命名笔记" = "Untitled note";
+"继续读取本机草稿" = "Read more local drafts";
+"这份资料库没有本机草稿。" = "This library has no local drafts.";
+"草稿目录暂时无法完整读取，请重新读取。原件仍保留。" = "The draft directory could not be fully read. Reload to try again; originals are retained.";
+"可以先写本机草稿，恢复连接后再保存到资料库。" = "Write a local draft now and save it to your library when connected.";
+"首次使用笔记前，请先连接并核对资料库。" = "Connect and verify your library before using notes for the first time.";

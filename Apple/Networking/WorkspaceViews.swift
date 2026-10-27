@@ -397,7 +397,8 @@ struct NodeDocumentEditor: View {
     }
 }
 
-struct EditorDraftContext {
+struct EditorDraftContext: Identifiable {
+    var id: String { url.absoluteString }
     let endpoint: String
     let nodeID: String
     let path: String
@@ -409,6 +410,15 @@ struct EditorDraftContext {
         #endif
         return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("WorkspaceDrafts")
     }
+    static var noteDraftDirectory: URL { root }
+    @MainActor static func noteScope(in workspace: NodeWorkspaceStore) -> Self? {
+        guard !workspace.endpoint.isEmpty else { return nil }
+        if let nodeID = workspace.status?.nodeID {
+            return Self(endpoint: workspace.endpoint, nodeID: nodeID, path: "note-drafts/new")
+        }
+        return cached(endpoint: workspace.endpoint, path: "note-drafts/new")
+    }
+    func noteContext(id: UUID) -> Self { Self(endpoint: endpoint, nodeID: nodeID, path: "note-drafts/" + id.uuidString) }
     private static func hash(_ text: String) -> String {
         SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
     }

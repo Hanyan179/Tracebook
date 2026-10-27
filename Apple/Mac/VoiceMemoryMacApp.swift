@@ -37,6 +37,7 @@ struct MacWorkspaceView: View {
     @StateObject private var folder = FolderSyncController.shared
     @State private var section: WorkspaceSection? = .recordings
     @State private var selectedNote: UUID?
+    @State private var offlineDraftScope: EditorDraftContext?
     @State private var columnVisibility = NavigationSplitViewVisibility.all
     @State private var sidebarTransitionTask: Task<Void, Never>?
     @State private var pendingSidebarToggle = false
@@ -119,6 +120,9 @@ struct MacWorkspaceView: View {
                                 Button("选择或还原资料库") {
                                     UserDefaults.standard.set("数据与隐私", forKey: "settings.section"); openSettings()
                                 }
+                                if let scope = EditorDraftContext.noteScope(in: workspace) {
+                                    Button("本机草稿") { offlineDraftScope = scope }
+                                }
                             }.frame(maxWidth: .infinity, maxHeight: .infinity)
                         } else {
                         switch section ?? .recordings {
@@ -144,6 +148,9 @@ struct MacWorkspaceView: View {
             .preferredColorScheme(AppAppearance(rawValue: appearance)?.scheme)
             .environment(\.locale, (AppLanguage(rawValue: language) ?? .system).locale)
             .sheet(isPresented: $tour) { ProductTour() }
+            .sheet(item: $offlineDraftScope) { scope in
+                NoteDraftList(workspace: workspace, scope: scope).appLanguage()
+            }
             .animation(reduceMotion ? nil : .easeInOut(duration: 0.16), value: section)
             .onChange(of: section) { _, _ in navigationPath = NavigationPath() }
             .onDisappear {
