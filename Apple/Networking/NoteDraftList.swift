@@ -25,6 +25,7 @@ struct NoteDraftList: View {
                         Button { selection = item } label: {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(verbatim: item.draft.title.isEmpty ? L("未命名笔记") : item.draft.title).font(.headline).lineLimit(2)
+                                if item.draft.isConflictCopy { Label("并发修改副本", systemImage: "doc.on.doc").font(.caption) }
                                 Text(verbatim: String(item.draft.text.prefix(200))).lineLimit(2).foregroundStyle(.secondary)
                                 Text(item.modifiedAt, style: .date).font(.caption).foregroundStyle(.secondary)
                             }.frame(maxWidth: .infinity, alignment: .leading).padding(16)
@@ -50,7 +51,7 @@ struct NoteDraftList: View {
                 }
         }.task { await load() }
             .sheet(item: $selection, onDismiss: { Task { await load() } }) { item in
-                let context = item.url == scope.url ? scope : scope.noteContext(id: item.draft.id)
+                let context = item.url == scope.url ? scope : scope.noteContext(id: item.draft.storageID)
                 NoteEditor(workspace: workspace, noteID: nil, initialContext: context, initialDraftID: item.draft.id).appLanguage()
             }
             .sheet(item: $creation, onDismiss: { Task { await load() } }) { creation in

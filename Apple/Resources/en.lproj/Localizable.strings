@@ -2823,3 +2823,10 @@
 "草稿目录暂时无法完整读取，请重新读取。原件仍保留。" = "The draft directory could not be fully read. Reload to try again; originals are retained.";
 "可以先写本机草稿，恢复连接后再保存到资料库。" = "Write a local draft now and save it to your library when connected.";
 "首次使用笔记前，请先连接并核对资料库。" = "Connect and verify your library before using notes for the first time.";
+
+"并发修改副本" = "Concurrent edit copy";
+"检测到其他修改，当前输入已另存为本机副本。" = "Another edit was detected. Your input is kept as a separate local copy.";
+"另存为新笔记" = "Keep as a new note";
+"已另存为新笔记草稿。点击保存后加入资料库。" = "A new note draft is ready. Choose Save to add it to the library.";
+"新笔记草稿已保留，旧副本暂未移除。" = "The new draft is kept. The previous copy could not be removed.";
+"新笔记草稿已保留，旧副本已有其他修改，仍保留在本机草稿中。" = "The new draft is kept. Another edit to the previous copy remains in local drafts.";

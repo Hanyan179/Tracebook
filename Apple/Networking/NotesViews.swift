@@ -354,6 +354,7 @@ struct NoteEditor: View {
     @Environment(\.dismiss) private var dismiss
     @State private var draft = PersonalNoteDraft()
     @State private var context: EditorDraftContext?
+    @State private var localRevision: String?
     @State private var loaded = false
     @State private var saving = false
     @State private var error: String?
@@ -365,6 +366,12 @@ struct NoteEditor: View {
             GeometryReader { geometry in
                 ScrollView {
                     VStack(alignment: .leading, spacing: 18) {
+                        if draft.isConflictCopy {
+                            Label("并发修改副本", systemImage: "doc.on.doc").font(.headline)
+                            Text("检测到其他修改，当前输入已另存为本机副本。")
+                                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                            Button("另存为新笔记") { separateNote() }.disabled(saving)
+                        }
                         TextField("标题", text: $draft.title, axis: .vertical).font(.title2.weight(.medium)).textFieldStyle(.plain)
                             .disabled(!loaded || saving)
                         Divider()
@@ -385,7 +392,7 @@ struct NoteEditor: View {
                     }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
                 }
             }.background(AppPalette.canvas)
-                .navigationTitle(L(noteID == nil && draft.etag.isEmpty ? "新建笔记" : "编辑笔记"))
+                .navigationTitle(L(draft.etag.isEmpty ? "新建笔记" : "编辑笔记"))
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif
@@ -411,7 +418,7 @@ struct NoteEditor: View {
                     }
                     Button("取消", role: .cancel) { }
                 }
-        }.interactiveDismissDisabled(dirty || saving).task { await load() }
+        }.interactiveDismissDisabled(dirty || saving).task { if !loaded { await load() } }
             .onChange(of: draft) { _, _ in if loaded { persistDraft() } }
             .onDisappear { if loaded { persistDraft() } }
             .protectsUnsavedEdits(in: workspace, editing: dirty || saving)
@@ -435,7 +442,9 @@ struct NoteEditor: View {
         if reloadID == nil, let initialContext, let initialDraftID {
             loaded = false; context = initialContext
             do {
-                let saved = try PersonalNoteDraft.read(from: initialContext.url)
+                let snapshot = try PersonalNoteDraftStore.read(from: initialContext.url)
+                localRevision = snapshot?.revision
+                let saved = snapshot?.draft
                 guard saved == nil || saved?.id == initialDraftID else { throw CocoaError(.fileReadCorruptFile) }
                 draft = saved ?? PersonalNoteDraft(id: initialDraftID)
                 error = saved == nil ? nil : "已恢复本机未提交草稿。"
@@ -447,7 +456,7 @@ struct NoteEditor: View {
         let path = "note-drafts/" + (requestedID?.uuidString ?? "new")
         let endpoint = workspace.endpoint
         let revision = workspace.connectionRevision
-        loaded = false; error = nil; context = nil
+        loaded = false; error = nil; context = nil; localRevision = nil
         do {
             guard let client = workspace.client else { throw NodeFailure(message: "请先连接资料库。") }
             let identity = try await client.read("v1/status", as: NodeStatus.self)
@@ -455,12 +464,14 @@ struct NoteEditor: View {
             try checkConnection(revision, next)
             guard identity.noteIdentitySupported == true else { throw NodeFailure(message: "请更新电脑端后继续编辑笔记，已有草稿仍保留。") }
             context = next
-            var saved = try PersonalNoteDraft.read(from: next.url)
+            let snapshot = try PersonalNoteDraftStore.read(from: next.url)
+            var saved = snapshot?.draft
+            localRevision = snapshot?.revision
             // A creation may already appear in the list while its reply was lost.
             if saved == nil, let requestedID {
                 let pending = EditorDraftContext(endpoint: endpoint, nodeID: identity.nodeID, path: "note-drafts/new")
-                if let candidate = try? PersonalNoteDraft.read(from: pending.url), candidate.id == requestedID {
-                    next = pending; context = pending; saved = candidate
+                if let candidate = try? PersonalNoteDraftStore.read(from: pending.url), candidate.draft.id == requestedID {
+                    next = pending; context = pending; saved = candidate.draft; localRevision = candidate.revision
                 }
             }
             var value = saved ?? PersonalNoteDraft(id: requestedID ?? UUID())
@@ -487,8 +498,8 @@ struct NoteEditor: View {
             if context == nil { context = EditorDraftContext.cached(endpoint: endpoint, path: path) }
             if let context {
                 do {
-                    if let saved = try PersonalNoteDraft.read(from: context.url), requestedID == nil || saved.id == requestedID {
-                        draft = saved; loaded = true
+                    if let saved = try PersonalNoteDraftStore.read(from: context.url), requestedID == nil || saved.draft.id == requestedID {
+                        draft = saved.draft; localRevision = saved.revision; loaded = true
                     } else if requestedID == nil {
                         draft = PersonalNoteDraft(); loaded = true
                     }
@@ -497,7 +508,8 @@ struct NoteEditor: View {
         }
     }
     private func save() async {
-        guard let context, persistDraft() else { return }
+        let previousContext = context?.id
+        guard persistDraft(), let context, context.id == previousContext else { return }
         guard let client = workspace.client else { error = "请先连接并核对资料库，草稿仍保留。"; return }
         let revision = workspace.connectionRevision
         saving = true; defer { saving = false }
@@ -520,7 +532,7 @@ struct NoteEditor: View {
             }
             if draft.hasChanges {
                 draft.prepareSubmission()
-                guard persistDraft() else { return }
+                guard persistDraft(), self.context?.id == context.id else { return }
                 let result = try await client.send(draft.etag.isEmpty ? "v1/notes" : "v1/notes/" + draft.id.uuidString,
                     method: draft.etag.isEmpty ? "POST" : "PUT",
                     body: ["id": draft.id.uuidString, "title": draft.title, "text": draft.text, "etag": draft.etag, "nodeID": context.nodeID])
@@ -541,14 +553,42 @@ struct NoteEditor: View {
     private func persistDraft() -> Bool {
         guard loaded, let context else { return false }
         guard dirty else { return removeDraft() }
-        do { try draft.write(to: context.url); return true }
+        do {
+            localRevision = try PersonalNoteDraftStore.save(draft, to: context.url, expecting: localRevision)
+            return true
+        } catch PersonalNoteDraftStoreError.changed {
+            do {
+                let copy = draft.conflictCopy()
+                let copyContext = context.noteContext(id: copy.storageID)
+                let revision = try PersonalNoteDraftStore.save(copy, to: copyContext.url, expecting: nil)
+                self.context = copyContext; localRevision = revision; draft = copy
+                error = nil
+                return true
+            } catch { self.error = "草稿无法保存在本机。请保存或复制内容后再离开。"; return false }
+        }
         catch { self.error = "草稿无法保存在本机。请保存或复制内容后再离开。"; return false }
+    }
+    private func separateNote() {
+        guard let previous = context else { return }
+        do {
+            let copy = draft.newNoteCopy(), nextID = copy.storageID
+            let next = previous.noteContext(id: nextID)
+            let revision = try PersonalNoteDraftStore.save(copy, to: next.url, expecting: nil)
+            // A failed cleanup leaves the prior copy recoverable. The new one is already durable.
+            let oldRevision = localRevision
+            context = next; localRevision = revision; draft = copy
+            do {
+                let removed = try PersonalNoteDraftStore.remove(from: previous.url, expecting: oldRevision)
+                error = removed ? "已另存为新笔记草稿。点击保存后加入资料库。" : "新笔记草稿已保留，旧副本已有其他修改，仍保留在本机草稿中。"
+            } catch { self.error = "新笔记草稿已保留，旧副本暂未移除。" }
+        } catch { self.error = "草稿无法保存在本机。请保存或复制内容后再离开。" }
     }
     @discardableResult
     private func removeDraft() -> Bool {
         guard let context else { return true }
         do {
-            if FileManager.default.fileExists(atPath: context.url.path) { try FileManager.default.removeItem(at: context.url) }
+            try PersonalNoteDraftStore.remove(from: context.url, expecting: localRevision)
+            localRevision = nil
             return true
         } catch { self.error = "本机草稿暂时无法移除，请重试。"; return false }
     }

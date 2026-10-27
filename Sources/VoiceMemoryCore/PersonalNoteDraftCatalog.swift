@@ -58,7 +58,7 @@ public enum PersonalNoteDraftCatalog {
                 // Other editors share this directory and have no personal-note identity.
                 guard let fields = try JSONSerialization.jsonObject(with: data) as? [String: Any], fields["id"] != nil else { continue }
                 let draft = try JSONDecoder().decode(PersonalNoteDraft.self, from: data)
-                guard url.lastPathComponent == filename(endpoint: endpoint, nodeID: nodeID, noteID: draft.id) ||
+                guard url.lastPathComponent == filename(endpoint: endpoint, nodeID: nodeID, noteID: draft.storageID) ||
                       url.lastPathComponent == filename(endpoint: endpoint, nodeID: nodeID, noteID: nil) else { continue }
                 guard draft.needsRecovery else { continue }
                 items.append(LocalNoteDraft(url: url, draft: draft, modifiedAt: values.contentModificationDate ?? .distantPast))
