@@ -1,0 +1,9 @@
+{
+  "scenario": {"fictional": true, "title_zh": "周六声音散步", "title_en": "Saturday sound walk"},
+  "audio": {"id": "DEMO_AUDIO", "kind": "recording", "version": 1, "date": "10/21", "time": "09:10", "duration": "00:42", "title_zh": "河边，听一会儿", "title_en": "A moment by the river", "text": null},
+  "note": {"id": "NOTE_WALK_01", "kind": "note", "version": 1, "date": "10/21", "time": "10:35", "title_zh": "周六声音散步", "title_en": "Saturday sound walk", "lines_zh": ["周六的声音散步从河边开始，最后回到旧书店。", "如果下雨，就只走老街到旧书店这一段。", "路线先短一点，把停下来听的时间留下。"], "lines_en": ["Start Saturday's sound walk by the river and finish at the old bookshop.", "If it rains, only walk the stretch from the old street to the old bookshop.", "Keep the route short and leave time to stop and listen."]},
+  "input": {"id": "INPUT_WALK_01", "kind": "input", "version": 1, "date": "10/21", "time": "16:20", "title_zh": "路线草案的工具会话", "title_en": "A tool session about the route", "text_zh": "把路线草案分成普通路线和雨天替代两部分。", "text_en": "Separate the route draft into a normal route and a rainy-day alternative."},
+  "document": {"id": "DOC_WALK_01", "kind": "document", "version": 1, "date": "10/21", "time": "18:05", "time_kind": "modified", "title_zh": "声音散步路线.md", "title_en": "sound-walk-route.md", "lines_zh": ["普通路线：河边 → 老街 → 旧书店", "雨天路线：老街 → 旧书店"], "lines_en": ["Normal route: river → old street → old bookshop", "Rainy-day route: old street → old bookshop"]},
+  "memory": {"source_id": "NOTE_WALK_01", "quote_index": 1, "text_zh": "这次声音散步的雨天安排：只走老街到旧书店。", "text_en": "Rainy-day plan for this sound walk: only the old street to the old bookshop."},
+  "review": {"date": "10/22", "time": "07:30", "source_day": "10/21"}
+}
