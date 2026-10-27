@@ -1,4 +1,5 @@
 import base64
+import concurrent.futures
 import datetime as dt
 import hashlib
 import http.client
@@ -32,6 +33,17 @@ class NodeTests(unittest.TestCase):
         rid, m, audio = self.fixture(day);self.store.accept(m,audio);return rid,m,audio
     def text_etag(self, rid):
         return self.store.read_document('transcripts/' + rid + '.md')['etag']
+    def test_concurrent_settings_keep_each_value_and_library_identity(self):
+        keys=['nodeID','timeZone','speechAutomatic','speechAfter']
+        expected={key:self.store.setting(key) for key in keys}
+        barrier=threading.Barrier(16)
+        def read(index):
+            barrier.wait(timeout=5)
+            for n in range(1000):
+                key=keys[(n+index)%len(keys)]
+                self.assertEqual(self.store.setting(key),expected[key])
+        with concurrent.futures.ThreadPoolExecutor(max_workers=16) as pool:
+            list(pool.map(read,range(16)))
     def test_retries_and_restart_keep_one_record_and_audio(self):
         rid,m,audio=self.receive()
         self.assertTrue(self.store.accept(m,audio)['durable'])

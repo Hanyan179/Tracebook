@@ -208,7 +208,10 @@ class Store:
         return False
 
     def setting(self, key):
-        return self.db.execute('SELECT value FROM settings WHERE key=?', (key,)).fetchone()[0]
+        # The shared connection's statement cache must not be stepped by two
+        # threads at once. Workers and HTTP identity checks both read settings.
+        with self.lock:
+            return self.db.execute('SELECT value FROM settings WHERE key=?', (key,)).fetchone()[0]
 
     def _path(self, relative):
         self.require_output()
