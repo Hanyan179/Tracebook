@@ -23,6 +23,31 @@ class KnowledgeTests(unittest.TestCase):
     def grant(self, scopes=None):
         return self.store.knowledge.create_grant({'name':'isolated-test','scopes':scopes or ['notes'],'days':1})
 
+    def test_note_saves_are_bound_to_library_and_retry_keeps_one_note(self):
+        node_id = self.store.setting('nodeID')
+        values = {'id':str(uuid.uuid4()),'title':'合成草稿','text':'本机原文','nodeID':node_id}
+        self.assertTrue(self.store.status()['noteIdentitySupported'])
+        first = self.store.knowledge.save_note(values)
+        self.assertEqual(first['nodeID'],node_id)
+        self.assertEqual(self.store.knowledge.save_note(values),first)
+        before = {str(p.relative_to(self.store.output)):p.read_bytes() for p in self.store.output.rglob('*') if p.is_file()}
+        wrong = str(uuid.uuid4())
+        for payload, identifier in [({**values,'nodeID':wrong},None),
+                                    ({**values,'nodeID':wrong,'id':str(uuid.uuid4())},None),
+                                    ({**values,'nodeID':wrong,'etag':first['etag'],'text':'不应写入'},first['id']),
+                                    ({**values,'nodeID':None},None)]:
+            with self.assertRaises(StoreError) as caught:
+                self.store.knowledge.save_note(payload,identifier)
+            self.assertEqual(caught.exception.status,409)
+        self.assertEqual(self.store.db.execute('SELECT COUNT(*) FROM notes').fetchone()[0],1)
+        self.assertEqual(before,{str(p.relative_to(self.store.output)):p.read_bytes() for p in self.store.output.rglob('*') if p.is_file()})
+        self.store.close();self.store=Store(self.root/'node')
+        self.assertEqual(self.store.knowledge.save_note(values)['id'],first['id'])
+        updated=self.store.knowledge.save_note({**values,'text':'修订','etag':first['etag']},first['id'])
+        self.assertEqual(updated['text'],'修订')
+        with self.assertRaises(StoreError):
+            self.store.knowledge.save_note({**values,'text':'旧草稿','etag':first['etag']},first['id'])
+
     def test_notes_are_files_searchable_editable_and_survive_output_move(self):
         note=self.note()
         self.assertEqual((self.store.output/note['path']).read_text(),note['text'])

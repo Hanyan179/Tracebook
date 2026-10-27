@@ -53,7 +53,7 @@ class Knowledge:
                 self.error(404, '找不到这条笔记。')
             document = self.s.read_document('notes/' + row['id'] + '.md')
             etag = hashlib.sha256((row['title'] + '\0' + document['etag']).encode()).hexdigest()
-            return {**dict(row), **document, 'etag': etag}
+            return {**dict(row), **document, 'etag': etag, 'nodeID': self.s.setting('nodeID')}
 
     def save_note(self, values, identifier=None):
         from store import canonical_id
@@ -63,6 +63,8 @@ class Knowledge:
         if not isinstance(text, str) or not 1 <= len(text.strip()) <= 200000:
             self.error(400, '笔记正文不能为空，最多 200000 个字符。')
         with self.s.lock:
+            if 'nodeID' in values and values['nodeID'] != self.s.setting('nodeID'):
+                self.error(409, '资料库已变化，草稿仍保留。请回到原资料库核对。')
             now = self.stamp()
             if identifier:
                 rid = canonical_id(identifier)

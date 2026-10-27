@@ -178,6 +178,7 @@ final class ConversationStore: ObservableObject {
 }
 
 struct PersonalNote: Codable, Identifiable, Sendable {
+    var nodeID: String?
     let id: UUID
     let title: String
     var excerpt: String?

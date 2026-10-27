@@ -319,62 +319,192 @@ struct NoteEditor: View {
     let noteID: UUID?
     var onSaved: ((UUID) -> Void)? = nil
     @Environment(\.dismiss) private var dismiss
-    @State private var title = ""
-    @State private var text = ""
-    @State private var etag = ""
-    @State private var createdID = UUID()
+    @State private var draft = PersonalNoteDraft()
+    @State private var context: EditorDraftContext?
     @State private var loaded = false
     @State private var saving = false
     @State private var error: String?
-    @State private var originalTitle = ""
-    @State private var originalText = ""
     @State private var discard = false
-    private var dirty: Bool { title != originalTitle || text != originalText }
+    @State private var reloading = false
+    private var dirty: Bool { draft.needsRecovery }
     var body: some View {
         NavigationStack {
-            VStack(alignment: .leading, spacing: 18) {
-                TextField("标题", text: $title).font(.title2.weight(.medium)).textFieldStyle(.plain)
-                Divider()
-                TextEditor(text: $text).font(.body).scrollContentBackground(.hidden)
-                    .accessibilityLabel("笔记正文")
-                if let error { Text(L(error)).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
-                Text("正文更新会保留历史。").font(.caption).foregroundStyle(.secondary)
-            }.padding(24).background(AppPalette.canvas).disabled(!loaded || saving)
-                .navigationTitle(L(noteID == nil ? "新建笔记" : "编辑笔记"))
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        TextField("标题", text: $draft.title, axis: .vertical).font(.title2.weight(.medium)).textFieldStyle(.plain)
+                            .disabled(!loaded || saving)
+                        Divider()
+                        TextEditor(text: $draft.text).font(.body).scrollContentBackground(.hidden)
+                            .accessibilityLabel("笔记正文").disabled(!loaded || saving)
+                            .frame(minHeight: max(240, geometry.size.height - 230))
+                        if let error { Text(L(error)).font(.caption).foregroundStyle(.secondary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true) }
+                        if !loaded {
+                            if error != nil { Button("重新读取") { Task { await load() } } }
+                            else { ProgressView() }
+                        }
+                        if dirty {
+                            Text("未提交的修改会保留为本机草稿").font(.caption).foregroundStyle(.secondary)
+                            if !draft.etag.isEmpty {
+                                Button("放弃本机草稿并重新读取") { reloading = true }.font(.caption).disabled(saving)
+                            }
+                        } else { Text("正文更新会保留历史。").font(.caption).foregroundStyle(.secondary) }
+                    }.frame(maxWidth: .infinity, alignment: .leading).padding(24)
+                }
+            }.background(AppPalette.canvas)
+                .navigationTitle(L(noteID == nil && draft.etag.isEmpty ? "新建笔记" : "编辑笔记"))
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
                 #endif
                 .toolbar {
-                    ToolbarItem(placement: .cancellationAction) { Button("取消") { if dirty { discard = true } else { dismiss() } }.disabled(saving) }
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("取消") { if dirty { discard = true } else { dismiss() } }.disabled(saving)
+                    }
                     ToolbarItem(placement: .confirmationAction) {
                         Button(saving ? L("正在保存") : L("保存")) { Task { await save() } }
                             .keyboardShortcut("s", modifiers: .command)
-                            .disabled(!loaded || saving || title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !dirty)
+                            .disabled(!loaded || saving || draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !dirty)
                     }
                 }
-                .confirmationDialog("放弃未保存的修改？", isPresented: $discard, titleVisibility: .visible) { Button("放弃修改", role: .destructive) { dismiss() } }
-        }.interactiveDismissDisabled(dirty).task { await load() }
+                .confirmationDialog("关闭未保存的笔记？", isPresented: $discard, titleVisibility: .visible) {
+                    Button("保留草稿并关闭") { if persistDraft() { dismiss() } }
+                    Button("放弃修改", role: .destructive) { if removeDraft() { loaded = false; dismiss() } }
+                    Button("取消", role: .cancel) { }
+                }
+                .confirmationDialog("放弃尚未提交的本机修改？", isPresented: $reloading, titleVisibility: .visible) {
+                    Button("重新读取", role: .destructive) {
+                        let savedID = draft.etag.isEmpty ? nil : draft.id
+                        if removeDraft() { loaded = false; Task { await load(reloadID: savedID) } }
+                    }
+                    Button("取消", role: .cancel) { }
+                }
+        }.interactiveDismissDisabled(dirty || saving).task { await load() }
+            .onChange(of: draft) { _, _ in if loaded { persistDraft() } }
+            .onDisappear { if loaded { persistDraft() } }
             .protectsUnsavedEdits(in: workspace, editing: dirty || saving)
         #if os(macOS)
         .frame(minWidth: 640, idealWidth: 800, minHeight: 540, idealHeight: 700)
         #endif
     }
-    private func load() async {
-        guard let noteID else { loaded = true; return }
+    private func checkConnection(_ revision: UUID, _ expected: EditorDraftContext) throws {
+        guard !Task.isCancelled, revision == workspace.connectionRevision, workspace.endpoint == expected.endpoint else {
+            throw NodeFailure(message: "资料库已变化，草稿仍保留。请回到原资料库核对。")
+        }
+    }
+    private func readNote(_ client: NodeClient, id: UUID, expected: EditorDraftContext) async throws -> PersonalNote {
+        let note = try await client.read("v1/notes/" + id.uuidString, as: PersonalNote.self)
+        guard note.nodeID == expected.nodeID else {
+            throw NodeFailure(message: "资料库已变化，草稿仍保留。请回到原资料库核对。")
+        }
+        return note
+    }
+    private func load(reloadID: UUID? = nil) async {
+        let requestedID = reloadID ?? noteID
+        let path = "note-drafts/" + (requestedID?.uuidString ?? "new")
+        let endpoint = workspace.endpoint
+        let revision = workspace.connectionRevision
+        loaded = false; error = nil; context = nil
         do {
             guard let client = workspace.client else { throw NodeFailure(message: "请先连接资料库。") }
-            let note = try await client.read("v1/notes/" + noteID.uuidString, as: PersonalNote.self)
-            title = note.title; text = note.text ?? ""; etag = note.etag ?? ""
-            originalTitle = title; originalText = text; loaded = true
-        } catch { self.error = error.localizedDescription }
+            let identity = try await client.read("v1/status", as: NodeStatus.self)
+            var next = EditorDraftContext(endpoint: endpoint, nodeID: identity.nodeID, path: path)
+            try checkConnection(revision, next)
+            guard identity.noteIdentitySupported == true else { throw NodeFailure(message: "请更新电脑端后继续编辑笔记，已有草稿仍保留。") }
+            context = next
+            var saved = try PersonalNoteDraft.read(from: next.url)
+            // A creation may already appear in the list while its reply was lost.
+            if saved == nil, let requestedID {
+                let pending = EditorDraftContext(endpoint: endpoint, nodeID: identity.nodeID, path: "note-drafts/new")
+                if let candidate = try? PersonalNoteDraft.read(from: pending.url), candidate.id == requestedID {
+                    next = pending; context = pending; saved = candidate
+                }
+            }
+            var value = saved ?? PersonalNoteDraft(id: requestedID ?? UUID())
+            if let requestedID, value.id != requestedID { throw CocoaError(.fileReadCorruptFile) }
+            if requestedID != nil || !value.etag.isEmpty || value.submittedText != nil {
+                do {
+                    let note = try await readNote(client, id: value.id, expected: next)
+                    try checkConnection(revision, next)
+                    if saved == nil { value = PersonalNoteDraft(id: note.id, title: note.title, text: note.text ?? "", etag: note.etag ?? "") }
+                    else if !value.acknowledge(title: note.title, text: note.text ?? "", etag: note.etag ?? ""), value.etag != note.etag {
+                        error = "文件已更新，你的草稿仍保留。请先核对版本。"
+                    }
+                } catch let failure as NodeFailure where failure.statusCode == 404 && requestedID == nil && value.etag.isEmpty { }
+            }
+            try checkConnection(revision, next)
+            draft = value
+            if saved != nil && error == nil { error = "已恢复本机未提交草稿。" }
+            try next.rememberIdentity()
+            loaded = true; persistDraft()
+        } catch {
+            guard !Task.isCancelled, revision == workspace.connectionRevision else { return }
+            self.error = error.localizedDescription
+            // An offline fallback uses only the last verified identity; never another library's draft.
+            if context == nil { context = EditorDraftContext.cached(endpoint: endpoint, path: path) }
+            if let context {
+                do {
+                    if let saved = try PersonalNoteDraft.read(from: context.url), requestedID == nil || saved.id == requestedID {
+                        draft = saved; loaded = true
+                    } else if requestedID == nil {
+                        draft = PersonalNoteDraft(); loaded = true
+                    }
+                } catch { self.error = L("本机草稿文件暂时无法读取，原件仍保留。") }
+            }
+        }
     }
     private func save() async {
-        guard let client = workspace.client else { return }
+        guard let context, let client = workspace.client, persistDraft() else { return }
+        let revision = workspace.connectionRevision
         saving = true; defer { saving = false }
         do {
-            try await client.send(noteID.map { "v1/notes/" + $0.uuidString } ?? "v1/notes", method: noteID == nil ? "POST" : "PUT",
-                body: ["id": createdID.uuidString, "title": title, "text": text, "etag": etag])
-            await workspace.refresh(); onSaved?(noteID ?? createdID); dismiss()
-        } catch { self.error = error.localizedDescription }
+            try checkConnection(revision, context)
+            let identity = try await client.read("v1/status", as: NodeStatus.self)
+            try checkConnection(revision, context)
+            guard context.nodeID == identity.nodeID else { throw NodeFailure(message: "资料库已变化，草稿仍保留。请回到原资料库核对。") }
+            guard identity.noteIdentitySupported == true else { throw NodeFailure(message: "请更新电脑端后继续编辑笔记，已有草稿仍保留。") }
+            if draft.submittedText != nil {
+                do {
+                    let note = try await readNote(client, id: draft.id, expected: context)
+                    try checkConnection(revision, context)
+                    if !draft.acknowledge(title: note.title, text: note.text ?? "", etag: note.etag ?? ""), note.etag == draft.etag {
+                        draft.submittedTitle = nil; draft.submittedText = nil
+                    }
+                } catch let failure as NodeFailure where failure.statusCode == 404 && draft.etag.isEmpty {
+                    draft.submittedTitle = nil; draft.submittedText = nil
+                }
+            }
+            if draft.hasChanges {
+                draft.prepareSubmission()
+                guard persistDraft() else { return }
+                let result = try await client.send(draft.etag.isEmpty ? "v1/notes" : "v1/notes/" + draft.id.uuidString,
+                    method: draft.etag.isEmpty ? "POST" : "PUT",
+                    body: ["id": draft.id.uuidString, "title": draft.title, "text": draft.text, "etag": draft.etag, "nodeID": context.nodeID])
+                try checkConnection(revision, context)
+                let note = try JSONDecoder().decode(PersonalNote.self, from: result)
+                guard note.nodeID == context.nodeID, note.id == draft.id,
+                      draft.acknowledge(title: note.title, text: note.text ?? "", etag: note.etag ?? "") else {
+                    throw NodeFailure(message: "保存结果尚未核对，草稿仍保留。请重试核对。")
+                }
+            }
+            guard !draft.needsRecovery else { throw NodeFailure(message: "保存结果尚未核对，草稿仍保留。请重试核对。") }
+            guard removeDraft() else { return }
+            loaded = false
+            await workspace.refresh(); onSaved?(draft.id); dismiss()
+        } catch { self.error = error.localizedDescription; persistDraft() }
+    }
+    @discardableResult
+    private func persistDraft() -> Bool {
+        guard loaded, let context else { return false }
+        guard dirty else { return removeDraft() }
+        do { try draft.write(to: context.url); return true }
+        catch { self.error = "草稿无法保存在本机。请保存或复制内容后再离开。"; return false }
+    }
+    @discardableResult
+    private func removeDraft() -> Bool {
+        guard let context else { return true }
+        do {
+            if FileManager.default.fileExists(atPath: context.url.path) { try FileManager.default.removeItem(at: context.url) }
+            return true
+        } catch { self.error = "本机草稿暂时无法移除，请重试。"; return false }
     }
 }

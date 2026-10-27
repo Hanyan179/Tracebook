@@ -2809,3 +2809,8 @@
 "尝试其他关键词，或调整上方筛选。" = "Try another search or adjust the filters above.";
 
 "正文更新会保留历史。" = "Text edits keep earlier versions.";
+"关闭未保存的笔记？" = "Close this unsaved note?";
+"保留草稿并关闭" = "Keep draft and close";
+"请更新电脑端后继续编辑笔记，已有草稿仍保留。" = "Update the Mac app to continue editing notes. Existing drafts are retained.";
+"保存结果尚未核对，草稿仍保留。请重试核对。" = "The save is not yet verified. Your draft is retained; retry to check it.";
+"本机草稿暂时无法移除，请重试。" = "The local draft could not be removed. Please retry.";

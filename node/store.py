@@ -665,6 +665,7 @@ class Store:
                     'recordingIdentitySupported':True,
                     'recordingRepairSupported':True,
                     'sourceHistorySupported':True,
+                    'noteIdentitySupported':True,
                     'analysisConfigured':hasattr(self,'analysis') and self.analysis.configuration is not None,
                     'answerConfigured':self.answers.configuration is not None}
 
